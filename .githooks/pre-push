@@ -1,11 +1,16 @@
 #!/bin/sh
 
-set -u
+set -eu
+
+if [ -n "${HOME:-}" ] && [ -f "$HOME/.cargo/env" ]; then
+  . "$HOME/.cargo/env"
+fi
 
 protected_branches='^(main|master|develop)$'
 issue_branch_pattern='^issue/#[0-9]+$'
 
 status=0
+has_branch_update=0
 
 while read -r local_ref local_sha remote_ref remote_sha; do
   case "$remote_ref" in
@@ -30,6 +35,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       ;;
   esac
 
+  has_branch_update=1
+
   if printf '%s\n' "$branch" | grep -Eq "$protected_branches"; then
     continue
   fi
@@ -49,5 +56,28 @@ Allowed maintenance branches:
 EOF
   status=1
 done
+
+if [ "$status" -ne 0 ]; then
+  exit "$status"
+fi
+
+if [ "$has_branch_update" -eq 0 ]; then
+  exit 0
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+pre-push: cargo is required.
+
+Install Rust:
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  source "$HOME/.cargo/env"
+  rustup component add rustfmt clippy
+EOF
+  exit 1
+fi
+
+cargo clippy --locked --all-targets --all-features
+cargo test --locked --all-targets --all-features
 
 exit "$status"
