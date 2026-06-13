@@ -130,6 +130,13 @@ The Rust workflow runs:
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy --all-targets --all-features
 cargo test --all-targets --all-features
 ```
+
+Rust lint policy is defined in `Cargo.toml`. The default is intentionally strict:
+Rust warnings are denied, unsafe code is forbidden, and Clippy `all`, `pedantic`,
+`nursery`, and `cargo` lint groups are denied. If a lint is too noisy for a specific
+case, lower that lint by name instead of weakening a whole lint group. Prefer local
+`#[allow(..., reason = "...")]` attributes when a lint only needs an exception in
+one place.
