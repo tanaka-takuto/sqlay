@@ -4,6 +4,14 @@ Thanks for contributing to `sqlcomp`.
 
 This repository uses GitHub issue templates, a pull request template, and local Git hooks to keep contributions consistent.
 
+## Install local tools
+
+Install dprint before setting up Git hooks:
+
+```sh
+brew install dprint
+```
+
 ## Set up Git hooks
 
 Run these commands once after cloning the repository:
@@ -84,3 +92,13 @@ Before opening a pull request:
 - Update documentation when behavior or setup changes.
 - Run the relevant checks for the area you changed.
 - Fill in the pull request template with the tests you ran and any reviewer notes.
+
+## GitHub Actions layout
+
+Formatting CI follows a three-layer GitHub Actions layout:
+
+- Trigger layer: `.github/workflows/on_pull_request_format-check.yml` and `.github/workflows/on_push_format-check.yml`
+- Reusable Workflow layer: `.github/workflows/_format-check.yml`
+- Composite Action layer: `.github/actions/setup-dprint/action.yml`
+
+Trigger workflows define when formatting CI runs. The reusable workflow owns the format-check job. The composite action installs the pinned dprint CLI version used by CI.
