@@ -4,6 +4,28 @@ Thanks for contributing to `sqlcomp`.
 
 This repository uses GitHub issue templates, a pull request template, and local Git hooks to keep contributions consistent.
 
+## Install formatter
+
+Install dprint before contributing:
+
+```sh
+brew install dprint
+```
+
+Format supported files:
+
+```sh
+dprint fmt
+```
+
+Check formatting without modifying files:
+
+```sh
+dprint check
+```
+
+The repository formats JSON, Markdown, YAML, and GitHub Actions workflow files through dprint. The dprint CLI is not installed through npm.
+
 ## Set up Git hooks
 
 Run these commands once after cloning the repository:
@@ -15,6 +37,8 @@ chmod +x .githooks/commit-msg .githooks/pre-commit .githooks/pre-push
 ```
 
 `core.hooksPath` makes Git use the hooks stored in this repository. `commit.template` pre-fills commit messages with the expected format and examples.
+
+The `pre-commit` hook runs `dprint check`. If it fails, run `dprint fmt` and commit the formatted result.
 
 ## Commit messages
 
@@ -84,3 +108,13 @@ Before opening a pull request:
 - Update documentation when behavior or setup changes.
 - Run the relevant checks for the area you changed.
 - Fill in the pull request template with the tests you ran and any reviewer notes.
+
+## GitHub Actions layout
+
+Formatting CI follows a three-layer GitHub Actions layout:
+
+- Trigger layer: `.github/workflows/on_pull_request_format-check.yml` and `.github/workflows/on_push_format-check.yml`
+- Reusable Workflow layer: `.github/workflows/_format-check.yml`
+- Composite Action layer: `.github/actions/setup-dprint/action.yml`
+
+Trigger workflows define when formatting CI runs. The reusable workflow owns the format-check job. The composite action installs the pinned dprint CLI version used by CI.

@@ -1,0 +1,14 @@
+name: "[format] Pull Request"
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: Call format check
+    uses: ./.github/workflows/_format-check.yml

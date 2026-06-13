@@ -1,0 +1,29 @@
+name: "[format] Check (Reusable Workflow)"
+
+on:
+  workflow_call:
+    inputs:
+      dprint-version:
+        description: dprint CLI version used by CI.
+        required: false
+        type: string
+        default: 0.54.0
+
+permissions:
+  contents: read
+
+jobs:
+  dprint:
+    name: dprint check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup dprint
+        uses: ./.github/actions/setup-dprint
+        with:
+          version: ${{ inputs.dprint-version }}
+
+      - name: Check formatting
+        run: dprint check

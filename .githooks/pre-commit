@@ -1,4 +1,18 @@
 #!/bin/sh
 
-# Placeholder for repository checks. Add lint, format, or test commands here.
-exit 0
+set -u
+
+if ! command -v dprint >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+pre-commit: dprint is required.
+
+Install dprint:
+  brew install dprint
+
+Then format files:
+  dprint fmt
+EOF
+  exit 1
+fi
+
+dprint check

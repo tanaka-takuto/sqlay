@@ -1,0 +1,22 @@
+name: Setup dprint
+description: Install a pinned dprint CLI version.
+
+inputs:
+  version:
+    description: dprint CLI version to install.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install dprint
+      shell: bash
+      env:
+        DPRINT_VERSION: ${{ inputs.version }}
+      run: |
+        curl -fsSL https://dprint.dev/install.sh | sh -s "$DPRINT_VERSION" > /dev/null 2>&1
+        echo "$HOME/.dprint/bin" >> "$GITHUB_PATH"
+
+    - name: Show dprint version
+      shell: bash
+      run: dprint --version
