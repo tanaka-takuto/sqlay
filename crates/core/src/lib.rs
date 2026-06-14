@@ -322,13 +322,25 @@ impl QueryMetadata {
 pub struct RawQuery {
     metadata: QueryMetadata,
     sql: String,
+    source_location: Option<SourceLocation>,
 }
 
 impl RawQuery {
     /// Build a raw query from parsed metadata and SQL body text.
     #[must_use]
     pub const fn new(metadata: QueryMetadata, sql: String) -> Self {
-        Self { metadata, sql }
+        Self {
+            metadata,
+            sql,
+            source_location: None,
+        }
+    }
+
+    /// Attach source location context for diagnostics.
+    #[must_use]
+    pub fn with_source_location(mut self, location: SourceLocation) -> Self {
+        self.source_location = Some(location);
+        self
     }
 
     /// Parsed query metadata from the preceding `@sqlcomp` block.
@@ -342,19 +354,57 @@ impl RawQuery {
     pub fn sql(&self) -> &str {
         &self.sql
     }
+
+    /// Optional source location for the SQL body.
+    #[must_use]
+    pub const fn source_location(&self) -> Option<&SourceLocation> {
+        self.source_location.as_ref()
+    }
 }
 
-/// Dummy dialect analysis result.
+/// Dialect analysis result.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AnalyzedQuery;
+pub struct AnalyzedQuery {
+    cardinality: Cardinality,
+}
+
+impl AnalyzedQuery {
+    /// Build dialect analysis facts for a query.
+    #[must_use]
+    pub const fn new(cardinality: Cardinality) -> Self {
+        Self { cardinality }
+    }
+
+    /// Cardinality inferred by dialect analysis.
+    #[must_use]
+    pub const fn cardinality(&self) -> Cardinality {
+        self.cardinality
+    }
+}
 
 /// Dummy database metadata description.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DbQueryMetadata;
 
-/// Dummy language-neutral compiled query.
+/// Language-neutral compiled query facts available before full row IR exists.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CompiledQuery;
+pub struct CompiledQuery {
+    cardinality: Cardinality,
+}
+
+impl CompiledQuery {
+    /// Build a compiled query with resolved cardinality.
+    #[must_use]
+    pub const fn new(cardinality: Cardinality) -> Self {
+        Self { cardinality }
+    }
+
+    /// Cardinality after explicit metadata overrides have been applied.
+    #[must_use]
+    pub const fn cardinality(&self) -> Cardinality {
+        self.cardinality
+    }
+}
 
 /// Dummy generated file set.
 #[derive(Clone, Debug, Eq, PartialEq)]

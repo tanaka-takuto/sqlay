@@ -159,10 +159,9 @@ pub fn parse_sqlcomp_query_metadata(
         ));
     }
 
-    Ok(core::QueryMetadata::new(
-        raw.id,
-        raw.cardinality.map(core::Cardinality::from),
-    ))
+    let cardinality = parse_cardinality(raw.cardinality.as_deref(), block.payload_range())?;
+
+    Ok(core::QueryMetadata::new(raw.id, cardinality))
 }
 
 /// Split SQL source text into raw query blocks.
@@ -183,8 +182,11 @@ pub fn split_sqlcomp_query_blocks(source: &str) -> core::DiagnosticResult<Vec<co
             .get(index + 1)
             .map_or(source.len(), SqlcompBlock::comment_start_index);
         let sql = source[body_start..body_end].to_owned();
+        let location = core::SourceLocation::from_range(source_range_for_sql_body(
+            source, body_start, body_end,
+        ));
 
-        queries.push(core::RawQuery::new(metadata, sql));
+        queries.push(core::RawQuery::new(metadata, sql).with_source_location(location));
     }
 
     Ok(queries)
@@ -210,10 +212,26 @@ impl SourceReader for FileSystemSourceReader {
             })?;
             let file_queries =
                 split_sqlcomp_query_blocks(&source).map_err(|report| attach_path(report, &path))?;
-            queries.extend(file_queries);
+            queries.extend(
+                file_queries
+                    .into_iter()
+                    .map(|query| attach_query_path(query, &path)),
+            );
         }
 
         Ok(queries)
+    }
+}
+
+fn attach_query_path(query: core::RawQuery, path: &Path) -> core::RawQuery {
+    let range = query
+        .source_location()
+        .and_then(core::SourceLocation::range);
+
+    if let Some(range) = range {
+        query.with_source_location(core::SourceLocation::at_range(path, range))
+    } else {
+        query.with_source_location(core::SourceLocation::for_path(path))
     }
 }
 
@@ -442,22 +460,26 @@ struct RawSqlcompMetadata {
     #[serde(rename = "type")]
     annotation_type: String,
     id: String,
-    cardinality: Option<RawCardinality>,
+    cardinality: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "lowercase")]
-enum RawCardinality {
-    One,
-    Many,
-}
+fn parse_cardinality(
+    cardinality: Option<&str>,
+    range: core::SourceRange,
+) -> core::DiagnosticResult<Option<core::Cardinality>> {
+    let Some(cardinality) = cardinality else {
+        return Ok(None);
+    };
 
-impl From<RawCardinality> for core::Cardinality {
-    fn from(value: RawCardinality) -> Self {
-        match value {
-            RawCardinality::One => Self::One,
-            RawCardinality::Many => Self::Many,
-        }
+    match cardinality {
+        "one" => Ok(Some(core::Cardinality::One)),
+        "many" => Ok(Some(core::Cardinality::Many)),
+        unsupported => Err(metadata_error(
+            format!(
+                "unsupported `cardinality` value `{unsupported}`; MVP only supports `one` or `many`"
+            ),
+            range,
+        )),
     }
 }
 
@@ -697,6 +719,19 @@ fn source_range_for_span(source: &str, start: usize, end: usize) -> core::Source
     )
 }
 
+fn source_range_for_sql_body(source: &str, start: usize, end: usize) -> core::SourceRange {
+    let sql = &source[start..end];
+
+    if sql.trim().is_empty() {
+        return source_range_for_span(source, start, end);
+    }
+
+    let trimmed_start = start + sql.len() - sql.trim_start().len();
+    let trimmed_end = start + sql.trim_end().len();
+
+    source_range_for_span(source, trimmed_start, trimmed_end)
+}
+
 fn source_position_at_byte(source: &str, target: usize) -> core::SourcePosition {
     debug_assert!(source.is_char_boundary(target));
 
@@ -871,6 +906,54 @@ SELECT id FROM users;
 
         assert_eq!(metadata.id(), "listUsers");
         assert_eq!(metadata.cardinality(), None);
+    }
+
+    #[test]
+    fn rejects_exec_cardinality_for_mvp_queries() {
+        let source = r"
+/* @sqlcomp
+{
+  type: query
+  id: runMaintenance
+  cardinality: exec
+}
+*/
+SELECT 1;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
+        let scan = scan_sqlcomp_blocks(source).expect("annotated SQL should scan");
+        let report = parse_sqlcomp_query_metadata(&scan.blocks()[0])
+            .expect_err("exec cardinality should be rejected");
+
+        assert_eq!(
+            report.diagnostics()[0].message(),
+            "unsupported `cardinality` value `exec`; MVP only supports `one` or `many`"
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_cardinality_values() {
+        let source = r"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+  cardinality: maybe
+}
+*/
+SELECT id FROM users;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
+        let scan = scan_sqlcomp_blocks(source).expect("annotated SQL should scan");
+        let report = parse_sqlcomp_query_metadata(&scan.blocks()[0])
+            .expect_err("unknown cardinality should be rejected");
+
+        assert_eq!(
+            report.diagnostics()[0].message(),
+            "unsupported `cardinality` value `maybe`; MVP only supports `one` or `many`"
+        );
     }
 
     #[test]
