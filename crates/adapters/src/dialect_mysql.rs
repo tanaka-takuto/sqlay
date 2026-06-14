@@ -5,6 +5,7 @@ use sqlcomp_core as core;
 use sqlparser::ast::{Expr, LimitClause, Query, SetExpr, Statement};
 use sqlparser::dialect::MySqlDialect;
 use sqlparser::parser::Parser;
+use sqlparser::tokenizer::{Token, Tokenizer};
 
 /// `MySQL` dialect analyzer backed by `sqlparser-rs`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -26,6 +27,10 @@ impl DialectAnalyzer for MysqlDialectAnalyzer {
             ));
         };
 
+        if !ends_with_statement_terminator(query)? {
+            return Err(query_error(query, "query block must end with `;`"));
+        }
+
         let Statement::Query(parsed_query) = statement else {
             return Err(unsupported_statement_error(query, statement));
         };
@@ -36,6 +41,21 @@ impl DialectAnalyzer for MysqlDialectAnalyzer {
 
         Ok(core::AnalyzedQuery::new(infer_cardinality(parsed_query)))
     }
+}
+
+fn ends_with_statement_terminator(query: &core::RawQuery) -> core::DiagnosticResult<bool> {
+    let dialect = MySqlDialect {};
+    let tokens = Tokenizer::new(&dialect, query.sql())
+        .tokenize()
+        .map_err(|error| query_error(query, format!("failed to parse MySQL SQL: {error}")))?;
+
+    Ok(matches!(
+        tokens
+            .iter()
+            .rev()
+            .find(|token| !matches!(token, Token::Whitespace(_))),
+        Some(Token::SemiColon)
+    ))
 }
 
 fn infer_cardinality(query: &Query) -> core::Cardinality {
@@ -122,6 +142,14 @@ mod tests {
     fn accepts_simple_select_and_infers_many() {
         let analysis =
             analyze_sql("SELECT id, name FROM users;").expect("simple SELECT should be accepted");
+
+        assert_eq!(analysis.cardinality(), core::Cardinality::Many);
+    }
+
+    #[test]
+    fn accepts_select_with_trailing_sql_comment() {
+        let analysis = analyze_sql("SELECT id FROM users;\n-- kept with the query block at EOF\n")
+            .expect("trailing comments after the terminator should be accepted");
 
         assert_eq!(analysis.cardinality(), core::Cardinality::Many);
     }
@@ -215,14 +243,39 @@ mod tests {
     }
 
     #[test]
-    fn rejects_non_select_statement() {
-        let report = analyze_sql("UPDATE users SET name = 'Ada';")
-            .expect_err("non-SELECT statements should be rejected");
+    fn rejects_missing_semicolon() {
+        let report =
+            analyze_sql("SELECT id FROM users").expect_err("missing semicolon should be rejected");
 
         assert_eq!(
             report.diagnostics()[0].message(),
-            "unsupported SQL statement `UPDATE`; MVP only supports SELECT queries"
+            "query block must end with `;`"
         );
+    }
+
+    #[test]
+    fn rejects_insert_statement() {
+        assert_unsupported_statement("INSERT INTO users (id, name) VALUES (1, 'Ada');", "INSERT");
+    }
+
+    #[test]
+    fn rejects_update_statement() {
+        assert_unsupported_statement("UPDATE users SET name = 'Ada';", "UPDATE");
+    }
+
+    #[test]
+    fn rejects_delete_statement() {
+        assert_unsupported_statement("DELETE FROM users WHERE id = 1;", "DELETE");
+    }
+
+    #[test]
+    fn rejects_ddl_statement() {
+        assert_unsupported_statement("CREATE TABLE users (id BIGINT PRIMARY KEY);", "CREATE");
+    }
+
+    #[test]
+    fn rejects_call_statement() {
+        assert_unsupported_statement("CALL refresh_users();", "CALL");
     }
 
     #[test]
@@ -233,6 +286,15 @@ mod tests {
         assert_eq!(
             report.diagnostics()[0].message(),
             "unsupported SQL statement `VALUES`; MVP only supports SELECT queries"
+        );
+    }
+
+    fn assert_unsupported_statement(sql: &str, statement: &str) {
+        let report = analyze_sql(sql).expect_err("unsupported statement should be rejected");
+
+        assert_eq!(
+            report.diagnostics()[0].message(),
+            format!("unsupported SQL statement `{statement}`; MVP only supports SELECT queries")
         );
     }
 
