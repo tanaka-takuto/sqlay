@@ -757,7 +757,14 @@ mod tests {
 
     #[test]
     fn finds_one_sqlcomp_block_and_preserves_sql() {
-        let source = "/* @sqlcomp\n{ type: query, id: listUsers }\n*/\nSELECT id FROM users;\n";
+        let source = r"
+/* @sqlcomp
+{ type: query, id: listUsers }
+*/
+SELECT id FROM users;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
         let scan = scan_sqlcomp_blocks(source).expect("annotated SQL should scan");
 
         assert_eq!(scan.blocks().len(), 1);
@@ -778,7 +785,15 @@ mod tests {
 
     #[test]
     fn scanned_block_equality_ignores_internal_byte_offsets() {
-        let source = "\n/* @sqlcomp\n{ type: query, id: listUsers }\n*/\nSELECT id FROM users;\n";
+        let source = r"
+
+/* @sqlcomp
+{ type: query, id: listUsers }
+*/
+SELECT id FROM users;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
         let scan = scan_sqlcomp_blocks(source).expect("annotated SQL should scan");
         let scanned = &scan.blocks()[0];
         let constructed = SqlcompBlock::new(
@@ -792,7 +807,18 @@ mod tests {
 
     #[test]
     fn finds_multiple_sqlcomp_blocks() {
-        let source = "/* @sqlcomp\n{ id: first }\n*/\nSELECT 1;\n/* @sqlcomp\n{ id: second }\n*/\nSELECT 2;\n";
+        let source = r"
+/* @sqlcomp
+{ id: first }
+*/
+SELECT 1;
+/* @sqlcomp
+{ id: second }
+*/
+SELECT 2;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
         let scan = scan_sqlcomp_blocks(source).expect("multiple annotations should scan");
 
         assert_eq!(scan.blocks().len(), 2);
@@ -806,7 +832,18 @@ mod tests {
 
     #[test]
     fn parses_query_metadata_from_hjson_payload() {
-        let source = "/* @sqlcomp\n{\n  type: query\n  id: listUsers\n  cardinality: one\n}\n*/\nSELECT id FROM users;\n";
+        let source = r"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+  cardinality: one
+}
+*/
+SELECT id FROM users;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
         let scan = scan_sqlcomp_blocks(source).expect("annotated SQL should scan");
         let metadata =
             parse_sqlcomp_query_metadata(&scan.blocks()[0]).expect("query metadata should parse");
@@ -817,8 +854,17 @@ mod tests {
 
     #[test]
     fn parses_query_metadata_without_optional_cardinality() {
-        let source =
-            "/* @sqlcomp\n{\n  type: query\n  id: listUsers\n}\n*/\nSELECT id FROM users;\n";
+        let source = r"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id FROM users;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
         let scan = scan_sqlcomp_blocks(source).expect("annotated SQL should scan");
         let metadata =
             parse_sqlcomp_query_metadata(&scan.blocks()[0]).expect("query metadata should parse");
@@ -829,8 +875,17 @@ mod tests {
 
     #[test]
     fn splits_one_query_block() {
-        let source =
-            "/* @sqlcomp\n{\n  type: query\n  id: listUsers\n}\n*/\nSELECT id FROM users;\n";
+        let source = r"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id FROM users;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
         let queries = split_sqlcomp_query_blocks(source).expect("query block should split");
 
         assert_eq!(queries.len(), 1);
@@ -841,7 +896,25 @@ mod tests {
 
     #[test]
     fn splits_multiple_query_blocks_in_source_order() {
-        let source = "/* @sqlcomp\n{\n  type: query\n  id: firstQuery\n}\n*/\nSELECT 1;\n/* @sqlcomp\n{\n  type: query\n  id: secondQuery\n}\n*/\nSELECT 2;\n-- trailing file content\n";
+        let source = r"
+/* @sqlcomp
+{
+  type: query
+  id: firstQuery
+}
+*/
+SELECT 1;
+/* @sqlcomp
+{
+  type: query
+  id: secondQuery
+}
+*/
+SELECT 2;
+-- trailing file content
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
         let queries = split_sqlcomp_query_blocks(source).expect("query blocks should split");
 
         assert_eq!(queries.len(), 2);
@@ -853,7 +926,20 @@ mod tests {
 
     #[test]
     fn splits_adjacent_query_blocks() {
-        let source = "/* @sqlcomp\n{\n  type: query\n  id: firstQuery\n}\n*/SELECT 1;/* @sqlcomp\n{\n  type: query\n  id: secondQuery\n}\n*/SELECT 2;";
+        let source = r"
+/* @sqlcomp
+{
+  type: query
+  id: firstQuery
+}
+*/SELECT 1;/* @sqlcomp
+{
+  type: query
+  id: secondQuery
+}
+*/SELECT 2;"
+            .strip_prefix('\n')
+            .expect("raw SQL test source should start with a newline");
         let queries = split_sqlcomp_query_blocks(source).expect("adjacent queries should split");
 
         assert_eq!(queries.len(), 2);
@@ -870,7 +956,24 @@ mod tests {
         fs::create_dir_all(&sql_dir).expect("test SQL directory should be created");
         fs::write(
             sql_dir.join("users.sql"),
-            "/* @sqlcomp\n{\n  type: query\n  id: listUsers\n}\n*/\nSELECT id FROM users;\n/* @sqlcomp\n{\n  type: query\n  id: findUser\n}\n*/\nSELECT id FROM users WHERE id = 1;\n",
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id FROM users;
+/* @sqlcomp
+{
+  type: query
+  id: findUser
+}
+*/
+SELECT id FROM users WHERE id = 1;
+"
+            .strip_prefix('\n')
+            .expect("raw SQL test source should start with a newline"),
         )
         .expect("test SQL file should be written");
 
@@ -893,7 +996,16 @@ mod tests {
 
     #[test]
     fn rejects_malformed_hjson_metadata() {
-        let source = "/* @sqlcomp\n{\n  type query\n}\n*/\nSELECT id FROM users;\n";
+        let source = r"
+/* @sqlcomp
+{
+  type query
+}
+*/
+SELECT id FROM users;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
         let scan = scan_sqlcomp_blocks(source).expect("annotated SQL should scan");
         let report = parse_sqlcomp_query_metadata(&scan.blocks()[0])
             .expect_err("malformed Hjson should be rejected");
@@ -912,7 +1024,17 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_annotation_types() {
-        let source = "/* @sqlcomp\n{\n  type: param\n  id: userId\n}\n*/\nSELECT id FROM users;\n";
+        let source = r"
+/* @sqlcomp
+{
+  type: param
+  id: userId
+}
+*/
+SELECT id FROM users;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
         let scan = scan_sqlcomp_blocks(source).expect("annotated SQL should scan");
         let report = parse_sqlcomp_query_metadata(&scan.blocks()[0])
             .expect_err("unsupported annotation type should be rejected");
@@ -931,8 +1053,21 @@ mod tests {
     #[test]
     fn rejects_invalid_query_ids() {
         for id in ["1bad", "list-users", "\"\""] {
-            let source = format!("/* @sqlcomp\n{{\n  type: query\n  id: {id}\n}}\n*/\nSELECT 1;\n");
-            let scan = scan_sqlcomp_blocks(&source).expect("annotated SQL should scan");
+            let source = format!(
+                r"
+/* @sqlcomp
+{{
+  type: query
+  id: {id}
+}}
+*/
+SELECT 1;
+"
+            );
+            let source = source
+                .strip_prefix('\n')
+                .expect("raw SQL test source should start with a newline");
+            let scan = scan_sqlcomp_blocks(source).expect("annotated SQL should scan");
             let report = parse_sqlcomp_query_metadata(&scan.blocks()[0])
                 .expect_err("invalid query id should be rejected");
             let diagnostic = report
@@ -951,7 +1086,11 @@ mod tests {
 
     #[test]
     fn ignores_marker_like_text_inside_sql_strings() {
-        let source = "SELECT '/* @sqlcomp { id: nope } */' AS literal, \"/* @sqlcomp */\" AS double_quoted;\n";
+        let source = r#"
+SELECT '/* @sqlcomp { id: nope } */' AS literal, "/* @sqlcomp */" AS double_quoted;
+"#
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
         let scan = scan_sqlcomp_blocks(source).expect("string literal should scan");
 
         assert!(scan.blocks().is_empty());
@@ -960,7 +1099,14 @@ mod tests {
 
     #[test]
     fn ignores_marker_like_text_inside_line_comments() {
-        let source = "-- /* @sqlcomp { id: nope } */\nSELECT 1;\n# /* @sqlcomp */\nSELECT 2;\n";
+        let source = r"
+-- /* @sqlcomp { id: nope } */
+SELECT 1;
+# /* @sqlcomp */
+SELECT 2;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
         let scan = scan_sqlcomp_blocks(source).expect("line comments should scan");
 
         assert!(scan.blocks().is_empty());
@@ -969,8 +1115,16 @@ mod tests {
 
     #[test]
     fn rejects_unterminated_block_comment() {
-        let report = scan_sqlcomp_blocks("SELECT 1;\n/* @sqlcomp\n{ id: broken }\n")
-            .expect_err("unterminated block comment should be rejected");
+        let report = scan_sqlcomp_blocks(
+            r"
+SELECT 1;
+/* @sqlcomp
+{ id: broken }
+"
+            .strip_prefix('\n')
+            .expect("raw SQL test source should start with a newline"),
+        )
+        .expect_err("unterminated block comment should be rejected");
         let diagnostic = report
             .diagnostics()
             .first()
