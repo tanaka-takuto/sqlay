@@ -39,7 +39,7 @@ const UNSUPPORTED_CONFIG: &str = r#"
 }
 "#;
 
-const COMPILE_CLEAN_PENDING: &str = "`compile --clean` is not implemented yet";
+const COMPILE_CLEAN_PENDING: &str = "command `compile --clean` is not implemented yet";
 
 #[test]
 fn sqlcomp_binary_exits_successfully() {
@@ -331,7 +331,7 @@ fn init_refuses_to_overwrite_existing_config() {
 }
 
 #[test]
-fn compile_clean_is_recognized_but_not_implemented_yet() {
+fn compile_clean_is_recognized_but_cleanup_is_not_implemented_yet() {
     let config_dir = unique_temp_dir("sqlcomp-cli-compile-clean");
     std::fs::create_dir_all(&config_dir).expect("temp config dir should be created");
     std::fs::write(config_dir.join("sqlcomp.config.json"), VALID_CONFIG)

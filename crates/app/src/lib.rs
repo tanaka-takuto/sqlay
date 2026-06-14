@@ -166,62 +166,32 @@ impl DefaultProjectInitializer {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DefaultCompileUseCase;
 
-/// Concrete ports needed to build generated files from a project config.
+/// Concrete port references required to run the compile pipeline.
 #[derive(Clone, Copy, Debug)]
-pub struct CompilePipelinePorts<
-    'a,
-    Planner,
-    SourceReader,
-    DialectAnalyzer,
-    MetadataProvider,
-    QueryCompiler,
-    TargetGenerator,
-> {
-    planner: &'a Planner,
-    source_reader: &'a SourceReader,
-    dialect_analyzer: &'a DialectAnalyzer,
-    metadata_provider: &'a MetadataProvider,
-    query_compiler: &'a QueryCompiler,
-    target_generator: &'a TargetGenerator,
-}
-
-impl<'a, Planner, SourceReader, DialectAnalyzer, MetadataProvider, QueryCompiler, TargetGenerator>
-    CompilePipelinePorts<
-        'a,
-        Planner,
-        SourceReader,
-        DialectAnalyzer,
-        MetadataProvider,
-        QueryCompiler,
-        TargetGenerator,
-    >
+pub struct CompilePipeline<'a, P, S, D, M, Q, T, W>
 where
-    Planner: CompilationPlanner,
-    SourceReader: self::SourceReader,
-    DialectAnalyzer: self::DialectAnalyzer,
-    MetadataProvider: self::MetadataProvider,
-    QueryCompiler: self::QueryCompiler,
-    TargetGenerator: self::TargetGenerator,
+    P: CompilationPlanner,
+    S: SourceReader,
+    D: DialectAnalyzer,
+    M: MetadataProvider,
+    Q: QueryCompiler,
+    T: TargetGenerator,
+    W: GeneratedFileWriter,
 {
-    /// Build a compile pipeline port bundle.
-    #[must_use]
-    pub const fn new(
-        planner: &'a Planner,
-        source_reader: &'a SourceReader,
-        dialect_analyzer: &'a DialectAnalyzer,
-        metadata_provider: &'a MetadataProvider,
-        query_compiler: &'a QueryCompiler,
-        target_generator: &'a TargetGenerator,
-    ) -> Self {
-        Self {
-            planner,
-            source_reader,
-            dialect_analyzer,
-            metadata_provider,
-            query_compiler,
-            target_generator,
-        }
-    }
+    /// Compilation planner implementation.
+    pub planner: &'a P,
+    /// SQL source reader implementation.
+    pub source_reader: &'a S,
+    /// Dialect analyzer implementation.
+    pub dialect_analyzer: &'a D,
+    /// Database metadata provider implementation.
+    pub metadata_provider: &'a M,
+    /// Core IR compiler implementation.
+    pub query_compiler: &'a Q,
+    /// Target-language generator implementation.
+    pub target_generator: &'a T,
+    /// Generated file writer implementation.
+    pub generated_file_writer: &'a W,
 }
 
 impl DefaultCompileUseCase {
@@ -231,129 +201,87 @@ impl DefaultCompileUseCase {
     ///
     /// Returns diagnostics when planning, source intake, analysis, metadata
     /// lookup, core compilation, or target generation fails.
-    pub fn check<
-        Planner,
-        SourceReader,
-        DialectAnalyzer,
-        MetadataProvider,
-        QueryCompiler,
-        TargetGenerator,
-    >(
+    pub fn check<P, S, D, M, Q, T, W>(
         config: &core::ProjectConfig,
-        ports: &CompilePipelinePorts<
-            '_,
-            Planner,
-            SourceReader,
-            DialectAnalyzer,
-            MetadataProvider,
-            QueryCompiler,
-            TargetGenerator,
-        >,
+        pipeline: &CompilePipeline<'_, P, S, D, M, Q, T, W>,
     ) -> core::DiagnosticResult<()>
     where
-        Planner: CompilationPlanner,
-        SourceReader: self::SourceReader,
-        DialectAnalyzer: self::DialectAnalyzer,
-        MetadataProvider: self::MetadataProvider,
-        QueryCompiler: self::QueryCompiler,
-        TargetGenerator: self::TargetGenerator,
+        P: CompilationPlanner,
+        S: SourceReader,
+        D: DialectAnalyzer,
+        M: MetadataProvider,
+        Q: QueryCompiler,
+        T: TargetGenerator,
+        W: GeneratedFileWriter,
     {
-        let plan = ports.planner.plan(config)?;
-        let _generated_files = generate_files(&plan, ports)?;
+        let plan = pipeline.planner.plan(config)?;
+        let _generated_files = generate_files(&plan, pipeline)?;
 
         Ok(())
     }
 
-    /// Run the `compile` command and write generated target files.
+    /// Run the `compile` command.
     ///
     /// # Errors
     ///
     /// Returns diagnostics when planning, source intake, analysis, metadata
-    /// lookup, core compilation, target generation, or generated file writing
-    /// fails.
-    pub fn compile<
-        Planner,
-        SourceReader,
-        DialectAnalyzer,
-        MetadataProvider,
-        QueryCompiler,
-        TargetGenerator,
-        Writer,
-    >(
+    /// lookup, generation, or file writing fails.
+    pub fn compile<P, S, D, M, Q, T, W>(
         config: &core::ProjectConfig,
-        ports: &CompilePipelinePorts<
-            '_,
-            Planner,
-            SourceReader,
-            DialectAnalyzer,
-            MetadataProvider,
-            QueryCompiler,
-            TargetGenerator,
-        >,
-        generated_file_writer: &Writer,
+        pipeline: &CompilePipeline<'_, P, S, D, M, Q, T, W>,
         clean: bool,
     ) -> core::DiagnosticResult<()>
     where
-        Planner: CompilationPlanner,
-        SourceReader: self::SourceReader,
-        DialectAnalyzer: self::DialectAnalyzer,
-        MetadataProvider: self::MetadataProvider,
-        QueryCompiler: self::QueryCompiler,
-        TargetGenerator: self::TargetGenerator,
-        Writer: GeneratedFileWriter,
+        P: CompilationPlanner,
+        S: SourceReader,
+        D: DialectAnalyzer,
+        M: MetadataProvider,
+        Q: QueryCompiler,
+        T: TargetGenerator,
+        W: GeneratedFileWriter,
     {
-        let plan = ports.planner.plan(config)?;
+        let plan = pipeline.planner.plan(config)?;
+
         if clean {
             return Err(compile_clean_pending());
         }
 
-        let generated_files = generate_files(&plan, ports)?;
-        generated_file_writer.write(&generated_files)
+        let generated_files = generate_files(&plan, pipeline)?;
+        pipeline.generated_file_writer.write(&generated_files)
     }
 }
 
-fn generate_files<
-    Planner,
-    SourceReader,
-    DialectAnalyzer,
-    MetadataProvider,
-    QueryCompiler,
-    TargetGenerator,
->(
+fn generate_files<P, S, D, M, Q, T, W>(
     plan: &core::CompilationPlan,
-    ports: &CompilePipelinePorts<
-        '_,
-        Planner,
-        SourceReader,
-        DialectAnalyzer,
-        MetadataProvider,
-        QueryCompiler,
-        TargetGenerator,
-    >,
+    pipeline: &CompilePipeline<'_, P, S, D, M, Q, T, W>,
 ) -> core::DiagnosticResult<core::GeneratedFiles>
 where
-    Planner: CompilationPlanner,
-    SourceReader: self::SourceReader,
-    DialectAnalyzer: self::DialectAnalyzer,
-    MetadataProvider: self::MetadataProvider,
-    QueryCompiler: self::QueryCompiler,
-    TargetGenerator: self::TargetGenerator,
+    P: CompilationPlanner,
+    S: SourceReader,
+    D: DialectAnalyzer,
+    M: MetadataProvider,
+    Q: QueryCompiler,
+    T: TargetGenerator,
+    W: GeneratedFileWriter,
 {
-    let raw_queries = ports.source_reader.read(plan)?;
+    let raw_queries = pipeline.source_reader.read(plan)?;
     let mut compiled_queries = Vec::with_capacity(raw_queries.len());
 
-    for query in raw_queries {
-        let analysis = ports.dialect_analyzer.analyze(&query)?;
-        let metadata = ports.metadata_provider.describe(&query, &analysis)?;
-        compiled_queries.push(ports.query_compiler.compile(&query, &analysis, &metadata)?);
+    for query in &raw_queries {
+        let analysis = pipeline.dialect_analyzer.analyze(query)?;
+        let metadata = pipeline.metadata_provider.describe(query, &analysis)?;
+        let compiled = pipeline
+            .query_compiler
+            .compile(query, &analysis, &metadata)?;
+        compiled_queries.push(compiled);
     }
 
-    ports.target_generator.generate(plan, &compiled_queries)
+    pipeline.target_generator.generate(plan, &compiled_queries)
 }
 
 fn compile_clean_pending() -> core::DiagnosticReport {
     core::DiagnosticReport::new(core::Diagnostic::error(
-        "`compile --clean` is not implemented yet",
+        "command `compile --clean` is not implemented yet",
     ))
 }
 
@@ -458,7 +386,7 @@ mod tests {
     use std::rc::Rc;
 
     use super::{
-        CompilationPlanner, CompilePipelinePorts, DefaultCompilationPlanner, DefaultCompileUseCase,
+        CompilationPlanner, CompilePipeline, DefaultCompilationPlanner, DefaultCompileUseCase,
         DefaultQueryCompiler, DialectAnalyzer, GeneratedFileWriter, MetadataProvider,
         QueryCompiler, SourceReader, TargetGenerator,
     };
@@ -530,16 +458,18 @@ mod tests {
                 "generated".to_owned(),
             )]),
         );
-        let ports = CompilePipelinePorts::new(
-            &DefaultCompilationPlanner,
-            &source_reader,
-            &dialect_analyzer,
-            &metadata_provider,
-            &query_compiler,
-            &target_generator,
-        );
+        let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
+        let pipeline = CompilePipeline {
+            planner: &DefaultCompilationPlanner,
+            source_reader: &source_reader,
+            dialect_analyzer: &dialect_analyzer,
+            metadata_provider: &metadata_provider,
+            query_compiler: &query_compiler,
+            target_generator: &target_generator,
+            generated_file_writer: &generated_file_writer,
+        };
 
-        DefaultCompileUseCase::check(&config, &ports)
+        DefaultCompileUseCase::check(&config, &pipeline)
             .expect("check should dry-run generation successfully");
 
         assert_eq!(
@@ -568,16 +498,17 @@ mod tests {
         let query_compiler = LoggingQueryCompiler::new(calls.clone());
         let target_generator = FakeTargetGenerator::new(calls.clone(), generated_files.clone());
         let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
-        let ports = CompilePipelinePorts::new(
-            &DefaultCompilationPlanner,
-            &source_reader,
-            &dialect_analyzer,
-            &metadata_provider,
-            &query_compiler,
-            &target_generator,
-        );
+        let pipeline = CompilePipeline {
+            planner: &DefaultCompilationPlanner,
+            source_reader: &source_reader,
+            dialect_analyzer: &dialect_analyzer,
+            metadata_provider: &metadata_provider,
+            query_compiler: &query_compiler,
+            target_generator: &target_generator,
+            generated_file_writer: &generated_file_writer,
+        };
 
-        DefaultCompileUseCase::compile(&config, &ports, &generated_file_writer, false)
+        DefaultCompileUseCase::compile(&config, &pipeline, false)
             .expect("compile should write generated files");
 
         assert_eq!(
@@ -610,20 +541,55 @@ mod tests {
             let target_generator =
                 FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()))
                     .with_failure(failure);
-            let ports = CompilePipelinePorts::new(
-                &DefaultCompilationPlanner,
-                &source_reader,
-                &dialect_analyzer,
-                &metadata_provider,
-                &query_compiler,
-                &target_generator,
-            );
+            let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
+            let pipeline = CompilePipeline {
+                planner: &DefaultCompilationPlanner,
+                source_reader: &source_reader,
+                dialect_analyzer: &dialect_analyzer,
+                metadata_provider: &metadata_provider,
+                query_compiler: &query_compiler,
+                target_generator: &target_generator,
+                generated_file_writer: &generated_file_writer,
+            };
 
-            let report = DefaultCompileUseCase::check(&config, &ports)
+            let report = DefaultCompileUseCase::check(&config, &pipeline)
                 .expect_err("pipeline failures should be returned as diagnostics");
 
             assert_eq!(diagnostic_messages(&report), failure.message());
         }
+    }
+
+    #[test]
+    fn compile_clean_reports_pending_cleanup_without_writing_files() {
+        let config = project_config(PathBuf::from("/tmp/sqlcomp-project"));
+        let calls = CallLog::default();
+        let source_reader = FakeSourceReader::new(calls.clone());
+        let dialect_analyzer = FakeDialectAnalyzer::new(calls.clone());
+        let metadata_provider = FakeMetadataProvider::new(calls.clone());
+        let query_compiler = LoggingQueryCompiler::new(calls.clone());
+        let target_generator =
+            FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()));
+        let generated_file_writer = RecordingGeneratedFileWriter::new(calls);
+        let pipeline = CompilePipeline {
+            planner: &DefaultCompilationPlanner,
+            source_reader: &source_reader,
+            dialect_analyzer: &dialect_analyzer,
+            metadata_provider: &metadata_provider,
+            query_compiler: &query_compiler,
+            target_generator: &target_generator,
+            generated_file_writer: &generated_file_writer,
+        };
+        let report = DefaultCompileUseCase::compile(&config, &pipeline, true)
+            .expect_err("compile --clean is tracked separately");
+
+        assert_eq!(
+            diagnostic_messages(&report),
+            "command `compile --clean` is not implemented yet"
+        );
+        assert!(
+            generated_file_writer.written_files().is_empty(),
+            "compile --clean should not write files until cleanup is implemented"
+        );
     }
 
     #[test]

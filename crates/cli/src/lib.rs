@@ -15,7 +15,7 @@ use sqlcomp_adapters::output_fs::FileSystemGeneratedFileWriter;
 use sqlcomp_adapters::source_fs::FileSystemSourceReader;
 use sqlcomp_adapters::target_typescript::TypeScriptTargetGenerator;
 use sqlcomp_app::{
-    self as app, ConfigLoader, DefaultCompilationPlanner, DefaultCompileUseCase,
+    self as app, CompilePipeline, ConfigLoader, DefaultCompilationPlanner, DefaultCompileUseCase,
     DefaultProjectInitializer, DefaultQueryCompiler,
 };
 use sqlcomp_core as core;
@@ -154,24 +154,30 @@ fn run_configured_use_case(
 ) -> core::DiagnosticResult<()> {
     let source_reader = FileSystemSourceReader;
     let dialect_analyzer = MysqlDialectAnalyzer;
-    let metadata_provider =
-        SqlxMysqlMetadataProvider::new(database_url_from_env(config.database())?);
+    let database_url = match command {
+        ConfiguredCommand::Compile { clean: true } => String::new(),
+        ConfiguredCommand::Check | ConfiguredCommand::Compile { clean: false } => {
+            database_url_from_env(config.database())?
+        }
+    };
+    let metadata_provider = SqlxMysqlMetadataProvider::new(database_url);
     let query_compiler = DefaultQueryCompiler;
     let target_generator = TypeScriptTargetGenerator;
     let generated_file_writer = FileSystemGeneratedFileWriter;
-    let ports = app::CompilePipelinePorts::new(
+    let pipeline = CompilePipeline {
         planner,
-        &source_reader,
-        &dialect_analyzer,
-        &metadata_provider,
-        &query_compiler,
-        &target_generator,
-    );
+        source_reader: &source_reader,
+        dialect_analyzer: &dialect_analyzer,
+        metadata_provider: &metadata_provider,
+        query_compiler: &query_compiler,
+        target_generator: &target_generator,
+        generated_file_writer: &generated_file_writer,
+    };
 
     match command {
-        ConfiguredCommand::Check => DefaultCompileUseCase::check(config, &ports),
+        ConfiguredCommand::Check => DefaultCompileUseCase::check(config, &pipeline),
         ConfiguredCommand::Compile { clean } => {
-            DefaultCompileUseCase::compile(config, &ports, &generated_file_writer, clean)
+            DefaultCompileUseCase::compile(config, &pipeline, clean)
         }
     }
 }

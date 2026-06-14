@@ -2,10 +2,11 @@ use sqlcomp_adapters::dialect_mysql::MysqlDialectAnalyzer;
 use sqlcomp_adapters::metadata_mysql_sqlx::{
     SqlxMysqlMetadataProvider, map_mysql_result_column_metadata,
 };
+use sqlcomp_adapters::output_fs::FileSystemGeneratedFileWriter;
 use sqlcomp_adapters::source_fs::{FileSystemSourceReader, split_sqlcomp_query_blocks};
 use sqlcomp_adapters::target_typescript::TypeScriptTargetGenerator;
 use sqlcomp_app::{
-    CompilePipelinePorts, DefaultCompilationPlanner, DefaultCompileUseCase, DefaultQueryCompiler,
+    CompilePipeline, DefaultCompilationPlanner, DefaultCompileUseCase, DefaultQueryCompiler,
     DialectAnalyzer, MetadataProvider,
 };
 use sqlcomp_core as core;
@@ -98,15 +99,16 @@ fn check_command_dry_runs_fixture_sql_without_writing_generated_files()
 
     let config = project_config(project_dir.clone());
     let metadata_provider = SqlxMysqlMetadataProvider::new(database_url);
-    let ports = CompilePipelinePorts::new(
-        &DefaultCompilationPlanner,
-        &FileSystemSourceReader,
-        &MysqlDialectAnalyzer,
-        &metadata_provider,
-        &DefaultQueryCompiler,
-        &TypeScriptTargetGenerator,
-    );
-    DefaultCompileUseCase::check(&config, &ports)?;
+    let pipeline = CompilePipeline {
+        planner: &DefaultCompilationPlanner,
+        source_reader: &FileSystemSourceReader,
+        dialect_analyzer: &MysqlDialectAnalyzer,
+        metadata_provider: &metadata_provider,
+        query_compiler: &DefaultQueryCompiler,
+        target_generator: &TypeScriptTargetGenerator,
+        generated_file_writer: &FileSystemGeneratedFileWriter,
+    };
+    DefaultCompileUseCase::check(&config, &pipeline)?;
 
     assert!(
         !project_dir.join("src/generated").exists(),
