@@ -382,27 +382,124 @@ impl AnalyzedQuery {
     }
 }
 
-/// Dummy database metadata description.
+/// Database metadata for one query after database-specific details are mapped to core vocabulary.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DbQueryMetadata;
+pub struct DbQueryMetadata {
+    columns: Vec<DbResultColumn>,
+}
+
+impl DbQueryMetadata {
+    /// Build database metadata for one query.
+    #[must_use]
+    pub const fn new(columns: Vec<DbResultColumn>) -> Self {
+        Self { columns }
+    }
+
+    /// Result columns returned by the database metadata lookup.
+    #[must_use]
+    pub fn columns(&self) -> &[DbResultColumn] {
+        &self.columns
+    }
+}
+
+/// Result column metadata returned by a database adapter.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DbResultColumn {
+    name: String,
+    ty: CoreType,
+    nullable: bool,
+}
+
+impl DbResultColumn {
+    /// Build database result column metadata.
+    #[must_use]
+    pub const fn new(name: String, ty: CoreType, nullable: bool) -> Self {
+        Self { name, ty, nullable }
+    }
+
+    /// Result column name exactly as reported by the database.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Language-neutral core type mapped from database-native metadata.
+    #[must_use]
+    pub const fn ty(&self) -> CoreType {
+        self.ty
+    }
+
+    /// Whether the database result column may be null.
+    #[must_use]
+    pub const fn nullable(&self) -> bool {
+        self.nullable
+    }
+}
+
+/// Language-neutral result row column in compiled query IR.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResultColumn {
+    name: String,
+    ty: CoreType,
+    nullable: bool,
+}
+
+impl ResultColumn {
+    /// Build compiled result row column metadata.
+    #[must_use]
+    pub const fn new(name: String, ty: CoreType, nullable: bool) -> Self {
+        Self { name, ty, nullable }
+    }
+
+    /// Result column name exposed to target generators.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Language-neutral result column type.
+    #[must_use]
+    pub const fn ty(&self) -> CoreType {
+        self.ty
+    }
+
+    /// Whether the result column may be null.
+    #[must_use]
+    pub const fn nullable(&self) -> bool {
+        self.nullable
+    }
+}
+
+impl From<&DbResultColumn> for ResultColumn {
+    fn from(column: &DbResultColumn) -> Self {
+        Self::new(column.name().to_owned(), column.ty(), column.nullable())
+    }
+}
 
 /// Language-neutral compiled query facts available before full row IR exists.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompiledQuery {
     cardinality: Cardinality,
+    row: Vec<ResultColumn>,
 }
 
 impl CompiledQuery {
     /// Build a compiled query with resolved cardinality.
     #[must_use]
-    pub const fn new(cardinality: Cardinality) -> Self {
-        Self { cardinality }
+    pub const fn new(cardinality: Cardinality, row: Vec<ResultColumn>) -> Self {
+        Self { cardinality, row }
     }
 
     /// Cardinality after explicit metadata overrides have been applied.
     #[must_use]
     pub const fn cardinality(&self) -> Cardinality {
         self.cardinality
+    }
+
+    /// Result row columns exposed to target generators.
+    #[must_use]
+    pub fn row(&self) -> &[ResultColumn] {
+        &self.row
     }
 }
 
@@ -451,9 +548,9 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{
-        AnalyzedQuery, Cardinality, CompilationPlan, DatabaseConfig, DatabaseDialect,
-        QueryMetadata, RawQuery, SourceLocation, SourcePosition, SourceRange, TargetConfig,
-        TargetLanguage,
+        AnalyzedQuery, Cardinality, CompilationPlan, CoreType, DatabaseConfig, DatabaseDialect,
+        DbQueryMetadata, DbResultColumn, QueryMetadata, RawQuery, ResultColumn, SourceLocation,
+        SourcePosition, SourceRange, TargetConfig, TargetLanguage,
     };
 
     #[test]
@@ -504,6 +601,29 @@ mod tests {
         let analysis = AnalyzedQuery::new(Cardinality::Many);
 
         assert_eq!(analysis.cardinality(), Cardinality::Many);
+    }
+
+    #[test]
+    fn db_query_metadata_preserves_result_column_metadata() {
+        let columns = vec![
+            DbResultColumn::new("userId".to_owned(), CoreType::Int64, false),
+            DbResultColumn::new("nickname".to_owned(), CoreType::String, true),
+        ];
+        let metadata = DbQueryMetadata::new(columns.clone());
+
+        assert_eq!(metadata.columns(), columns);
+    }
+
+    #[test]
+    fn compiled_query_preserves_result_row_columns() {
+        let row = vec![
+            ResultColumn::new("userId".to_owned(), CoreType::Int64, false),
+            ResultColumn::new("nickname".to_owned(), CoreType::String, true),
+        ];
+        let query = super::CompiledQuery::new(Cardinality::Many, row.clone());
+
+        assert_eq!(query.cardinality(), Cardinality::Many);
+        assert_eq!(query.row(), row);
     }
 
     fn compilation_plan(config_dir: PathBuf) -> CompilationPlan {

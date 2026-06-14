@@ -273,13 +273,14 @@ impl QueryCompiler for DefaultQueryCompiler {
         &self,
         query: &core::RawQuery,
         analysis: &core::AnalyzedQuery,
-        _metadata: &core::DbQueryMetadata,
+        metadata: &core::DbQueryMetadata,
     ) -> core::DiagnosticResult<core::CompiledQuery> {
         Ok(core::CompiledQuery::new(
             query
                 .metadata()
                 .cardinality()
                 .unwrap_or_else(|| analysis.cardinality()),
+            metadata.columns().iter().map(Into::into).collect(),
         ))
     }
 }
@@ -387,6 +388,31 @@ mod tests {
         assert_eq!(compiled.cardinality(), core::Cardinality::Many);
     }
 
+    #[test]
+    fn query_compiler_copies_database_columns_to_result_row() {
+        let query = core::RawQuery::new(
+            core::QueryMetadata::new("listUsers".to_owned(), None),
+            "SELECT id, nickname FROM users;".to_owned(),
+        );
+        let analysis = core::AnalyzedQuery::new(core::Cardinality::Many);
+        let metadata = core::DbQueryMetadata::new(vec![
+            core::DbResultColumn::new("id".to_owned(), core::CoreType::Int64, false),
+            core::DbResultColumn::new("nickname".to_owned(), core::CoreType::String, true),
+        ]);
+
+        let compiled = DefaultQueryCompiler
+            .compile(&query, &analysis, &metadata)
+            .expect("query compiler should preserve result row metadata");
+
+        assert_eq!(
+            compiled.row(),
+            [
+                core::ResultColumn::new("id".to_owned(), core::CoreType::Int64, false),
+                core::ResultColumn::new("nickname".to_owned(), core::CoreType::String, true),
+            ]
+        );
+    }
+
     fn project_config(config_dir: PathBuf) -> core::ProjectConfig {
         core::ProjectConfig::new(
             config_dir,
@@ -411,7 +437,7 @@ mod tests {
         let analysis = core::AnalyzedQuery::new(inferred_cardinality);
 
         DefaultQueryCompiler
-            .compile(&query, &analysis, &core::DbQueryMetadata)
+            .compile(&query, &analysis, &core::DbQueryMetadata::new(Vec::new()))
             .expect("query compiler should resolve cardinality")
     }
 
