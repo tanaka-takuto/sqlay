@@ -14,6 +14,13 @@ updates:
     labels:
       - enhancement
 
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels:
+      - enhancement
+
   - package-ecosystem: github-actions
     directories:
       - "/"
