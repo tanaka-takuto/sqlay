@@ -1,5 +1,8 @@
 use std::process::Command;
 
+const TEST_DATABASE_URL_ENV: &str = "SQLCOMP_TEST_DATABASE_URL";
+const UNUSED_DATABASE_URL: &str = "mysql://sqlcomp:sqlcomp@127.0.0.1:3306/sqlcomp";
+
 const VALID_CONFIG: &str = r#"
 {
   "source": {
@@ -10,7 +13,7 @@ const VALID_CONFIG: &str = r#"
   },
   "database": {
     "dialect": "mysql",
-    "urlEnv": "DATABASE_URL"
+    "urlEnv": "SQLCOMP_TEST_DATABASE_URL"
   },
   "target": {
     "language": "typescript"
@@ -35,9 +38,6 @@ const UNSUPPORTED_CONFIG: &str = r#"
   }
 }
 "#;
-
-const CHECK_PIPELINE_PENDING: &str =
-    "command `check` loaded configuration, but the compile pipeline is not implemented yet";
 
 #[test]
 fn sqlcomp_binary_exits_successfully() {
@@ -96,12 +96,12 @@ fn check_discovers_config_from_current_directory() {
     let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
         .arg("check")
         .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
         .output()
         .expect("sqlcomp check should run");
 
-    assert!(!output.status.success());
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains(CHECK_PIPELINE_PENDING),
+        output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -120,12 +120,12 @@ fn check_discovers_config_from_nested_child_directory() {
     let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
         .arg("check")
         .current_dir(&child_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
         .output()
         .expect("sqlcomp check should run");
 
-    assert!(!output.status.success());
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains(CHECK_PIPELINE_PENDING),
+        output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -146,6 +146,7 @@ fn explicit_config_path_bypasses_upward_discovery() {
         .args(["check", "--config"])
         .arg(&explicit_path)
         .current_dir(&child_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
         .output()
         .expect("sqlcomp check should run");
 
@@ -215,7 +216,32 @@ fn check_reports_unsupported_config_before_pipeline_skeleton() {
         ),
         "stderr: {stderr}"
     );
-    assert!(!stderr.contains(CHECK_PIPELINE_PENDING), "stderr: {stderr}");
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
+fn check_reports_missing_database_url_environment_variable() {
+    let config_dir = unique_temp_dir("sqlcomp-cli-missing-database-url");
+    std::fs::create_dir_all(&config_dir).expect("temp config dir should be created");
+    std::fs::write(config_dir.join("sqlcomp.config.json"), VALID_CONFIG)
+        .expect("temp config should be written");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
+        .arg("check")
+        .current_dir(&config_dir)
+        .env_remove(TEST_DATABASE_URL_ENV)
+        .output()
+        .expect("sqlcomp check should run");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(
+            "environment variable `SQLCOMP_TEST_DATABASE_URL` configured by `database.urlEnv` is not set"
+        ),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
 }
@@ -261,12 +287,12 @@ fn init_writes_starter_config_to_current_directory() {
     let check_output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
         .arg("check")
         .current_dir(&config_dir)
+        .env("DATABASE_URL", UNUSED_DATABASE_URL)
         .output()
         .expect("sqlcomp check should run");
 
-    assert!(!check_output.status.success());
     assert!(
-        String::from_utf8_lossy(&check_output.stderr).contains(CHECK_PIPELINE_PENDING),
+        check_output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&check_output.stderr)
     );
@@ -311,15 +337,16 @@ fn compile_clean_uses_compile_pipeline_database_configuration() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
         .args(["compile", "--clean"])
-        .env_remove("DATABASE_URL")
         .current_dir(&config_dir)
+        .env_remove(TEST_DATABASE_URL_ENV)
         .output()
         .expect("sqlcomp compile should run");
 
     assert!(!output.status.success());
     assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .contains("failed to read database URL from environment variable `DATABASE_URL`"),
+        String::from_utf8_lossy(&output.stderr).contains(
+            "environment variable `SQLCOMP_TEST_DATABASE_URL` configured by `database.urlEnv` is not set"
+        ),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );

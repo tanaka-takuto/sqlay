@@ -15,35 +15,39 @@ pub struct FileSystemGeneratedFileWriter;
 impl GeneratedFileWriter for FileSystemGeneratedFileWriter {
     fn write(&self, files: &core::GeneratedFiles) -> core::DiagnosticResult<()> {
         for file in files.files() {
-            if let Some(parent) = file
-                .path()
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty())
-            {
-                fs::create_dir_all(parent).map_err(|error| {
-                    file_error(
-                        format!(
-                            "failed to create generated output directory `{}`: {error}",
-                            parent.display()
-                        ),
-                        parent,
-                    )
-                })?;
-            }
-
-            fs::write(file.path(), file.contents()).map_err(|error| {
-                file_error(
-                    format!(
-                        "failed to write generated file `{}`: {error}",
-                        file.path().display()
-                    ),
-                    file.path(),
-                )
-            })?;
+            write_generated_file(file)?;
         }
 
         Ok(())
     }
+}
+
+fn write_generated_file(file: &core::GeneratedFile) -> core::DiagnosticResult<()> {
+    if let Some(parent) = file
+        .path()
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|error| {
+            file_error(
+                format!(
+                    "failed to create generated output directory `{}`: {error}",
+                    parent.display()
+                ),
+                parent,
+            )
+        })?;
+    }
+
+    fs::write(file.path(), file.contents()).map_err(|error| {
+        file_error(
+            format!(
+                "failed to write generated file `{}`: {error}",
+                file.path().display()
+            ),
+            file.path(),
+        )
+    })
 }
 
 impl GeneratedFileCleaner for FileSystemGeneratedFileWriter {
