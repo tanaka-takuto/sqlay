@@ -81,6 +81,17 @@ This structure avoids a direct `database dialect x target language` implementati
 matrix. Database-specific logic maps database behavior into the Core IR. Target
 generators map the Core IR into language-specific code.
 
+## Diagnostics and Errors
+
+Components that can fail with user-facing MVP errors return shared diagnostic
+primitives from `sqlcomp-core` instead of formatting final CLI output themselves.
+Diagnostics carry a human-readable message and may include file path and one-based
+source location context when that information is available.
+
+The CLI remains responsible for converting diagnostic reports into stderr output
+and process exit codes. Application services and adapters should return structured
+diagnostics to the CLI boundary.
+
 ## CLI Driver
 
 The CLI Driver owns command selection, configuration discovery, process environment

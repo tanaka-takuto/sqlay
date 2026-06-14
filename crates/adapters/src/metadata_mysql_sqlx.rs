@@ -12,7 +12,7 @@ impl MetadataProvider for SqlxMysqlMetadataProvider {
         &self,
         _query: &core::RawQuery,
         _analysis: &core::AnalyzedQuery,
-    ) -> core::DbQueryMetadata {
-        core::DbQueryMetadata
+    ) -> core::DiagnosticResult<core::DbQueryMetadata> {
+        Ok(core::DbQueryMetadata)
     }
 }

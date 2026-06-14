@@ -3,6 +3,13 @@
 //! This crate is the innermost Clean Architecture boundary. It must not depend on
 //! any other `sqlcomp-*` crate.
 
+mod reporting;
+
+pub use reporting::{
+    Diagnostic, DiagnosticReport, DiagnosticResult, DiagnosticSeverity, SourceLocation,
+    SourcePosition, SourceRange,
+};
+
 /// Dummy project configuration accepted by application use cases.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectConfig;
