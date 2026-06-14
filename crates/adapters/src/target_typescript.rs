@@ -8,7 +8,10 @@ use sqlcomp_core as core;
 pub struct TypeScriptTargetGenerator;
 
 impl TargetGenerator for TypeScriptTargetGenerator {
-    fn generate(&self, _queries: &[core::CompiledQuery]) -> core::GeneratedFiles {
-        core::GeneratedFiles
+    fn generate(
+        &self,
+        _queries: &[core::CompiledQuery],
+    ) -> core::DiagnosticResult<core::GeneratedFiles> {
+        Ok(core::GeneratedFiles)
     }
 }

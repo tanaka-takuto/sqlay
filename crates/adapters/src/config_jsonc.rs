@@ -8,7 +8,7 @@ use sqlcomp_core as core;
 pub struct JsoncConfigLoader;
 
 impl ConfigLoader for JsoncConfigLoader {
-    fn load(&self) -> core::ProjectConfig {
-        core::ProjectConfig
+    fn load(&self) -> core::DiagnosticResult<core::ProjectConfig> {
+        Ok(core::ProjectConfig)
     }
 }

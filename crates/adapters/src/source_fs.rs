@@ -8,7 +8,7 @@ use sqlcomp_core as core;
 pub struct FileSystemSourceReader;
 
 impl SourceReader for FileSystemSourceReader {
-    fn read(&self, _plan: &core::CompilationPlan) -> Vec<core::RawQuery> {
-        Vec::new()
+    fn read(&self, _plan: &core::CompilationPlan) -> core::DiagnosticResult<Vec<core::RawQuery>> {
+        Ok(Vec::new())
     }
 }

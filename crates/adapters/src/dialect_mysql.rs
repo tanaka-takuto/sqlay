@@ -8,7 +8,7 @@ use sqlcomp_core as core;
 pub struct MysqlDialectAnalyzer;
 
 impl DialectAnalyzer for MysqlDialectAnalyzer {
-    fn analyze(&self, _query: &core::RawQuery) -> core::AnalyzedQuery {
-        core::AnalyzedQuery
+    fn analyze(&self, _query: &core::RawQuery) -> core::DiagnosticResult<core::AnalyzedQuery> {
+        Ok(core::AnalyzedQuery)
     }
 }

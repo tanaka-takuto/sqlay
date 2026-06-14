@@ -8,5 +8,7 @@ use sqlcomp_core as core;
 pub struct FileSystemGeneratedFileWriter;
 
 impl GeneratedFileWriter for FileSystemGeneratedFileWriter {
-    fn write(&self, _files: &core::GeneratedFiles) {}
+    fn write(&self, _files: &core::GeneratedFiles) -> core::DiagnosticResult<()> {
+        Ok(())
+    }
 }
