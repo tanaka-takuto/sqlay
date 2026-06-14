@@ -3,6 +3,7 @@
 //! The CLI is the composition root. It wires application ports to concrete
 //! adapters and is the only crate that should depend on all adapter crates.
 
+use std::env::VarError;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -137,14 +138,58 @@ fn run_configured_command(command: ConfiguredCommand, config: Option<PathBuf>) -
 
     let planner = DefaultCompilationPlanner;
 
-    match loader.load().and_then(|config| match command {
-        ConfiguredCommand::Check => DefaultCompileUseCase::check(&config, &planner),
-        ConfiguredCommand::Compile { clean } => {
-            DefaultCompileUseCase::compile(&config, &planner, clean)
-        }
-    }) {
+    match loader
+        .load()
+        .and_then(|config| run_configured_use_case(command, &config, &planner))
+    {
         Ok(()) => ExitCode::SUCCESS,
         Err(report) => fail(&report),
+    }
+}
+
+fn run_configured_use_case(
+    command: ConfiguredCommand,
+    config: &core::ProjectConfig,
+    planner: &impl app::CompilationPlanner,
+) -> core::DiagnosticResult<()> {
+    let source_reader = FileSystemSourceReader;
+    let dialect_analyzer = MysqlDialectAnalyzer;
+    let metadata_provider =
+        SqlxMysqlMetadataProvider::new(database_url_from_env(config.database())?);
+    let query_compiler = DefaultQueryCompiler;
+    let target_generator = TypeScriptTargetGenerator;
+    let generated_file_writer = FileSystemGeneratedFileWriter;
+    let ports = app::CompilePipelinePorts::new(
+        planner,
+        &source_reader,
+        &dialect_analyzer,
+        &metadata_provider,
+        &query_compiler,
+        &target_generator,
+    );
+
+    match command {
+        ConfiguredCommand::Check => DefaultCompileUseCase::check(config, &ports),
+        ConfiguredCommand::Compile { clean } => {
+            DefaultCompileUseCase::compile(config, &ports, &generated_file_writer, clean)
+        }
+    }
+}
+
+fn database_url_from_env(database: &core::DatabaseConfig) -> core::DiagnosticResult<String> {
+    let env_name = database.url_env();
+
+    match std::env::var(env_name) {
+        Ok(value) if value.is_empty() => Err(single_cli_error(format!(
+            "environment variable `{env_name}` configured by `database.urlEnv` is empty"
+        ))),
+        Ok(value) => Ok(value),
+        Err(VarError::NotPresent) => Err(single_cli_error(format!(
+            "environment variable `{env_name}` configured by `database.urlEnv` is not set"
+        ))),
+        Err(VarError::NotUnicode(_)) => Err(single_cli_error(format!(
+            "environment variable `{env_name}` configured by `database.urlEnv` is not valid Unicode"
+        ))),
     }
 }
 
