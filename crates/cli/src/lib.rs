@@ -14,7 +14,7 @@ use sqlcomp_adapters::output_fs::FileSystemGeneratedFileWriter;
 use sqlcomp_adapters::source_fs::FileSystemSourceReader;
 use sqlcomp_adapters::target_typescript::TypeScriptTargetGenerator;
 use sqlcomp_app::{
-    self as app, ConfigLoader, DefaultCompilationPlanner, DefaultCompileUseCase,
+    self as app, CompilePipeline, ConfigLoader, DefaultCompilationPlanner, DefaultCompileUseCase,
     DefaultProjectInitializer, DefaultQueryCompiler,
 };
 use sqlcomp_core as core;
@@ -135,17 +135,51 @@ fn run_configured_command(command: ConfiguredCommand, config: Option<PathBuf>) -
         JsoncConfigLoader::new,
     );
 
-    let planner = DefaultCompilationPlanner;
-
     match loader.load().and_then(|config| match command {
-        ConfiguredCommand::Check => DefaultCompileUseCase::check(&config, &planner),
-        ConfiguredCommand::Compile { clean } => {
-            DefaultCompileUseCase::compile(&config, &planner, clean)
+        ConfiguredCommand::Check => {
+            DefaultCompileUseCase::check(&config, &DefaultCompilationPlanner)
         }
+        ConfiguredCommand::Compile { clean } => run_compile_command(&config, clean),
     }) {
         Ok(()) => ExitCode::SUCCESS,
         Err(report) => fail(&report),
     }
+}
+
+fn run_compile_command(config: &core::ProjectConfig, clean: bool) -> core::DiagnosticResult<()> {
+    let planner = DefaultCompilationPlanner;
+    let source_reader = FileSystemSourceReader;
+    let dialect_analyzer = MysqlDialectAnalyzer;
+    let database_url = if clean {
+        String::new()
+    } else {
+        database_url_from_env(config)?
+    };
+    let metadata_provider = SqlxMysqlMetadataProvider::new(database_url);
+    let query_compiler = DefaultQueryCompiler;
+    let target_generator = TypeScriptTargetGenerator;
+    let generated_file_writer = FileSystemGeneratedFileWriter;
+    let pipeline = CompilePipeline {
+        planner: &planner,
+        source_reader: &source_reader,
+        dialect_analyzer: &dialect_analyzer,
+        metadata_provider: &metadata_provider,
+        query_compiler: &query_compiler,
+        target_generator: &target_generator,
+        generated_file_writer: &generated_file_writer,
+    };
+
+    DefaultCompileUseCase::compile(config, &pipeline, clean)
+}
+
+fn database_url_from_env(config: &core::ProjectConfig) -> core::DiagnosticResult<String> {
+    let env_name = config.database().url_env();
+
+    std::env::var(env_name).map_err(|error| {
+        single_cli_error(format!(
+            "failed to read database URL from environment variable `{env_name}`: {error}"
+        ))
+    })
 }
 
 fn run_init_command() -> ExitCode {
