@@ -407,19 +407,24 @@ mod tests {
     }
 
     #[test]
-    fn query_compiler_uses_explicit_cardinality_override() {
-        let query = core::RawQuery::new(
-            core::QueryMetadata::new("findLatestUser".to_owned(), Some(core::Cardinality::One)),
-            "SELECT id FROM users;".to_owned(),
-        );
-        let analysis = core::AnalyzedQuery::new(core::Cardinality::Many);
-        let metadata = core::DbQueryMetadata::new(Vec::new());
+    fn query_compiler_uses_inferred_cardinality_when_metadata_has_no_override() {
+        let compiled = compile_query(None, core::Cardinality::Many);
 
-        let compiled = DefaultQueryCompiler
-            .compile(&query, &analysis, &metadata)
-            .expect("query should compile into core IR");
+        assert_eq!(compiled.cardinality(), core::Cardinality::Many);
+    }
+
+    #[test]
+    fn query_compiler_uses_explicit_one_cardinality_over_inference() {
+        let compiled = compile_query(Some(core::Cardinality::One), core::Cardinality::Many);
 
         assert_eq!(compiled.cardinality(), core::Cardinality::One);
+    }
+
+    #[test]
+    fn query_compiler_uses_explicit_many_cardinality_over_inference() {
+        let compiled = compile_query(Some(core::Cardinality::Many), core::Cardinality::One);
+
+        assert_eq!(compiled.cardinality(), core::Cardinality::Many);
     }
 
     fn project_config(config_dir: PathBuf) -> core::ProjectConfig {
@@ -433,6 +438,21 @@ mod tests {
             core::DatabaseConfig::new(core::DatabaseDialect::MySql, "DATABASE_URL".to_owned()),
             core::TargetConfig::new(core::TargetLanguage::TypeScript),
         )
+    }
+
+    fn compile_query(
+        explicit_cardinality: Option<core::Cardinality>,
+        inferred_cardinality: core::Cardinality,
+    ) -> core::CompiledQuery {
+        let query = core::RawQuery::new(
+            core::QueryMetadata::new("listUsers".to_owned(), explicit_cardinality),
+            "SELECT id FROM users;".to_owned(),
+        );
+        let analysis = core::AnalyzedQuery::new(inferred_cardinality);
+
+        DefaultQueryCompiler
+            .compile(&query, &analysis, &core::DbQueryMetadata::new(Vec::new()))
+            .expect("query compiler should resolve cardinality")
     }
 
     fn diagnostic_messages(report: &core::DiagnosticReport) -> String {
