@@ -154,12 +154,7 @@ fn run_configured_use_case(
 ) -> core::DiagnosticResult<()> {
     let source_reader = FileSystemSourceReader;
     let dialect_analyzer = MysqlDialectAnalyzer;
-    let database_url = match command {
-        ConfiguredCommand::Compile { clean: true } => String::new(),
-        ConfiguredCommand::Check | ConfiguredCommand::Compile { clean: false } => {
-            database_url_from_env(config.database())?
-        }
-    };
+    let database_url = database_url_from_env(config.database())?;
     let metadata_provider = SqlxMysqlMetadataProvider::new(database_url);
     let query_compiler = DefaultQueryCompiler;
     let target_generator = TypeScriptTargetGenerator;

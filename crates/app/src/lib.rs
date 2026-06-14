@@ -140,6 +140,21 @@ pub trait GeneratedFileWriter {
     fn write(&self, files: &core::GeneratedFiles) -> core::DiagnosticResult<()>;
 }
 
+/// Port for removing stale managed generated files.
+pub trait GeneratedFileCleaner {
+    /// Remove generated files under `output_dir` that are managed by sqlcomp and
+    /// not present in `current_files`.
+    ///
+    /// # Errors
+    ///
+    /// Returns diagnostics when generated files cannot be inspected or removed.
+    fn clean_stale(
+        &self,
+        output_dir: &Path,
+        current_files: &core::GeneratedFiles,
+    ) -> core::DiagnosticResult<()>;
+}
+
 /// Application service for initializing a sqlcomp project config.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DefaultProjectInitializer;
@@ -190,7 +205,7 @@ where
     pub query_compiler: &'a Q,
     /// Target-language generator implementation.
     pub target_generator: &'a T,
-    /// Generated file writer implementation.
+    /// Generated file writer and cleaner implementation.
     pub generated_file_writer: &'a W,
 }
 
@@ -238,16 +253,20 @@ impl DefaultCompileUseCase {
         M: MetadataProvider,
         Q: QueryCompiler,
         T: TargetGenerator,
-        W: GeneratedFileWriter,
+        W: GeneratedFileWriter + GeneratedFileCleaner,
     {
         let plan = pipeline.planner.plan(config)?;
 
+        let generated_files = generate_files(&plan, pipeline)?;
+        pipeline.generated_file_writer.write(&generated_files)?;
+
         if clean {
-            return Err(compile_clean_pending());
+            pipeline
+                .generated_file_writer
+                .clean_stale(plan.output_dir(), &generated_files)?;
         }
 
-        let generated_files = generate_files(&plan, pipeline)?;
-        pipeline.generated_file_writer.write(&generated_files)
+        Ok(())
     }
 }
 
@@ -279,12 +298,6 @@ where
     pipeline.target_generator.generate(plan, &compiled_queries)
 }
 
-fn compile_clean_pending() -> core::DiagnosticReport {
-    core::DiagnosticReport::new(core::Diagnostic::error(
-        "command `compile --clean` is not implemented yet",
-    ))
-}
-
 /// Dummy port bundle showing dependencies required by compile-like use cases.
 pub trait CompileUseCasePorts {
     /// Configuration loader implementation.
@@ -308,8 +321,8 @@ pub trait CompileUseCasePorts {
     /// Target generator implementation.
     type TargetGenerator: TargetGenerator;
 
-    /// Generated file writer implementation.
-    type GeneratedFileWriter: GeneratedFileWriter;
+    /// Generated file writer and cleaner implementation.
+    type GeneratedFileWriter: GeneratedFileWriter + GeneratedFileCleaner;
 }
 
 /// Default application-owned compilation planner.
@@ -387,8 +400,8 @@ mod tests {
 
     use super::{
         CompilationPlanner, CompilePipeline, DefaultCompilationPlanner, DefaultCompileUseCase,
-        DefaultQueryCompiler, DialectAnalyzer, GeneratedFileWriter, MetadataProvider,
-        QueryCompiler, SourceReader, TargetGenerator,
+        DefaultQueryCompiler, DialectAnalyzer, GeneratedFileCleaner, GeneratedFileWriter,
+        MetadataProvider, QueryCompiler, SourceReader, TargetGenerator,
     };
     use sqlcomp_core as core;
 
@@ -560,16 +573,19 @@ mod tests {
     }
 
     #[test]
-    fn compile_clean_reports_pending_cleanup_without_writing_files() {
+    fn compile_clean_writes_generated_files_and_removes_stale_files() {
         let config = project_config(PathBuf::from("/tmp/sqlcomp-project"));
+        let generated_files = core::GeneratedFiles::new(vec![core::GeneratedFile::new(
+            PathBuf::from("/tmp/sqlcomp-project/src/generated/sqlcomp/sql/users.ts"),
+            "generated".to_owned(),
+        )]);
         let calls = CallLog::default();
         let source_reader = FakeSourceReader::new(calls.clone());
         let dialect_analyzer = FakeDialectAnalyzer::new(calls.clone());
         let metadata_provider = FakeMetadataProvider::new(calls.clone());
         let query_compiler = LoggingQueryCompiler::new(calls.clone());
-        let target_generator =
-            FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()));
-        let generated_file_writer = RecordingGeneratedFileWriter::new(calls);
+        let target_generator = FakeTargetGenerator::new(calls.clone(), generated_files.clone());
+        let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
         let pipeline = CompilePipeline {
             planner: &DefaultCompilationPlanner,
             source_reader: &source_reader,
@@ -579,17 +595,34 @@ mod tests {
             target_generator: &target_generator,
             generated_file_writer: &generated_file_writer,
         };
-        let report = DefaultCompileUseCase::compile(&config, &pipeline, true)
-            .expect_err("compile --clean is tracked separately");
 
+        DefaultCompileUseCase::compile(&config, &pipeline, true)
+            .expect("compile --clean should run generation and cleanup");
+
+        let (output_dir, current_files) = generated_file_writer
+            .cleaned_files()
+            .expect("compile --clean should clean stale generated files");
         assert_eq!(
-            diagnostic_messages(&report),
-            "command `compile --clean` is not implemented yet"
+            calls.entries(),
+            [
+                "read",
+                "analyze",
+                "describe",
+                "compile",
+                "generate",
+                "write",
+                "clean_stale"
+            ]
         );
-        assert!(
-            generated_file_writer.written_files().is_empty(),
-            "compile --clean should not write files until cleanup is implemented"
+        assert_eq!(
+            generated_file_writer.written_files(),
+            generated_files.files()
         );
+        assert_eq!(
+            output_dir,
+            PathBuf::from("/tmp/sqlcomp-project/src/generated/sqlcomp")
+        );
+        assert_eq!(current_files, generated_files);
     }
 
     #[test]
@@ -957,6 +990,7 @@ mod tests {
     struct RecordingGeneratedFileWriter {
         calls: CallLog,
         files: Rc<RefCell<Vec<core::GeneratedFile>>>,
+        cleaned: Rc<RefCell<Option<(PathBuf, core::GeneratedFiles)>>>,
     }
 
     impl RecordingGeneratedFileWriter {
@@ -964,11 +998,16 @@ mod tests {
             Self {
                 calls,
                 files: Rc::new(RefCell::new(Vec::new())),
+                cleaned: Rc::new(RefCell::new(None)),
             }
         }
 
         fn written_files(&self) -> Vec<core::GeneratedFile> {
             self.files.borrow().clone()
+        }
+
+        fn cleaned_files(&self) -> Option<(PathBuf, core::GeneratedFiles)> {
+            self.cleaned.borrow().clone()
         }
     }
 
@@ -976,6 +1015,19 @@ mod tests {
         fn write(&self, files: &core::GeneratedFiles) -> core::DiagnosticResult<()> {
             self.calls.push("write");
             self.files.borrow_mut().extend_from_slice(files.files());
+
+            Ok(())
+        }
+    }
+
+    impl GeneratedFileCleaner for RecordingGeneratedFileWriter {
+        fn clean_stale(
+            &self,
+            output_dir: &Path,
+            current_files: &core::GeneratedFiles,
+        ) -> core::DiagnosticResult<()> {
+            self.calls.push("clean_stale");
+            *self.cleaned.borrow_mut() = Some((output_dir.to_path_buf(), current_files.clone()));
 
             Ok(())
         }

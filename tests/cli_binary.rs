@@ -39,8 +39,6 @@ const UNSUPPORTED_CONFIG: &str = r#"
 }
 "#;
 
-const COMPILE_CLEAN_PENDING: &str = "command `compile --clean` is not implemented yet";
-
 #[test]
 fn sqlcomp_binary_exits_successfully() {
     let status = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
@@ -331,7 +329,7 @@ fn init_refuses_to_overwrite_existing_config() {
 }
 
 #[test]
-fn compile_clean_is_recognized_but_cleanup_is_not_implemented_yet() {
+fn compile_clean_uses_compile_pipeline_database_configuration() {
     let config_dir = unique_temp_dir("sqlcomp-cli-compile-clean");
     std::fs::create_dir_all(&config_dir).expect("temp config dir should be created");
     std::fs::write(config_dir.join("sqlcomp.config.json"), VALID_CONFIG)
@@ -340,13 +338,15 @@ fn compile_clean_is_recognized_but_cleanup_is_not_implemented_yet() {
     let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
         .args(["compile", "--clean"])
         .current_dir(&config_dir)
-        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
+        .env_remove(TEST_DATABASE_URL_ENV)
         .output()
         .expect("sqlcomp compile should run");
 
     assert!(!output.status.success());
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains(COMPILE_CLEAN_PENDING),
+        String::from_utf8_lossy(&output.stderr).contains(
+            "environment variable `SQLCOMP_TEST_DATABASE_URL` configured by `database.urlEnv` is not set"
+        ),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
