@@ -37,11 +37,13 @@ impl SqlcompBlockScan {
 }
 
 /// One `/* @sqlcomp ... */` metadata block.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct SqlcompBlock {
     payload: String,
     comment_range: core::SourceRange,
     payload_range: core::SourceRange,
+    comment_start_index: usize,
+    comment_end_index: usize,
 }
 
 impl SqlcompBlock {
@@ -52,10 +54,22 @@ impl SqlcompBlock {
         comment_range: core::SourceRange,
         payload_range: core::SourceRange,
     ) -> Self {
+        Self::from_scan(payload, comment_range, payload_range, 0, 0)
+    }
+
+    const fn from_scan(
+        payload: String,
+        comment_range: core::SourceRange,
+        payload_range: core::SourceRange,
+        comment_start_index: usize,
+        comment_end_index: usize,
+    ) -> Self {
         Self {
             payload,
             comment_range,
             payload_range,
+            comment_start_index,
+            comment_end_index,
         }
     }
 
@@ -76,7 +90,25 @@ impl SqlcompBlock {
     pub const fn payload_range(&self) -> core::SourceRange {
         self.payload_range
     }
+
+    const fn comment_start_index(&self) -> usize {
+        self.comment_start_index
+    }
+
+    const fn comment_end_index(&self) -> usize {
+        self.comment_end_index
+    }
 }
+
+impl PartialEq for SqlcompBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.payload == other.payload
+            && self.comment_range == other.comment_range
+            && self.payload_range == other.payload_range
+    }
+}
+
+impl Eq for SqlcompBlock {}
 
 /// Scan SQL source for canonical `@sqlcomp` block comments.
 ///
@@ -127,6 +159,31 @@ pub fn parse_sqlcomp_query_metadata(
         raw.id,
         raw.cardinality.map(core::Cardinality::from),
     ))
+}
+
+/// Split SQL source text into raw query blocks.
+///
+/// # Errors
+///
+/// Returns diagnostics when sqlcomp block scanning fails or any query metadata
+/// payload is invalid.
+pub fn split_sqlcomp_query_blocks(source: &str) -> core::DiagnosticResult<Vec<core::RawQuery>> {
+    let scan = scan_sqlcomp_blocks(source)?;
+    let blocks = scan.blocks();
+    let mut queries = Vec::with_capacity(blocks.len());
+
+    for (index, block) in blocks.iter().enumerate() {
+        let metadata = parse_sqlcomp_query_metadata(block)?;
+        let body_start = block.comment_end_index();
+        let body_end = blocks
+            .get(index + 1)
+            .map_or(source.len(), SqlcompBlock::comment_start_index);
+        let sql = source[body_start..body_end].to_owned();
+
+        queries.push(core::RawQuery::new(metadata, sql));
+    }
+
+    Ok(queries)
 }
 
 /// Dummy filesystem-backed source reader.
@@ -277,8 +334,13 @@ impl<'a> Scanner<'a> {
             let payload_range =
                 source_range_for_span(self.source, payload_start_index, body_end_index);
 
-            self.blocks
-                .push(SqlcompBlock::new(payload, comment_range, payload_range));
+            self.blocks.push(SqlcompBlock::from_scan(
+                payload,
+                comment_range,
+                payload_range,
+                comment_start_index,
+                comment_end_index,
+            ));
             self.sql_without_sqlcomp_blocks.push_str(&blank_comment(
                 &self.source[comment_start_index..comment_end_index],
             ));
@@ -434,7 +496,9 @@ const fn is_query_id_continue(byte: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_sqlcomp_query_metadata, scan_sqlcomp_blocks};
+    use super::{
+        SqlcompBlock, parse_sqlcomp_query_metadata, scan_sqlcomp_blocks, split_sqlcomp_query_blocks,
+    };
     use sqlcomp_core as core;
 
     #[test]
@@ -465,6 +529,20 @@ mod tests {
             scan.sql_without_sqlcomp_blocks()
                 .ends_with("SELECT id FROM users;\n")
         );
+    }
+
+    #[test]
+    fn scanned_block_equality_ignores_internal_byte_offsets() {
+        let source = "\n/* @sqlcomp\n{ type: query, id: listUsers }\n*/\nSELECT id FROM users;\n";
+        let scan = scan_sqlcomp_blocks(source).expect("annotated SQL should scan");
+        let scanned = &scan.blocks()[0];
+        let constructed = SqlcompBlock::new(
+            scanned.payload().to_owned(),
+            scanned.comment_range(),
+            scanned.payload_range(),
+        );
+
+        assert_eq!(*scanned, constructed);
     }
 
     #[test]
@@ -502,6 +580,42 @@ mod tests {
 
         assert_eq!(metadata.id(), "listUsers");
         assert_eq!(metadata.cardinality(), None);
+    }
+
+    #[test]
+    fn splits_one_query_block() {
+        let source =
+            "/* @sqlcomp\n{\n  type: query\n  id: listUsers\n}\n*/\nSELECT id FROM users;\n";
+        let queries = split_sqlcomp_query_blocks(source).expect("query block should split");
+
+        assert_eq!(queries.len(), 1);
+        assert_eq!(queries[0].metadata().id(), "listUsers");
+        assert_eq!(queries[0].sql(), "\nSELECT id FROM users;\n");
+        assert!(!queries[0].sql().contains("@sqlcomp"));
+    }
+
+    #[test]
+    fn splits_multiple_query_blocks_in_source_order() {
+        let source = "/* @sqlcomp\n{\n  type: query\n  id: firstQuery\n}\n*/\nSELECT 1;\n/* @sqlcomp\n{\n  type: query\n  id: secondQuery\n}\n*/\nSELECT 2;\n-- trailing file content\n";
+        let queries = split_sqlcomp_query_blocks(source).expect("query blocks should split");
+
+        assert_eq!(queries.len(), 2);
+        assert_eq!(queries[0].metadata().id(), "firstQuery");
+        assert_eq!(queries[0].sql(), "\nSELECT 1;\n");
+        assert_eq!(queries[1].metadata().id(), "secondQuery");
+        assert_eq!(queries[1].sql(), "\nSELECT 2;\n-- trailing file content\n");
+    }
+
+    #[test]
+    fn splits_adjacent_query_blocks() {
+        let source = "/* @sqlcomp\n{\n  type: query\n  id: firstQuery\n}\n*/SELECT 1;/* @sqlcomp\n{\n  type: query\n  id: secondQuery\n}\n*/SELECT 2;";
+        let queries = split_sqlcomp_query_blocks(source).expect("adjacent queries should split");
+
+        assert_eq!(queries.len(), 2);
+        assert_eq!(queries[0].metadata().id(), "firstQuery");
+        assert_eq!(queries[0].sql(), "SELECT 1;");
+        assert_eq!(queries[1].metadata().id(), "secondQuery");
+        assert_eq!(queries[1].sql(), "SELECT 2;");
     }
 
     #[test]
