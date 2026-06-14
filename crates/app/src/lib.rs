@@ -166,6 +166,34 @@ impl DefaultProjectInitializer {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DefaultCompileUseCase;
 
+/// Concrete port references required to run the compile pipeline.
+#[derive(Clone, Copy, Debug)]
+pub struct CompilePipeline<'a, P, S, D, M, Q, T, W>
+where
+    P: CompilationPlanner,
+    S: SourceReader,
+    D: DialectAnalyzer,
+    M: MetadataProvider,
+    Q: QueryCompiler,
+    T: TargetGenerator,
+    W: GeneratedFileWriter,
+{
+    /// Compilation planner implementation.
+    pub planner: &'a P,
+    /// SQL source reader implementation.
+    pub source_reader: &'a S,
+    /// Dialect analyzer implementation.
+    pub dialect_analyzer: &'a D,
+    /// Database metadata provider implementation.
+    pub metadata_provider: &'a M,
+    /// Core IR compiler implementation.
+    pub query_compiler: &'a Q,
+    /// Target-language generator implementation.
+    pub target_generator: &'a T,
+    /// Generated file writer implementation.
+    pub generated_file_writer: &'a W,
+}
+
 impl DefaultCompileUseCase {
     /// Run the `check` command skeleton.
     ///
@@ -182,20 +210,48 @@ impl DefaultCompileUseCase {
         Err(compile_pipeline_pending("check", &plan))
     }
 
-    /// Run the `compile` command skeleton.
+    /// Run the `compile` command.
     ///
     /// # Errors
     ///
-    /// Returns diagnostics when planning fails or when the downstream compile
-    /// pipeline is not implemented yet.
-    pub fn compile(
+    /// Returns diagnostics when planning, source intake, analysis, metadata
+    /// lookup, generation, or file writing fails.
+    pub fn compile<P, S, D, M, Q, T, W>(
         config: &core::ProjectConfig,
-        planner: &impl CompilationPlanner,
-        _clean: bool,
-    ) -> core::DiagnosticResult<()> {
-        let plan = planner.plan(config)?;
+        pipeline: &CompilePipeline<'_, P, S, D, M, Q, T, W>,
+        clean: bool,
+    ) -> core::DiagnosticResult<()>
+    where
+        P: CompilationPlanner,
+        S: SourceReader,
+        D: DialectAnalyzer,
+        M: MetadataProvider,
+        Q: QueryCompiler,
+        T: TargetGenerator,
+        W: GeneratedFileWriter,
+    {
+        let plan = pipeline.planner.plan(config)?;
 
-        Err(compile_pipeline_pending("compile", &plan))
+        if clean {
+            return Err(compile_clean_pending());
+        }
+
+        let raw_queries = pipeline.source_reader.read(&plan)?;
+        let mut compiled_queries = Vec::with_capacity(raw_queries.len());
+
+        for query in &raw_queries {
+            let analysis = pipeline.dialect_analyzer.analyze(query)?;
+            let metadata = pipeline.metadata_provider.describe(query, &analysis)?;
+            let compiled = pipeline
+                .query_compiler
+                .compile(query, &analysis, &metadata)?;
+            compiled_queries.push(compiled);
+        }
+
+        let generated_files = pipeline
+            .target_generator
+            .generate(&plan, &compiled_queries)?;
+        pipeline.generated_file_writer.write(&generated_files)
     }
 }
 
@@ -206,6 +262,12 @@ fn compile_pipeline_pending(
     core::DiagnosticReport::new(core::Diagnostic::error(format!(
         "command `{command}` loaded configuration, but the compile pipeline is not implemented yet"
     )))
+}
+
+fn compile_clean_pending() -> core::DiagnosticReport {
+    core::DiagnosticReport::new(core::Diagnostic::error(
+        "command `compile --clean` is not implemented yet",
+    ))
 }
 
 /// Dummy port bundle showing dependencies required by compile-like use cases.
@@ -304,11 +366,13 @@ impl QueryCompiler for DefaultQueryCompiler {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
     use std::path::{Path, PathBuf};
 
     use super::{
-        CompilationPlanner, DefaultCompilationPlanner, DefaultCompileUseCase, DefaultQueryCompiler,
-        QueryCompiler,
+        CompilationPlanner, CompilePipeline, DefaultCompilationPlanner, DefaultCompileUseCase,
+        DefaultQueryCompiler, DialectAnalyzer, GeneratedFileWriter, MetadataProvider,
+        QueryCompiler, SourceReader, TargetGenerator,
     };
     use sqlcomp_core as core;
 
@@ -373,14 +437,58 @@ mod tests {
     }
 
     #[test]
-    fn compile_command_reaches_compile_pipeline_skeleton_after_planning() {
+    fn compile_command_writes_generated_files_from_pipeline() {
         let config = project_config(PathBuf::from("/tmp/sqlcomp-project"));
-        let report = DefaultCompileUseCase::compile(&config, &DefaultCompilationPlanner, false)
-            .expect_err("pipeline skeleton should report that deeper compile is pending");
+        let written = RefCell::new(None);
+        let writer = RecordingGeneratedFileWriter { written: &written };
+        let pipeline = CompilePipeline {
+            planner: &DefaultCompilationPlanner,
+            source_reader: &FakeSourceReader,
+            dialect_analyzer: &FakeDialectAnalyzer,
+            metadata_provider: &FakeMetadataProvider,
+            query_compiler: &DefaultQueryCompiler,
+            target_generator: &FakeTargetGenerator,
+            generated_file_writer: &writer,
+        };
+
+        DefaultCompileUseCase::compile(&config, &pipeline, false)
+            .expect("compile should run the pipeline and write generated files");
+
+        let files = written
+            .into_inner()
+            .expect("compile should pass generated files to the writer");
+        assert_eq!(files.files().len(), 1);
+        assert_eq!(
+            files.files()[0].path(),
+            Path::new("/tmp/sqlcomp-project/src/generated/sqlcomp/sql/users.ts")
+        );
+        assert_eq!(files.files()[0].contents(), "generated listUsers\n");
+    }
+
+    #[test]
+    fn compile_clean_reports_pending_cleanup_without_writing_files() {
+        let config = project_config(PathBuf::from("/tmp/sqlcomp-project"));
+        let written = RefCell::new(None);
+        let writer = RecordingGeneratedFileWriter { written: &written };
+        let pipeline = CompilePipeline {
+            planner: &DefaultCompilationPlanner,
+            source_reader: &FakeSourceReader,
+            dialect_analyzer: &FakeDialectAnalyzer,
+            metadata_provider: &FakeMetadataProvider,
+            query_compiler: &DefaultQueryCompiler,
+            target_generator: &FakeTargetGenerator,
+            generated_file_writer: &writer,
+        };
+        let report = DefaultCompileUseCase::compile(&config, &pipeline, true)
+            .expect_err("compile --clean is tracked separately");
 
         assert_eq!(
             diagnostic_messages(&report),
-            "command `compile` loaded configuration, but the compile pipeline is not implemented yet"
+            "command `compile --clean` is not implemented yet"
+        );
+        assert!(
+            written.into_inner().is_none(),
+            "compile --clean should not write files until cleanup is implemented"
         );
     }
 
@@ -523,5 +631,90 @@ mod tests {
             .map(core::Diagnostic::message)
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    struct FakeSourceReader;
+
+    impl SourceReader for FakeSourceReader {
+        fn read(
+            &self,
+            _plan: &core::CompilationPlan,
+        ) -> core::DiagnosticResult<Vec<core::RawQuery>> {
+            Ok(vec![
+                core::RawQuery::new(
+                    core::QueryMetadata::new("listUsers".to_owned(), None),
+                    "SELECT id FROM users;".to_owned(),
+                )
+                .with_source_path("sql/users.sql"),
+            ])
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    struct FakeDialectAnalyzer;
+
+    impl DialectAnalyzer for FakeDialectAnalyzer {
+        fn analyze(&self, query: &core::RawQuery) -> core::DiagnosticResult<core::AnalyzedQuery> {
+            assert_eq!(query.metadata().id(), "listUsers");
+
+            Ok(core::AnalyzedQuery::new(core::Cardinality::Many))
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    struct FakeMetadataProvider;
+
+    impl MetadataProvider for FakeMetadataProvider {
+        fn describe(
+            &self,
+            query: &core::RawQuery,
+            analysis: &core::AnalyzedQuery,
+        ) -> core::DiagnosticResult<core::DbQueryMetadata> {
+            assert_eq!(query.metadata().id(), "listUsers");
+            assert_eq!(analysis.cardinality(), core::Cardinality::Many);
+
+            Ok(core::DbQueryMetadata::new(vec![core::DbResultColumn::new(
+                "id".to_owned(),
+                core::CoreType::Int64,
+                Some(false),
+            )]))
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    struct FakeTargetGenerator;
+
+    impl TargetGenerator for FakeTargetGenerator {
+        fn generate(
+            &self,
+            plan: &core::CompilationPlan,
+            queries: &[core::CompiledQuery],
+        ) -> core::DiagnosticResult<core::GeneratedFiles> {
+            let [query] = queries else {
+                panic!("expected exactly one compiled query");
+            };
+            assert_eq!(query.id().as_str(), "listUsers");
+            assert_eq!(query.source_path(), Some(Path::new("sql/users.sql")));
+            assert_eq!(query.row()[0].ty(), core::CoreType::Int64);
+
+            Ok(core::GeneratedFiles::new(vec![core::GeneratedFile::new(
+                plan.output_dir().join("sql/users.ts"),
+                format!("generated {}\n", query.id().as_str()),
+            )]))
+        }
+    }
+
+    #[derive(Debug)]
+    struct RecordingGeneratedFileWriter<'a> {
+        written: &'a RefCell<Option<core::GeneratedFiles>>,
+    }
+
+    impl GeneratedFileWriter for RecordingGeneratedFileWriter<'_> {
+        fn write(&self, files: &core::GeneratedFiles) -> core::DiagnosticResult<()> {
+            *self.written.borrow_mut() = Some(files.clone());
+
+            Ok(())
+        }
     }
 }
