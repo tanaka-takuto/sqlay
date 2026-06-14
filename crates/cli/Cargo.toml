@@ -13,3 +13,4 @@ workspace = true
 [dependencies]
 sqlcomp-adapters = { path = "../adapters" }
 sqlcomp-app = { path = "../app" }
+sqlcomp-core = { path = "../core" }

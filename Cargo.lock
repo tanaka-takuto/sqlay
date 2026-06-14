@@ -1020,6 +1020,7 @@ version = "0.1.0"
 dependencies = [
  "sqlcomp-adapters",
  "sqlcomp-app",
+ "sqlcomp-core",
 ]
 
 [[package]]
