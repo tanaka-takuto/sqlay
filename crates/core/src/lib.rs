@@ -386,9 +386,25 @@ impl AnalyzedQuery {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DbQueryMetadata;
 
-/// Dummy language-neutral compiled query.
+/// Language-neutral compiled query facts available before full row IR exists.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CompiledQuery;
+pub struct CompiledQuery {
+    cardinality: Cardinality,
+}
+
+impl CompiledQuery {
+    /// Build a compiled query with resolved cardinality.
+    #[must_use]
+    pub const fn new(cardinality: Cardinality) -> Self {
+        Self { cardinality }
+    }
+
+    /// Cardinality after explicit metadata overrides have been applied.
+    #[must_use]
+    pub const fn cardinality(&self) -> Cardinality {
+        self.cardinality
+    }
+}
 
 /// Dummy generated file set.
 #[derive(Clone, Debug, Eq, PartialEq)]
