@@ -189,6 +189,8 @@ pub trait GeneratedFileCleaner {
     /// Remove generated files under `output_dir` that are managed by sqlcomp and
     /// not present in `current_files`.
     ///
+    /// Returns the number of stale generated files removed.
+    ///
     /// # Errors
     ///
     /// Returns diagnostics when generated files cannot be inspected or removed.
@@ -196,7 +198,7 @@ pub trait GeneratedFileCleaner {
         &self,
         output_dir: &Path,
         current_files: &core::GeneratedFiles,
-    ) -> core::DiagnosticResult<()>;
+    ) -> core::DiagnosticResult<usize>;
 }
 
 /// Application service for initializing a sqlcomp project config.
@@ -224,6 +226,48 @@ impl DefaultProjectInitializer {
 /// Application service for compile-like CLI commands.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DefaultCompileUseCase;
+
+/// Successful `compile` command outcome.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompileOutcome {
+    diagnostics: core::DiagnosticReport,
+    generated_file_count: usize,
+    stale_file_removal_count: Option<usize>,
+}
+
+impl CompileOutcome {
+    /// Build a successful compile outcome.
+    #[must_use]
+    pub const fn new(
+        diagnostics: core::DiagnosticReport,
+        generated_file_count: usize,
+        stale_file_removal_count: Option<usize>,
+    ) -> Self {
+        Self {
+            diagnostics,
+            generated_file_count,
+            stale_file_removal_count,
+        }
+    }
+
+    /// Non-fatal diagnostics that should be shown to the user.
+    #[must_use]
+    pub const fn diagnostics(&self) -> &core::DiagnosticReport {
+        &self.diagnostics
+    }
+
+    /// Number of generated files written or updated.
+    #[must_use]
+    pub const fn generated_file_count(&self) -> usize {
+        self.generated_file_count
+    }
+
+    /// Number of stale generated files removed when cleanup ran.
+    #[must_use]
+    pub const fn stale_file_removal_count(&self) -> Option<usize> {
+        self.stale_file_removal_count
+    }
+}
 
 /// Concrete port references required to run the compile pipeline.
 #[derive(Clone, Copy, Debug)]
@@ -283,7 +327,7 @@ impl DefaultCompileUseCase {
 
     /// Run the `compile` command.
     ///
-    /// Returns non-fatal diagnostics that should be shown to the user.
+    /// Returns a success outcome with non-fatal diagnostics and write counts.
     ///
     /// # Errors
     ///
@@ -293,7 +337,7 @@ impl DefaultCompileUseCase {
         config: &core::ProjectConfig,
         pipeline: &CompilePipeline<'_, P, S, D, M, Q, T, W>,
         clean: bool,
-    ) -> core::DiagnosticResult<core::DiagnosticReport>
+    ) -> core::DiagnosticResult<CompileOutcome>
     where
         P: CompilationPlanner,
         S: SourceReader,
@@ -306,17 +350,26 @@ impl DefaultCompileUseCase {
         let plan = pipeline.planner.plan(config)?;
 
         let output = generate_files(&plan, pipeline)?;
+        let generated_file_count = output.generated_files.files().len();
         pipeline
             .generated_file_writer
             .write(&output.generated_files)?;
 
-        if clean {
-            pipeline
-                .generated_file_writer
-                .clean_stale(plan.output_dir(), &output.generated_files)?;
-        }
+        let stale_file_removal_count = if clean {
+            Some(
+                pipeline
+                    .generated_file_writer
+                    .clean_stale(plan.output_dir(), &output.generated_files)?,
+            )
+        } else {
+            None
+        };
 
-        Ok(output.diagnostics)
+        Ok(CompileOutcome::new(
+            output.diagnostics,
+            generated_file_count,
+            stale_file_removal_count,
+        ))
     }
 }
 
@@ -585,10 +638,12 @@ mod tests {
             generated_file_writer: &generated_file_writer,
         };
 
-        let diagnostics = DefaultCompileUseCase::compile(&config, &pipeline, false)
+        let outcome = DefaultCompileUseCase::compile(&config, &pipeline, false)
             .expect("compile should write generated files");
 
-        assert!(diagnostics.is_empty());
+        assert!(outcome.diagnostics().is_empty());
+        assert_eq!(outcome.generated_file_count(), 1);
+        assert_eq!(outcome.stale_file_removal_count(), None);
         assert_eq!(
             calls.entries(),
             [
@@ -661,10 +716,12 @@ mod tests {
             generated_file_writer: &generated_file_writer,
         };
 
-        let diagnostics = DefaultCompileUseCase::compile(&config, &pipeline, true)
+        let outcome = DefaultCompileUseCase::compile(&config, &pipeline, true)
             .expect("compile --clean should run generation and cleanup");
 
-        assert!(diagnostics.is_empty());
+        assert!(outcome.diagnostics().is_empty());
+        assert_eq!(outcome.generated_file_count(), 1);
+        assert_eq!(outcome.stale_file_removal_count(), Some(0));
         let (output_dir, current_files) = generated_file_writer
             .cleaned_files()
             .expect("compile --clean should clean stale generated files");
@@ -1088,11 +1145,11 @@ mod tests {
             &self,
             output_dir: &Path,
             current_files: &core::GeneratedFiles,
-        ) -> core::DiagnosticResult<()> {
+        ) -> core::DiagnosticResult<usize> {
             self.calls.push("clean_stale");
             *self.cleaned.borrow_mut() = Some((output_dir.to_path_buf(), current_files.clone()));
 
-            Ok(())
+            Ok(0)
         }
     }
 }

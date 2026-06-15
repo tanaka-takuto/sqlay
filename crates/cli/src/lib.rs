@@ -156,8 +156,9 @@ fn run_configured_command(command: ConfiguredCommand, config: Option<PathBuf>) -
         .load()
         .and_then(|config| run_configured_use_case(command, &config, &planner))
     {
-        Ok(diagnostics) => {
-            print_diagnostics(&diagnostics);
+        Ok(outcome) => {
+            print_diagnostics(outcome.diagnostics());
+            print_success_summary(&outcome);
             ExitCode::SUCCESS
         }
         Err(report) => fail(&report),
@@ -168,7 +169,7 @@ fn run_configured_use_case(
     command: ConfiguredCommand,
     config: &core::ProjectConfig,
     planner: &impl app::CompilationPlanner,
-) -> core::DiagnosticResult<core::DiagnosticReport> {
+) -> core::DiagnosticResult<ConfiguredCommandOutcome> {
     let source_reader = FileSystemSourceReader;
     let dialect_analyzer = MysqlDialectAnalyzer;
     let database_url = database_url_from_env(config.database())?;
@@ -187,9 +188,28 @@ fn run_configured_use_case(
     };
 
     match command {
-        ConfiguredCommand::Check => DefaultCompileUseCase::check(config, &pipeline),
+        ConfiguredCommand::Check => {
+            DefaultCompileUseCase::check(config, &pipeline).map(ConfiguredCommandOutcome::Check)
+        }
         ConfiguredCommand::Compile { clean } => {
-            DefaultCompileUseCase::compile(config, &pipeline, clean)
+            let outcome = DefaultCompileUseCase::compile(config, &pipeline, clean)?;
+
+            Ok(ConfiguredCommandOutcome::Compile(outcome))
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ConfiguredCommandOutcome {
+    Check(core::DiagnosticReport),
+    Compile(app::CompileOutcome),
+}
+
+impl ConfiguredCommandOutcome {
+    const fn diagnostics(&self) -> &core::DiagnosticReport {
+        match self {
+            Self::Check(diagnostics) => diagnostics,
+            Self::Compile(outcome) => outcome.diagnostics(),
         }
     }
 }
@@ -240,6 +260,35 @@ fn print_diagnostics(report: &core::DiagnosticReport) {
     if !report.is_empty() {
         eprintln!("{report}");
     }
+}
+
+fn print_success_summary(outcome: &ConfiguredCommandOutcome) {
+    match outcome {
+        ConfiguredCommandOutcome::Check(_) => {
+            println!("Check passed. No files written.");
+        }
+        ConfiguredCommandOutcome::Compile(outcome) => {
+            print!(
+                "Compile succeeded. Generated or updated {} {}.",
+                outcome.generated_file_count(),
+                pluralize(outcome.generated_file_count(), "file", "files")
+            );
+
+            if let Some(removed_file_count) = outcome.stale_file_removal_count() {
+                print!(
+                    " Removed {} stale generated {}.",
+                    removed_file_count,
+                    pluralize(removed_file_count, "file", "files")
+                );
+            }
+
+            println!();
+        }
+    }
+}
+
+const fn pluralize(count: usize, singular: &'static str, plural: &'static str) -> &'static str {
+    if count == 1 { singular } else { plural }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
