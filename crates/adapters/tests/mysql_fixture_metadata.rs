@@ -528,9 +528,9 @@ fn compile_generates_one_typescript_module_for_multiple_queries_in_one_sql_file(
     }
 
     let project_dir = unique_temp_dir("sqlcomp-compile-multiple-query-fixture");
-    let sql_dir = project_dir.join("sql");
-    std::fs::create_dir_all(&sql_dir)?;
-    std::fs::write(sql_dir.join("business.sql"), QUERY_FIXTURES[1])?;
+    let valid_dir = project_dir.join("valid");
+    std::fs::create_dir_all(&valid_dir)?;
+    std::fs::write(valid_dir.join("generation_surface.sql"), QUERY_FIXTURES[1])?;
 
     let config = project_config(project_dir.clone());
     let metadata_provider = SqlxMysqlMetadataProvider::new(database_url);
@@ -545,8 +545,8 @@ fn compile_generates_one_typescript_module_for_multiple_queries_in_one_sql_file(
     };
     DefaultCompileUseCase::compile(&config, &pipeline, false)?;
 
-    let generated_dir = project_dir.join("src/generated/sqlcomp/sql");
-    let generated_path = generated_dir.join("business.ts");
+    let generated_dir = project_dir.join("generated/valid");
+    let generated_path = generated_dir.join("generation_surface.ts");
     let generated = std::fs::read_to_string(&generated_path)?;
     let generated_files = std::fs::read_dir(&generated_dir)?.collect::<Result<Vec<_>, _>>()?;
 
@@ -561,16 +561,19 @@ fn compile_generates_one_typescript_module_for_multiple_queries_in_one_sql_file(
     );
 
     let expected_queries = [
-        ("businessOrderSummary", "businessOrderSummary_Row[]"),
+        ("generationEscapedSql", "generationEscapedSql_Row[]"),
         (
-            "businessCustomerProfile",
-            "businessCustomerProfile_Row | null",
+            "generationInferredSingleRow",
+            "generationInferredSingleRow_Row | null",
         ),
         (
-            "businessCustomerOrderLeftJoin",
-            "businessCustomerOrderLeftJoin_Row[]",
+            "generationExplicitOneOverridesMany",
+            "generationExplicitOneOverridesMany_Row | null",
         ),
-        ("businessLineItemTotals", "businessLineItemTotals_Row[]"),
+        (
+            "generationExplicitManyOverridesLimitOne",
+            "generationExplicitManyOverridesLimitOne_Row[]",
+        ),
     ];
 
     for (id, output_type) in expected_queries {
