@@ -6,22 +6,73 @@ SQL Compose & Compile.
 language builders. The current MVP focuses on MySQL 8.x `SELECT` queries and
 TypeScript SQL builder generation.
 
-See [`docs/`](./docs/) for the product, architecture, and MVP decisions.
+See [`docs/vision.md`](./docs/vision.md),
+[`docs/architecture.md`](./docs/architecture.md), and
+[`docs/mvp.md`](./docs/mvp.md) for the product, architecture, and MVP decisions.
 
-## MVP Workflow
+## MVP Usage
 
-The planned MVP workflow is:
+Create the starter project configuration from the directory that should contain
+`sqlcomp.config.json`:
 
 ```sh
 sqlcomp init
-script/mysql-up.sh
-DATABASE_URL='mysql://sqlcomp:sqlcomp@127.0.0.1:3306/sqlcomp' sqlcomp check
-DATABASE_URL='mysql://sqlcomp:sqlcomp@127.0.0.1:3306/sqlcomp' sqlcomp compile
 ```
 
-`sqlcomp.config.json` is the project configuration file. It is parsed as JSON with
-comments and trailing commas allowed. The MVP CLI does not implicitly load `.env`
-files.
+`sqlcomp init` writes a starter `sqlcomp.config.json` and refuses to overwrite an
+existing config file. The starter config uses the MVP shape:
+
+```json
+{
+  "source": {
+    "include": ["sql/**/*.sql"],
+    "exclude": []
+  },
+  "output": {
+    "dir": "src/generated/sqlcomp"
+  },
+  "database": {
+    "dialect": "mysql",
+    "urlEnv": "DATABASE_URL"
+  },
+  "target": {
+    "language": "typescript"
+  }
+}
+```
+
+The config is parsed as JSON with comments and trailing commas allowed. Source and
+output paths are resolved relative to the directory containing
+`sqlcomp.config.json`.
+
+Run a database-backed dry run with:
+
+```sh
+DATABASE_URL='mysql://user:password@host:3306/database' sqlcomp check
+```
+
+`sqlcomp check` loads the config, reads SQL files, validates MySQL 8.x `SELECT`
+queries, looks up MySQL metadata, and builds generated TypeScript in memory without
+writing files. The database URL is read from the process environment variable named
+by `database.urlEnv`; the CLI does not implicitly load `.env` files.
+
+Write generated TypeScript with:
+
+```sh
+DATABASE_URL='mysql://user:password@host:3306/database' sqlcomp compile
+```
+
+`sqlcomp compile` runs the same pipeline as `check` and writes TypeScript SQL
+builder files under `output.dir`. Generated paths preserve each input SQL path
+relative to `sqlcomp.config.json`; for example, `sql/books.sql` generates
+`src/generated/sqlcomp/sql/books.ts` with the starter config. Normal `compile`
+overwrites same-path generated files. Use `sqlcomp compile --clean` to also remove
+stale managed generated files.
+
+Generated TypeScript includes a generated-code header, empty MVP input types,
+database-backed row and output types, and builder functions that return SQL text and
+an empty readonly `params` tuple. Generated code does not execute queries or depend
+on a database driver.
 
 ## Local MySQL
 
