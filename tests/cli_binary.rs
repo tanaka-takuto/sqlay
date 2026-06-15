@@ -60,12 +60,25 @@ const INVALID_SOURCE_CONFIG: &str = r#"
 "#;
 
 #[test]
-fn sqlcomp_binary_exits_successfully() {
-    let status = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
-        .status()
+fn no_args_prints_top_level_help() {
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
+        .output()
         .expect("sqlcomp binary should run");
 
-    assert!(status.success());
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Usage:"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("sqlcomp <command> [options]"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("sqlcomp init"), "stdout: {stdout}");
+    assert!(stdout.contains("sqlcomp check"), "stdout: {stdout}");
+    assert!(stdout.contains("sqlcomp compile"), "stdout: {stdout}");
 }
 
 #[test]
@@ -87,23 +100,72 @@ fn help_lists_mvp_commands() {
 }
 
 #[test]
-fn help_is_allowed_after_mvp_commands() {
-    for command in ["init", "check", "compile"] {
-        let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
-            .args([command, "--help"])
-            .output()
-            .expect("sqlcomp command help should run");
+fn init_help_describes_init_behavior() {
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
+        .args(["init", "--help"])
+        .output()
+        .expect("sqlcomp init help should run");
 
-        assert!(
-            output.status.success(),
-            "command: {command}, stderr: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("sqlcomp init"), "stdout: {stdout}");
-        assert!(stdout.contains("sqlcomp check"), "stdout: {stdout}");
-        assert!(stdout.contains("sqlcomp compile"), "stdout: {stdout}");
-    }
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Usage:"), "stdout: {stdout}");
+    assert!(stdout.contains("sqlcomp init"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("starter sqlcomp.config.json"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("refuses to overwrite"), "stdout: {stdout}");
+}
+
+#[test]
+fn check_help_describes_config_discovery_and_database_url() {
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
+        .args(["check", "--help"])
+        .output()
+        .expect("sqlcomp check help should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Usage:"), "stdout: {stdout}");
+    assert!(stdout.contains("sqlcomp check"), "stdout: {stdout}");
+    assert!(stdout.contains("--config <path>"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("searches from the current working directory upward"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("database.urlEnv"), "stdout: {stdout}");
+}
+
+#[test]
+fn compile_help_describes_output_writing_and_clean() {
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
+        .args(["compile", "--help"])
+        .output()
+        .expect("sqlcomp compile help should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Usage:"), "stdout: {stdout}");
+    assert!(stdout.contains("sqlcomp compile"), "stdout: {stdout}");
+    assert!(stdout.contains("--config <path>"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("generated TypeScript files"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("--clean"), "stdout: {stdout}");
+    assert!(stdout.contains("stale generated files"), "stdout: {stdout}");
 }
 
 #[test]
