@@ -2,6 +2,8 @@ use std::process::Command;
 
 const TEST_DATABASE_URL_ENV: &str = "SQLCOMP_TEST_DATABASE_URL";
 const UNUSED_DATABASE_URL: &str = "mysql://sqlcomp:sqlcomp@127.0.0.1:3306/sqlcomp";
+const DUPLICATE_IDS_FIXTURE: &str = include_str!("../fixtures/sql/invalid/duplicate_ids.sql");
+const EXEC_CARDINALITY_FIXTURE: &str = include_str!("../fixtures/sql/invalid/exec_cardinality.sql");
 
 const VALID_CONFIG: &str = r#"
 {
@@ -35,6 +37,24 @@ const UNSUPPORTED_CONFIG: &str = r#"
   },
   "target": {
     "language": "go"
+  }
+}
+"#;
+
+const INVALID_SOURCE_CONFIG: &str = r#"
+{
+  "source": {
+    "include": ["invalid/**/*.sql"]
+  },
+  "output": {
+    "dir": "generated-invalid"
+  },
+  "database": {
+    "dialect": "mysql",
+    "urlEnv": "SQLCOMP_TEST_DATABASE_URL"
+  },
+  "target": {
+    "language": "typescript"
   }
 }
 "#;
@@ -398,6 +418,51 @@ fn check_reports_missing_database_url_environment_variable() {
         ),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
+fn check_reports_multiple_source_intake_diagnostics_in_one_run() {
+    let config_dir = unique_temp_dir("sqlcomp-cli-multiple-source-diagnostics");
+    let invalid_dir = config_dir.join("invalid");
+    std::fs::create_dir_all(&invalid_dir).expect("temp invalid SQL dir should be created");
+    std::fs::write(
+        config_dir.join("sqlcomp.config.json"),
+        INVALID_SOURCE_CONFIG,
+    )
+    .expect("temp config should be written");
+    std::fs::write(invalid_dir.join("duplicate_ids.sql"), DUPLICATE_IDS_FIXTURE)
+        .expect("duplicate id fixture should be written");
+    std::fs::write(
+        invalid_dir.join("exec_cardinality.sql"),
+        EXEC_CARDINALITY_FIXTURE,
+    )
+    .expect("exec cardinality fixture should be written");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
+        .arg("check")
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
+        .output()
+        .expect("sqlcomp check should run");
+
+    assert!(!output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("duplicate query id `duplicatedQuery`"),
+        "stderr: {stderr}"
+    );
+    assert!(stderr.contains("first declared here"), "stderr: {stderr}");
+    assert!(
+        stderr.contains("`cardinality: exec` is reserved for future non-SELECT support"),
+        "stderr: {stderr}"
     );
 
     std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
