@@ -125,12 +125,7 @@ pub fn render_query(query: &core::CompiledQuery) -> String {
     let symbols = QuerySymbols::for_query(query);
     let mut output = String::new();
 
-    writeln!(
-        &mut output,
-        "export type {} = Record<string, never>;",
-        symbols.input_type_name()
-    )
-    .expect("writing to String cannot fail");
+    render_input_type_alias(&mut output, query, &symbols);
     output.push('\n');
 
     writeln!(&mut output, "export type {} = {{", symbols.row_type_name())
@@ -157,20 +152,68 @@ pub fn render_query(query: &core::CompiledQuery) -> String {
 
     writeln!(&mut output, "export function {}(", symbols.function_name())
         .expect("writing to String cannot fail");
+    render_function_input_parameter(&mut output, query, &symbols);
     writeln!(
         &mut output,
-        "  _input: {} = {{}},",
-        symbols.input_type_name()
+        "): {{ sql: string; params: {} }} {{",
+        typescript_params_tuple_type(query.params())
     )
     .expect("writing to String cannot fail");
-    output.push_str("): { sql: string; params: readonly [] } {\n");
     output.push_str("  return {\n");
     writeln!(&mut output, "{}", render_sql_property(query)).expect("writing to String cannot fail");
-    output.push_str("    params: [] as const,\n");
+    writeln!(
+        &mut output,
+        "    params: {} as const,",
+        typescript_params_expression(query.params())
+    )
+    .expect("writing to String cannot fail");
     output.push_str("  };\n");
     output.push_str("}\n");
 
     output
+}
+
+fn render_input_type_alias(
+    output: &mut String,
+    query: &core::CompiledQuery,
+    symbols: &QuerySymbols,
+) {
+    if query.input().is_empty() {
+        writeln!(
+            output,
+            "export type {} = Record<string, never>;",
+            symbols.input_type_name()
+        )
+        .expect("writing to String cannot fail");
+        return;
+    }
+
+    writeln!(output, "export type {} = {{", symbols.input_type_name())
+        .expect("writing to String cannot fail");
+    for field in query.input() {
+        writeln!(
+            output,
+            "  {}: {};",
+            typescript_property_name(field.name()),
+            typescript_input_field_type(field)
+        )
+        .expect("writing to String cannot fail");
+    }
+    output.push_str("};\n");
+}
+
+fn render_function_input_parameter(
+    output: &mut String,
+    query: &core::CompiledQuery,
+    symbols: &QuerySymbols,
+) {
+    if query.input().is_empty() {
+        writeln!(output, "  _input: {} = {{}},", symbols.input_type_name())
+            .expect("writing to String cannot fail");
+    } else {
+        writeln!(output, "  input: {},", symbols.input_type_name())
+            .expect("writing to String cannot fail");
+    }
 }
 
 fn typescript_output_type(symbols: &QuerySymbols, cardinality: core::Cardinality) -> String {
@@ -182,10 +225,22 @@ fn typescript_output_type(symbols: &QuerySymbols, cardinality: core::Cardinality
     }
 }
 
-fn typescript_result_type(column: &core::ResultColumn) -> String {
-    let base_type = typescript_core_type(column.ty());
+fn typescript_input_field_type(field: &core::InputField) -> String {
+    typescript_nullable_type(field.ty(), field.is_nullable())
+}
 
-    if column.is_nullable() {
+fn typescript_param_binding_type(param: &core::ParamBinding) -> String {
+    typescript_nullable_type(param.ty(), param.is_nullable())
+}
+
+fn typescript_result_type(column: &core::ResultColumn) -> String {
+    typescript_nullable_type(column.ty(), column.is_nullable())
+}
+
+fn typescript_nullable_type(ty: core::CoreType, nullable: bool) -> String {
+    let base_type = typescript_core_type(ty);
+
+    if nullable {
         format!("{base_type} | null")
     } else {
         base_type.to_owned()
@@ -212,6 +267,36 @@ fn typescript_property_name(name: &str) -> String {
         name.to_owned()
     } else {
         typescript_string_literal(name)
+    }
+}
+
+fn typescript_params_tuple_type(params: &[core::ParamBinding]) -> String {
+    if params.is_empty() {
+        "readonly []".to_owned()
+    } else {
+        format!(
+            "readonly [{}]",
+            params
+                .iter()
+                .map(typescript_param_binding_type)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
+fn typescript_params_expression(params: &[core::ParamBinding]) -> String {
+    if params.is_empty() {
+        "[]".to_owned()
+    } else {
+        format!(
+            "[{}]",
+            params
+                .iter()
+                .map(|param| format!("input.{}", param.input_name()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 
@@ -246,7 +331,6 @@ impl TargetGenerator for TypeScriptTargetGenerator {
             BTreeMap::new();
 
         for query in queries {
-            reject_param_query(query)?;
             let source_path = query_source_path(query)?;
             queries_by_source_path
                 .entry(source_path.to_path_buf())
@@ -263,19 +347,6 @@ impl TargetGenerator for TypeScriptTargetGenerator {
 
         Ok(core::GeneratedFiles::new(files))
     }
-}
-
-fn reject_param_query(query: &core::CompiledQuery) -> core::DiagnosticResult<()> {
-    if query.input().is_empty() && query.params().is_empty() {
-        return Ok(());
-    }
-
-    Err(core::DiagnosticReport::new(core::Diagnostic::error(
-        format!(
-            "TypeScript generation for Param query `{}` is not supported yet",
-            query.id().as_str()
-        ),
-    )))
 }
 
 fn query_source_path(query: &core::CompiledQuery) -> core::DiagnosticResult<&Path> {
@@ -510,6 +581,164 @@ export function inspectTypes(
     }
 
     #[test]
+    fn renders_single_param_query_with_required_input_and_tuple_param() {
+        let query = core::CompiledQuery::new(
+            core::QueryId::new("findCustomerByEmail".to_owned()),
+            "SELECT id FROM customers WHERE email = ?;".to_owned(),
+            core::Cardinality::Many,
+            vec![core::InputField::new(
+                "email".to_owned(),
+                core::CoreType::String,
+                false,
+            )],
+            vec![core::ResultColumn::new(
+                "id".to_owned(),
+                core::CoreType::Int64,
+                false,
+            )],
+        )
+        .with_params(vec![core::ParamBinding::new(
+            "email".to_owned(),
+            core::CoreType::String,
+            false,
+        )]);
+
+        assert_eq!(
+            render_query(&query),
+            r#"export type findCustomerByEmail_Input = {
+  email: string;
+};
+
+export type findCustomerByEmail_Row = {
+  id: string;
+};
+
+export type findCustomerByEmail_Output = findCustomerByEmail_Row[];
+
+export function findCustomerByEmail(
+  input: findCustomerByEmail_Input,
+): { sql: string; params: readonly [string] } {
+  return {
+    sql: "SELECT id FROM customers WHERE email = ?;",
+    params: [input.email] as const,
+  };
+}
+"#
+        );
+    }
+
+    #[test]
+    fn renders_multiple_repeated_and_nullable_params_in_usage_order() {
+        let query = core::CompiledQuery::new(
+            core::QueryId::new("findCustomerActivity".to_owned()),
+            "SELECT id FROM customers WHERE email = ? OR backup_email = ? OR created_at >= ? OR rank <= ?;".to_owned(),
+            core::Cardinality::Many,
+            vec![
+                core::InputField::new("email".to_owned(), core::CoreType::String, false),
+                core::InputField::new("since".to_owned(), core::CoreType::DateTime, true),
+                core::InputField::new("maxRank".to_owned(), core::CoreType::Int32, false),
+            ],
+            vec![core::ResultColumn::new(
+                "id".to_owned(),
+                core::CoreType::Int64,
+                false,
+            )],
+        )
+        .with_params(vec![
+            core::ParamBinding::new("email".to_owned(), core::CoreType::String, false),
+            core::ParamBinding::new("email".to_owned(), core::CoreType::String, false),
+            core::ParamBinding::new("since".to_owned(), core::CoreType::DateTime, true),
+            core::ParamBinding::new("maxRank".to_owned(), core::CoreType::Int32, false),
+        ]);
+
+        assert_eq!(
+            render_query(&query),
+            r#"export type findCustomerActivity_Input = {
+  email: string;
+  since: string | null;
+  maxRank: number;
+};
+
+export type findCustomerActivity_Row = {
+  id: string;
+};
+
+export type findCustomerActivity_Output = findCustomerActivity_Row[];
+
+export function findCustomerActivity(
+  input: findCustomerActivity_Input,
+): { sql: string; params: readonly [string, string, string | null, number] } {
+  return {
+    sql: "SELECT id FROM customers WHERE email = ? OR backup_email = ? OR created_at >= ? OR rank <= ?;",
+    params: [input.email, input.email, input.since, input.maxRank] as const,
+  };
+}
+"#
+        );
+    }
+
+    #[test]
+    fn renders_param_types_with_existing_core_type_mapping() {
+        let query = core::CompiledQuery::new(
+            core::QueryId::new("inspectParamTypes".to_owned()),
+            "SELECT id FROM fixture_types WHERE active = ? AND small_count = ? AND large_count = ? AND ratio = ? AND amount = ? AND payload = ? AND birth_date = ? AND delivery_window = ? AND created_at = ? AND settings = ? AND shape = ?;".to_owned(),
+            core::Cardinality::Many,
+            vec![
+                core::InputField::new("active".to_owned(), core::CoreType::Bool, false),
+                core::InputField::new("smallCount".to_owned(), core::CoreType::Int32, false),
+                core::InputField::new("largeCount".to_owned(), core::CoreType::Int64, false),
+                core::InputField::new("ratio".to_owned(), core::CoreType::Float64, false),
+                core::InputField::new("amount".to_owned(), core::CoreType::Decimal, false),
+                core::InputField::new("payload".to_owned(), core::CoreType::Bytes, false),
+                core::InputField::new("birthDate".to_owned(), core::CoreType::Date, false),
+                core::InputField::new("deliveryWindow".to_owned(), core::CoreType::Time, false),
+                core::InputField::new("createdAt".to_owned(), core::CoreType::DateTime, false),
+                core::InputField::new("settings".to_owned(), core::CoreType::Json, true),
+                core::InputField::new("shape".to_owned(), core::CoreType::Unknown, true),
+            ],
+            vec![core::ResultColumn::new(
+                "id".to_owned(),
+                core::CoreType::Int64,
+                false,
+            )],
+        )
+        .with_params(vec![
+            core::ParamBinding::new("active".to_owned(), core::CoreType::Bool, false),
+            core::ParamBinding::new("smallCount".to_owned(), core::CoreType::Int32, false),
+            core::ParamBinding::new("largeCount".to_owned(), core::CoreType::Int64, false),
+            core::ParamBinding::new("ratio".to_owned(), core::CoreType::Float64, false),
+            core::ParamBinding::new("amount".to_owned(), core::CoreType::Decimal, false),
+            core::ParamBinding::new("payload".to_owned(), core::CoreType::Bytes, false),
+            core::ParamBinding::new("birthDate".to_owned(), core::CoreType::Date, false),
+            core::ParamBinding::new("deliveryWindow".to_owned(), core::CoreType::Time, false),
+            core::ParamBinding::new("createdAt".to_owned(), core::CoreType::DateTime, false),
+            core::ParamBinding::new("settings".to_owned(), core::CoreType::Json, true),
+            core::ParamBinding::new("shape".to_owned(), core::CoreType::Unknown, true),
+        ]);
+
+        let rendered = render_query(&query);
+
+        assert!(rendered.contains(
+            r"export type inspectParamTypes_Input = {
+  active: boolean;
+  smallCount: number;
+  largeCount: string;
+  ratio: number;
+  amount: string;
+  payload: Uint8Array;
+  birthDate: string;
+  deliveryWindow: string;
+  createdAt: string;
+  settings: unknown | null;
+  shape: unknown | null;
+};"
+        ));
+        assert!(rendered.contains(
+            "params: readonly [boolean, number, string, number, string, Uint8Array, string, string, string, unknown | null, unknown | null]"
+        ));
+    }
+
+    #[test]
     fn renders_result_column_names_as_typescript_property_names_without_transforming() {
         let query = core::CompiledQuery::new(
             core::QueryId::new("selectOddColumns".to_owned()),
@@ -584,7 +813,7 @@ export function inspectTypes(
     }
 
     #[test]
-    fn generator_rejects_param_queries_until_typescript_param_output_exists() {
+    fn generator_generates_param_queries() {
         let plan = compilation_plan();
         let query = core::CompiledQuery::new(
             core::QueryId::new("findUser".to_owned()),
@@ -608,14 +837,19 @@ export function inspectTypes(
         )])
         .with_source_path("sql/users.sql");
 
-        let report = TypeScriptTargetGenerator
+        let files = TypeScriptTargetGenerator
             .generate(&plan, &[query])
-            .expect_err("Param TypeScript generation should remain out of scope");
+            .expect("Param TypeScript generation should emit input and params");
 
-        assert_eq!(
-            report.diagnostics()[0].message(),
-            "TypeScript generation for Param query `findUser` is not supported yet"
+        let users_contents = file_contents(
+            &files,
+            Path::new("/tmp/sqlcomp-project/src/generated/sqlcomp/sql/users.ts"),
         );
+        assert!(users_contents.contains("export type findUser_Input = {\n  email: string;\n};"));
+        assert!(users_contents.contains(
+            "export function findUser(\n  input: findUser_Input,\n): { sql: string; params: readonly [string] }"
+        ));
+        assert!(users_contents.contains("params: [input.email] as const"));
     }
 
     #[test]
