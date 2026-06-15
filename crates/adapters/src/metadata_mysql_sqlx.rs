@@ -5,9 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use sqlcomp_app::MetadataProvider;
 use sqlcomp_core as core;
 use sqlparser::ast::{
-    BinaryOperator, Expr, FunctionArg, FunctionArgExpr, FunctionArguments, JoinConstraint,
-    JoinOperator, ObjectName, Select, SelectItem, SetExpr, Statement, TableFactor, TableWithJoins,
-    Value,
+    BinaryOperator, Expr, FunctionArg, FunctionArgExpr, FunctionArguments, GroupByExpr,
+    JoinConstraint, JoinOperator, LimitClause, ObjectName, OrderBy, OrderByKind, Query as SqlQuery,
+    Select, SelectItem, SetExpr, Statement, TableFactor, TableWithJoins, Value,
 };
 use sqlparser::dialect::MySqlDialect;
 use sqlparser::parser::Parser;
@@ -378,9 +378,11 @@ fn resolve_param_usage_metadata(
     }
 
     let statements = parse_query(query)?;
-    let select = single_select_statement(query, &statements)?;
-    let contexts = collect_select_param_contexts(select);
-    if contexts.len() != query.param_usages().len() {
+    let parsed_query = single_select_query(query, &statements)?;
+    let select = select_from_query(parsed_query)
+        .expect("single_select_query verifies this is a top-level SELECT query");
+    let mut contexts = collect_query_param_contexts(parsed_query, select);
+    if contexts.len() > query.param_usages().len() {
         return Err(query_error(
             query,
             format!(
@@ -390,8 +392,9 @@ fn resolve_param_usage_metadata(
             ),
         ));
     }
+    contexts.resize(query.param_usages().len(), None);
 
-    let table_sources = select_table_sources(select);
+    let table_sources = select_table_sources(parsed_query, select);
     let schema = SchemaColumnTypes::from_columns(schema_columns);
     let mut params = Vec::with_capacity(query.param_usages().len());
 
@@ -477,8 +480,10 @@ fn resolve_inferred_param_type(
 
 fn current_database_table_names(query: &core::RawQuery) -> core::DiagnosticResult<Vec<String>> {
     let statements = parse_query(query)?;
-    let select = single_select_statement(query, &statements)?;
-    Ok(select_table_sources(select)
+    let parsed_query = single_select_query(query, &statements)?;
+    let select = select_from_query(parsed_query)
+        .expect("single_select_query verifies this is a top-level SELECT query");
+    Ok(select_table_sources(parsed_query, select)
         .current_database_table_names
         .into_iter()
         .collect())
@@ -490,10 +495,10 @@ fn parse_query(query: &core::RawQuery) -> core::DiagnosticResult<Vec<Statement>>
         .map_err(|error| query_error(query, format!("failed to parse MySQL SQL: {error}")))
 }
 
-fn single_select_statement<'a>(
+fn single_select_query<'a>(
     query: &core::RawQuery,
     statements: &'a [Statement],
-) -> core::DiagnosticResult<&'a Select> {
+) -> core::DiagnosticResult<&'a SqlQuery> {
     let [Statement::Query(parsed_query)] = statements else {
         return Err(query_error(
             query,
@@ -501,15 +506,17 @@ fn single_select_statement<'a>(
         ));
     };
 
-    select_from_query(parsed_query).ok_or_else(|| {
-        query_error(
+    if select_from_query(parsed_query).is_none() {
+        return Err(query_error(
             query,
             "Param type inference requires a top-level SELECT query",
-        )
-    })
+        ));
+    }
+
+    Ok(parsed_query)
 }
 
-fn select_from_query(query: &sqlparser::ast::Query) -> Option<&Select> {
+fn select_from_query(query: &SqlQuery) -> Option<&Select> {
     match query.body.as_ref() {
         SetExpr::Select(select) => Some(select),
         SetExpr::Query(query) => select_from_query(query),
@@ -523,26 +530,54 @@ fn select_from_query(query: &sqlparser::ast::Query) -> Option<&Select> {
     }
 }
 
-fn select_table_sources(select: &Select) -> SelectTableSources {
+fn select_table_sources(query: &SqlQuery, select: &Select) -> SelectTableSources {
+    let cte_names = cte_names(query);
     let mut sources = SelectTableSources::default();
     for table in &select.from {
-        collect_table_factor_source(&table.relation, &mut sources);
-        for join in &table.joins {
-            collect_table_factor_source(&join.relation, &mut sources);
-        }
+        collect_table_with_joins_sources(table, &mut sources, &cte_names);
     }
 
     sources
 }
 
-fn collect_table_factor_source(table: &TableFactor, sources: &mut SelectTableSources) {
+fn cte_names(query: &SqlQuery) -> BTreeSet<String> {
+    query
+        .with
+        .as_ref()
+        .map(|with| {
+            with.cte_tables
+                .iter()
+                .map(|cte| cte.alias.name.value.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn collect_table_with_joins_sources(
+    table: &TableWithJoins,
+    sources: &mut SelectTableSources,
+    cte_names: &BTreeSet<String>,
+) {
+    collect_table_factor_source(&table.relation, sources, cte_names);
+    for join in &table.joins {
+        collect_table_factor_source(&join.relation, sources, cte_names);
+    }
+}
+
+fn collect_table_factor_source(
+    table: &TableFactor,
+    sources: &mut SelectTableSources,
+    cte_names: &BTreeSet<String>,
+) {
     match table {
         TableFactor::Table {
             name, alias, args, ..
         } => {
             let alias = alias.as_ref().map(|alias| alias.name.value.clone());
             let parts = object_name_parts(name);
-            if args.is_none() && parts.len() == 1 {
+            if parts.len() == 1 && cte_names.contains(&parts[0]) {
+                sources.insert_unsupported_table(Some(parts[0].clone()), alias);
+            } else if args.is_none() && parts.len() == 1 {
                 sources.insert_current_database_table(parts[0].clone(), alias);
             } else {
                 sources.insert_unsupported_table(parts.last().cloned(), alias);
@@ -560,6 +595,16 @@ fn collect_table_factor_source(table: &TableFactor, sources: &mut SelectTableSou
                 alias.as_ref().map(|alias| alias.name.value.clone()),
             );
         }
+        TableFactor::NestedJoin {
+            table_with_joins,
+            alias,
+        } => {
+            collect_table_with_joins_sources(table_with_joins, sources, cte_names);
+            sources.insert_unsupported_table(
+                None,
+                alias.as_ref().map(|alias| alias.name.value.clone()),
+            );
+        }
         _ => {}
     }
 }
@@ -571,9 +616,14 @@ fn object_name_parts(name: &ObjectName) -> Vec<String> {
         .collect()
 }
 
-fn collect_select_param_contexts(select: &Select) -> Vec<Option<ColumnRef>> {
+fn collect_query_param_contexts(query: &SqlQuery, select: &Select) -> Vec<Option<ColumnRef>> {
     let mut contexts = Vec::new();
 
+    if let Some(with) = &query.with {
+        for cte in &with.cte_tables {
+            collect_unsupported_query_param_contexts(&cte.query, &mut contexts);
+        }
+    }
     for item in &select.projection {
         collect_select_item_param_contexts(item, &mut contexts);
     }
@@ -583,8 +633,15 @@ fn collect_select_param_contexts(select: &Select) -> Vec<Option<ColumnRef>> {
     if let Some(selection) = &select.selection {
         collect_expr_param_contexts(selection, &mut contexts);
     }
+    collect_group_by_param_contexts(&select.group_by, &mut contexts);
     if let Some(having) = &select.having {
         collect_expr_param_contexts(having, &mut contexts);
+    }
+    if let Some(order_by) = &query.order_by {
+        collect_order_by_param_contexts(order_by, &mut contexts);
+    }
+    if let Some(limit_clause) = &query.limit_clause {
+        collect_limit_clause_param_contexts(limit_clause, &mut contexts);
     }
 
     contexts
@@ -603,10 +660,47 @@ fn collect_table_with_joins_param_contexts(
     table: &TableWithJoins,
     contexts: &mut Vec<Option<ColumnRef>>,
 ) {
+    collect_table_factor_param_contexts(&table.relation, contexts);
     for join in &table.joins {
+        collect_table_factor_param_contexts(&join.relation, contexts);
         if let Some(constraint) = join_constraint(&join.join_operator) {
             collect_join_constraint_param_contexts(constraint, contexts);
         }
+    }
+}
+
+fn collect_table_factor_param_contexts(table: &TableFactor, contexts: &mut Vec<Option<ColumnRef>>) {
+    match table {
+        TableFactor::Derived { subquery, .. } => {
+            collect_unsupported_query_param_contexts(subquery, contexts);
+        }
+        TableFactor::TableFunction { expr, .. } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+        }
+        TableFactor::Function { args, .. } => {
+            for arg in args {
+                match arg {
+                    FunctionArg::Named { arg, .. } | FunctionArg::Unnamed(arg) => {
+                        collect_unsupported_function_arg_expr_param_contexts(arg, contexts);
+                    }
+                    FunctionArg::ExprNamed { name, arg, .. } => {
+                        collect_unsupported_expr_param_contexts(name, contexts);
+                        collect_unsupported_function_arg_expr_param_contexts(arg, contexts);
+                    }
+                }
+            }
+        }
+        TableFactor::UNNEST { array_exprs, .. } => {
+            for expr in array_exprs {
+                collect_unsupported_expr_param_contexts(expr, contexts);
+            }
+        }
+        TableFactor::NestedJoin {
+            table_with_joins, ..
+        } => {
+            collect_table_with_joins_param_contexts(table_with_joins, contexts);
+        }
+        _ => {}
     }
 }
 
@@ -645,6 +739,76 @@ fn collect_join_constraint_param_contexts(
     }
 }
 
+fn collect_group_by_param_contexts(group_by: &GroupByExpr, contexts: &mut Vec<Option<ColumnRef>>) {
+    match group_by {
+        GroupByExpr::Expressions(expressions, _) => {
+            for expr in expressions {
+                collect_expr_param_contexts(expr, contexts);
+            }
+        }
+        GroupByExpr::All(_) => {}
+    }
+}
+
+fn collect_order_by_param_contexts(order_by: &OrderBy, contexts: &mut Vec<Option<ColumnRef>>) {
+    match &order_by.kind {
+        OrderByKind::Expressions(expressions) => {
+            for order_by_expr in expressions {
+                collect_expr_param_contexts(&order_by_expr.expr, contexts);
+                if let Some(with_fill) = &order_by_expr.with_fill {
+                    if let Some(from) = &with_fill.from {
+                        collect_expr_param_contexts(from, contexts);
+                    }
+                    if let Some(to) = &with_fill.to {
+                        collect_expr_param_contexts(to, contexts);
+                    }
+                    if let Some(step) = &with_fill.step {
+                        collect_expr_param_contexts(step, contexts);
+                    }
+                }
+            }
+        }
+        OrderByKind::All(_) => {}
+    }
+    if let Some(interpolate) = &order_by.interpolate
+        && let Some(expressions) = &interpolate.exprs
+    {
+        for expr in expressions {
+            if let Some(expr) = &expr.expr {
+                collect_expr_param_contexts(expr, contexts);
+            }
+        }
+    }
+}
+
+fn collect_limit_clause_param_contexts(
+    limit_clause: &LimitClause,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    match limit_clause {
+        LimitClause::LimitOffset {
+            limit,
+            offset,
+            limit_by,
+        } => {
+            if let Some(limit) = limit {
+                collect_expr_param_contexts(limit, contexts);
+            }
+            if let Some(offset) = offset {
+                collect_expr_param_contexts(&offset.value, contexts);
+            }
+            for expr in limit_by {
+                collect_expr_param_contexts(expr, contexts);
+            }
+        }
+        LimitClause::OffsetCommaLimit { offset, limit } => {
+            collect_expr_param_contexts(offset, contexts);
+            collect_expr_param_contexts(limit, contexts);
+        }
+    }
+}
+
+#[allow(clippy::too_many_lines)]
 fn collect_expr_param_contexts(expr: &Expr, contexts: &mut Vec<Option<ColumnRef>>) {
     if is_placeholder(expr) {
         contexts.push(None);
@@ -667,7 +831,11 @@ fn collect_expr_param_contexts(expr: &Expr, contexts: &mut Vec<Option<ColumnRef>
                 }
             }
         }
-        Expr::BinaryOp { left, right, .. } => {
+        Expr::BinaryOp { left, right, .. }
+        | Expr::AnyOp { left, right, .. }
+        | Expr::AllOp { left, right, .. }
+        | Expr::IsDistinctFrom(left, right)
+        | Expr::IsNotDistinctFrom(left, right) => {
             collect_expr_param_contexts(left, contexts);
             collect_expr_param_contexts(right, contexts);
         }
@@ -697,6 +865,16 @@ fn collect_expr_param_contexts(expr: &Expr, contexts: &mut Vec<Option<ColumnRef>
                 collect_expr_param_contexts(item, contexts);
             }
         }
+        Expr::InSubquery { expr, subquery, .. } => {
+            collect_expr_param_contexts(expr, contexts);
+            collect_unsupported_query_param_contexts(subquery, contexts);
+        }
+        Expr::InUnnest {
+            expr, array_expr, ..
+        } => {
+            collect_expr_param_contexts(expr, contexts);
+            collect_expr_param_contexts(array_expr, contexts);
+        }
         Expr::Nested(expr)
         | Expr::UnaryOp { expr, .. }
         | Expr::Cast { expr, .. }
@@ -704,13 +882,94 @@ fn collect_expr_param_contexts(expr: &Expr, contexts: &mut Vec<Option<ColumnRef>
         | Expr::Ceil { expr, .. }
         | Expr::Floor { expr, .. }
         | Expr::Collate { expr, .. }
-        | Expr::Prefixed { value: expr, .. } => collect_expr_param_contexts(expr, contexts),
+        | Expr::Prefixed { value: expr, .. }
+        | Expr::IsFalse(expr)
+        | Expr::IsNotFalse(expr)
+        | Expr::IsTrue(expr)
+        | Expr::IsNotTrue(expr)
+        | Expr::IsNull(expr)
+        | Expr::IsNotNull(expr)
+        | Expr::IsUnknown(expr)
+        | Expr::IsNotUnknown(expr)
+        | Expr::OuterJoin(expr)
+        | Expr::Prior(expr)
+        | Expr::Named { expr, .. } => collect_expr_param_contexts(expr, contexts),
+        Expr::Exists { subquery, .. } | Expr::Subquery(subquery) => {
+            collect_unsupported_query_param_contexts(subquery, contexts);
+        }
         Expr::Between {
             expr, low, high, ..
         } => {
             collect_expr_param_contexts(expr, contexts);
             collect_expr_param_contexts(low, contexts);
             collect_expr_param_contexts(high, contexts);
+        }
+        Expr::Like { expr, pattern, .. }
+        | Expr::ILike { expr, pattern, .. }
+        | Expr::SimilarTo { expr, pattern, .. }
+        | Expr::RLike { expr, pattern, .. } => {
+            collect_expr_param_contexts(expr, contexts);
+            collect_expr_param_contexts(pattern, contexts);
+        }
+        Expr::Convert { expr, styles, .. } => {
+            collect_expr_param_contexts(expr, contexts);
+            for style in styles {
+                collect_expr_param_contexts(style, contexts);
+            }
+        }
+        Expr::AtTimeZone {
+            timestamp,
+            time_zone,
+        } => {
+            collect_expr_param_contexts(timestamp, contexts);
+            collect_expr_param_contexts(time_zone, contexts);
+        }
+        Expr::Position { expr, r#in } => {
+            collect_expr_param_contexts(expr, contexts);
+            collect_expr_param_contexts(r#in, contexts);
+        }
+        Expr::Substring {
+            expr,
+            substring_from,
+            substring_for,
+            ..
+        } => {
+            collect_expr_param_contexts(expr, contexts);
+            if let Some(substring_from) = substring_from {
+                collect_expr_param_contexts(substring_from, contexts);
+            }
+            if let Some(substring_for) = substring_for {
+                collect_expr_param_contexts(substring_for, contexts);
+            }
+        }
+        Expr::Trim {
+            trim_what,
+            expr,
+            trim_characters,
+            ..
+        } => {
+            if let Some(trim_what) = trim_what {
+                collect_expr_param_contexts(trim_what, contexts);
+            }
+            collect_expr_param_contexts(expr, contexts);
+            if let Some(trim_characters) = trim_characters {
+                for character in trim_characters {
+                    collect_expr_param_contexts(character, contexts);
+                }
+            }
+        }
+        Expr::Overlay {
+            expr,
+            overlay_what,
+            overlay_from,
+            overlay_for,
+        } => {
+            collect_expr_param_contexts(expr, contexts);
+            collect_expr_param_contexts(overlay_what, contexts);
+            collect_expr_param_contexts(overlay_from, contexts);
+            if let Some(overlay_for) = overlay_for {
+                collect_expr_param_contexts(overlay_for, contexts);
+            }
         }
         Expr::Function(function) => {
             collect_function_arguments_param_contexts(&function.parameters, contexts);
@@ -736,9 +995,21 @@ fn collect_expr_param_contexts(expr: &Expr, contexts: &mut Vec<Option<ColumnRef>
                 collect_expr_param_contexts(else_result, contexts);
             }
         }
+        Expr::GroupingSets(items) | Expr::Cube(items) | Expr::Rollup(items) => {
+            for item in items {
+                for expr in item {
+                    collect_expr_param_contexts(expr, contexts);
+                }
+            }
+        }
         Expr::Tuple(items) => {
             for item in items {
                 collect_expr_param_contexts(item, contexts);
+            }
+        }
+        Expr::Struct { values, .. } => {
+            for value in values {
+                collect_expr_param_contexts(value, contexts);
             }
         }
         _ => {}
@@ -749,15 +1020,21 @@ fn collect_function_arguments_param_contexts(
     arguments: &FunctionArguments,
     contexts: &mut Vec<Option<ColumnRef>>,
 ) {
-    if let FunctionArguments::List(list) = arguments {
-        for arg in &list.args {
-            match arg {
-                FunctionArg::Named { arg, .. } | FunctionArg::Unnamed(arg) => {
-                    collect_function_arg_expr_param_contexts(arg, contexts);
-                }
-                FunctionArg::ExprNamed { name, arg, .. } => {
-                    collect_expr_param_contexts(name, contexts);
-                    collect_function_arg_expr_param_contexts(arg, contexts);
+    match arguments {
+        FunctionArguments::None => {}
+        FunctionArguments::Subquery(query) => {
+            collect_unsupported_query_param_contexts(query, contexts);
+        }
+        FunctionArguments::List(list) => {
+            for arg in &list.args {
+                match arg {
+                    FunctionArg::Named { arg, .. } | FunctionArg::Unnamed(arg) => {
+                        collect_function_arg_expr_param_contexts(arg, contexts);
+                    }
+                    FunctionArg::ExprNamed { name, arg, .. } => {
+                        collect_expr_param_contexts(name, contexts);
+                        collect_function_arg_expr_param_contexts(arg, contexts);
+                    }
                 }
             }
         }
@@ -770,6 +1047,425 @@ fn collect_function_arg_expr_param_contexts(
 ) {
     if let FunctionArgExpr::Expr(expr) = arg {
         collect_expr_param_contexts(expr, contexts);
+    }
+}
+
+fn collect_unsupported_query_param_contexts(
+    query: &SqlQuery,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    if let Some(with) = &query.with {
+        for cte in &with.cte_tables {
+            collect_unsupported_query_param_contexts(&cte.query, contexts);
+        }
+    }
+    collect_unsupported_set_expr_param_contexts(&query.body, contexts);
+    if let Some(order_by) = &query.order_by {
+        collect_unsupported_order_by_param_contexts(order_by, contexts);
+    }
+    if let Some(limit_clause) = &query.limit_clause {
+        collect_unsupported_limit_clause_param_contexts(limit_clause, contexts);
+    }
+}
+
+fn collect_unsupported_set_expr_param_contexts(
+    expression: &SetExpr,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    match expression {
+        SetExpr::Select(select) => collect_unsupported_select_param_contexts(select, contexts),
+        SetExpr::Query(query) => collect_unsupported_query_param_contexts(query, contexts),
+        SetExpr::SetOperation { left, right, .. } => {
+            collect_unsupported_set_expr_param_contexts(left, contexts);
+            collect_unsupported_set_expr_param_contexts(right, contexts);
+        }
+        SetExpr::Values(values) => {
+            for row in &values.rows {
+                for expr in row.iter() {
+                    collect_unsupported_expr_param_contexts(expr, contexts);
+                }
+            }
+        }
+        SetExpr::Insert(_)
+        | SetExpr::Update(_)
+        | SetExpr::Delete(_)
+        | SetExpr::Merge(_)
+        | SetExpr::Table(_) => {}
+    }
+}
+
+fn collect_unsupported_select_param_contexts(
+    select: &Select,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    for item in &select.projection {
+        collect_unsupported_select_item_param_contexts(item, contexts);
+    }
+    for table in &select.from {
+        collect_unsupported_table_with_joins_param_contexts(table, contexts);
+    }
+    if let Some(selection) = &select.selection {
+        collect_unsupported_expr_param_contexts(selection, contexts);
+    }
+    collect_unsupported_group_by_param_contexts(&select.group_by, contexts);
+    if let Some(having) = &select.having {
+        collect_unsupported_expr_param_contexts(having, contexts);
+    }
+}
+
+fn collect_unsupported_select_item_param_contexts(
+    item: &SelectItem,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    match item {
+        SelectItem::UnnamedExpr(expr)
+        | SelectItem::ExprWithAlias { expr, .. }
+        | SelectItem::ExprWithAliases { expr, .. } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+        }
+        SelectItem::QualifiedWildcard(_, _) | SelectItem::Wildcard(_) => {}
+    }
+}
+
+fn collect_unsupported_table_with_joins_param_contexts(
+    table: &TableWithJoins,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    collect_unsupported_table_factor_param_contexts(&table.relation, contexts);
+    for join in &table.joins {
+        collect_unsupported_table_factor_param_contexts(&join.relation, contexts);
+        if let Some(constraint) = join_constraint(&join.join_operator) {
+            collect_unsupported_join_constraint_param_contexts(constraint, contexts);
+        }
+    }
+}
+
+fn collect_unsupported_table_factor_param_contexts(
+    table: &TableFactor,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    match table {
+        TableFactor::Derived { subquery, .. } => {
+            collect_unsupported_query_param_contexts(subquery, contexts);
+        }
+        TableFactor::TableFunction { expr, .. } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+        }
+        TableFactor::Function { args, .. } => {
+            for arg in args {
+                match arg {
+                    FunctionArg::Named { arg, .. } | FunctionArg::Unnamed(arg) => {
+                        collect_unsupported_function_arg_expr_param_contexts(arg, contexts);
+                    }
+                    FunctionArg::ExprNamed { name, arg, .. } => {
+                        collect_unsupported_expr_param_contexts(name, contexts);
+                        collect_unsupported_function_arg_expr_param_contexts(arg, contexts);
+                    }
+                }
+            }
+        }
+        TableFactor::UNNEST { array_exprs, .. } => {
+            for expr in array_exprs {
+                collect_unsupported_expr_param_contexts(expr, contexts);
+            }
+        }
+        TableFactor::NestedJoin {
+            table_with_joins, ..
+        } => {
+            collect_unsupported_table_with_joins_param_contexts(table_with_joins, contexts);
+        }
+        _ => {}
+    }
+}
+
+fn collect_unsupported_join_constraint_param_contexts(
+    constraint: &JoinConstraint,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    if let JoinConstraint::On(expr) = constraint {
+        collect_unsupported_expr_param_contexts(expr, contexts);
+    }
+}
+
+fn collect_unsupported_group_by_param_contexts(
+    group_by: &GroupByExpr,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    match group_by {
+        GroupByExpr::Expressions(expressions, _) => {
+            for expr in expressions {
+                collect_unsupported_expr_param_contexts(expr, contexts);
+            }
+        }
+        GroupByExpr::All(_) => {}
+    }
+}
+
+fn collect_unsupported_order_by_param_contexts(
+    order_by: &OrderBy,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    match &order_by.kind {
+        OrderByKind::Expressions(expressions) => {
+            for order_by_expr in expressions {
+                collect_unsupported_expr_param_contexts(&order_by_expr.expr, contexts);
+                if let Some(with_fill) = &order_by_expr.with_fill {
+                    if let Some(from) = &with_fill.from {
+                        collect_unsupported_expr_param_contexts(from, contexts);
+                    }
+                    if let Some(to) = &with_fill.to {
+                        collect_unsupported_expr_param_contexts(to, contexts);
+                    }
+                    if let Some(step) = &with_fill.step {
+                        collect_unsupported_expr_param_contexts(step, contexts);
+                    }
+                }
+            }
+        }
+        OrderByKind::All(_) => {}
+    }
+    if let Some(interpolate) = &order_by.interpolate
+        && let Some(expressions) = &interpolate.exprs
+    {
+        for expr in expressions {
+            if let Some(expr) = &expr.expr {
+                collect_unsupported_expr_param_contexts(expr, contexts);
+            }
+        }
+    }
+}
+
+fn collect_unsupported_limit_clause_param_contexts(
+    limit_clause: &LimitClause,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    match limit_clause {
+        LimitClause::LimitOffset {
+            limit,
+            offset,
+            limit_by,
+        } => {
+            if let Some(limit) = limit {
+                collect_unsupported_expr_param_contexts(limit, contexts);
+            }
+            if let Some(offset) = offset {
+                collect_unsupported_expr_param_contexts(&offset.value, contexts);
+            }
+            for expr in limit_by {
+                collect_unsupported_expr_param_contexts(expr, contexts);
+            }
+        }
+        LimitClause::OffsetCommaLimit { offset, limit } => {
+            collect_unsupported_expr_param_contexts(offset, contexts);
+            collect_unsupported_expr_param_contexts(limit, contexts);
+        }
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+fn collect_unsupported_expr_param_contexts(expr: &Expr, contexts: &mut Vec<Option<ColumnRef>>) {
+    if is_placeholder(expr) {
+        contexts.push(None);
+        return;
+    }
+
+    match expr {
+        Expr::BinaryOp { left, right, .. }
+        | Expr::AnyOp { left, right, .. }
+        | Expr::AllOp { left, right, .. }
+        | Expr::IsDistinctFrom(left, right)
+        | Expr::IsNotDistinctFrom(left, right) => {
+            collect_unsupported_expr_param_contexts(left, contexts);
+            collect_unsupported_expr_param_contexts(right, contexts);
+        }
+        Expr::InList { expr, list, .. } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+            for item in list {
+                collect_unsupported_expr_param_contexts(item, contexts);
+            }
+        }
+        Expr::InSubquery { expr, subquery, .. } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+            collect_unsupported_query_param_contexts(subquery, contexts);
+        }
+        Expr::InUnnest {
+            expr, array_expr, ..
+        } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+            collect_unsupported_expr_param_contexts(array_expr, contexts);
+        }
+        Expr::Nested(expr)
+        | Expr::UnaryOp { expr, .. }
+        | Expr::Cast { expr, .. }
+        | Expr::Extract { expr, .. }
+        | Expr::Ceil { expr, .. }
+        | Expr::Floor { expr, .. }
+        | Expr::Collate { expr, .. }
+        | Expr::Prefixed { value: expr, .. }
+        | Expr::IsFalse(expr)
+        | Expr::IsNotFalse(expr)
+        | Expr::IsTrue(expr)
+        | Expr::IsNotTrue(expr)
+        | Expr::IsNull(expr)
+        | Expr::IsNotNull(expr)
+        | Expr::IsUnknown(expr)
+        | Expr::IsNotUnknown(expr)
+        | Expr::OuterJoin(expr)
+        | Expr::Prior(expr)
+        | Expr::Named { expr, .. } => collect_unsupported_expr_param_contexts(expr, contexts),
+        Expr::Between {
+            expr, low, high, ..
+        } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+            collect_unsupported_expr_param_contexts(low, contexts);
+            collect_unsupported_expr_param_contexts(high, contexts);
+        }
+        Expr::Like { expr, pattern, .. }
+        | Expr::ILike { expr, pattern, .. }
+        | Expr::SimilarTo { expr, pattern, .. }
+        | Expr::RLike { expr, pattern, .. } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+            collect_unsupported_expr_param_contexts(pattern, contexts);
+        }
+        Expr::Convert { expr, styles, .. } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+            for style in styles {
+                collect_unsupported_expr_param_contexts(style, contexts);
+            }
+        }
+        Expr::AtTimeZone {
+            timestamp,
+            time_zone,
+        } => {
+            collect_unsupported_expr_param_contexts(timestamp, contexts);
+            collect_unsupported_expr_param_contexts(time_zone, contexts);
+        }
+        Expr::Position { expr, r#in } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+            collect_unsupported_expr_param_contexts(r#in, contexts);
+        }
+        Expr::Substring {
+            expr,
+            substring_from,
+            substring_for,
+            ..
+        } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+            if let Some(substring_from) = substring_from {
+                collect_unsupported_expr_param_contexts(substring_from, contexts);
+            }
+            if let Some(substring_for) = substring_for {
+                collect_unsupported_expr_param_contexts(substring_for, contexts);
+            }
+        }
+        Expr::Trim {
+            trim_what,
+            expr,
+            trim_characters,
+            ..
+        } => {
+            if let Some(trim_what) = trim_what {
+                collect_unsupported_expr_param_contexts(trim_what, contexts);
+            }
+            collect_unsupported_expr_param_contexts(expr, contexts);
+            if let Some(trim_characters) = trim_characters {
+                for character in trim_characters {
+                    collect_unsupported_expr_param_contexts(character, contexts);
+                }
+            }
+        }
+        Expr::Overlay {
+            expr,
+            overlay_what,
+            overlay_from,
+            overlay_for,
+        } => {
+            collect_unsupported_expr_param_contexts(expr, contexts);
+            collect_unsupported_expr_param_contexts(overlay_what, contexts);
+            collect_unsupported_expr_param_contexts(overlay_from, contexts);
+            if let Some(overlay_for) = overlay_for {
+                collect_unsupported_expr_param_contexts(overlay_for, contexts);
+            }
+        }
+        Expr::Function(function) => {
+            collect_unsupported_function_arguments_param_contexts(&function.parameters, contexts);
+            collect_unsupported_function_arguments_param_contexts(&function.args, contexts);
+            if let Some(filter) = &function.filter {
+                collect_unsupported_expr_param_contexts(filter, contexts);
+            }
+        }
+        Expr::Case {
+            operand,
+            conditions,
+            else_result,
+            ..
+        } => {
+            if let Some(operand) = operand {
+                collect_unsupported_expr_param_contexts(operand, contexts);
+            }
+            for condition in conditions {
+                collect_unsupported_expr_param_contexts(&condition.condition, contexts);
+                collect_unsupported_expr_param_contexts(&condition.result, contexts);
+            }
+            if let Some(else_result) = else_result {
+                collect_unsupported_expr_param_contexts(else_result, contexts);
+            }
+        }
+        Expr::Exists { subquery, .. } | Expr::Subquery(subquery) => {
+            collect_unsupported_query_param_contexts(subquery, contexts);
+        }
+        Expr::GroupingSets(items) | Expr::Cube(items) | Expr::Rollup(items) => {
+            for item in items {
+                for expr in item {
+                    collect_unsupported_expr_param_contexts(expr, contexts);
+                }
+            }
+        }
+        Expr::Tuple(items) => {
+            for item in items {
+                collect_unsupported_expr_param_contexts(item, contexts);
+            }
+        }
+        Expr::Struct { values, .. } => {
+            for value in values {
+                collect_unsupported_expr_param_contexts(value, contexts);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_unsupported_function_arguments_param_contexts(
+    arguments: &FunctionArguments,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    match arguments {
+        FunctionArguments::None => {}
+        FunctionArguments::Subquery(query) => {
+            collect_unsupported_query_param_contexts(query, contexts);
+        }
+        FunctionArguments::List(list) => {
+            for arg in &list.args {
+                match arg {
+                    FunctionArg::Named { arg, .. } | FunctionArg::Unnamed(arg) => {
+                        collect_unsupported_function_arg_expr_param_contexts(arg, contexts);
+                    }
+                    FunctionArg::ExprNamed { name, arg, .. } => {
+                        collect_unsupported_expr_param_contexts(name, contexts);
+                        collect_unsupported_function_arg_expr_param_contexts(arg, contexts);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn collect_unsupported_function_arg_expr_param_contexts(
+    arg: &FunctionArgExpr,
+    contexts: &mut Vec<Option<ColumnRef>>,
+) {
+    if let FunctionArgExpr::Expr(expr) = arg {
+        collect_unsupported_expr_param_contexts(expr, contexts);
     }
 }
 
@@ -1008,6 +1704,79 @@ mod tests {
     }
 
     #[test]
+    fn value_type_override_allows_params_in_untraversed_query_clauses() {
+        let query = raw_param_query(
+            "SELECT COUNT(*) FROM users AS u GROUP BY ? ORDER BY ? LIMIT ?;",
+            [
+                core::ParamUsage::new(
+                    "groupKey".to_owned(),
+                    Some(core::CoreType::String),
+                    false,
+                    core::SourceLocation::unknown(),
+                ),
+                core::ParamUsage::new(
+                    "sortKey".to_owned(),
+                    Some(core::CoreType::String),
+                    false,
+                    core::SourceLocation::unknown(),
+                ),
+                core::ParamUsage::new(
+                    "limitCount".to_owned(),
+                    Some(core::CoreType::Int32),
+                    false,
+                    core::SourceLocation::unknown(),
+                ),
+            ],
+        );
+        let schema_columns = [schema_column("users", "id", core::CoreType::Int64)];
+
+        let params = resolve_param_usage_metadata(&query, &schema_columns)
+            .expect("valueType should allow unsupported query clause Param contexts");
+
+        assert_eq!(
+            params,
+            [
+                core::DbParamUsage::new("groupKey".to_owned(), core::CoreType::String),
+                core::DbParamUsage::new("sortKey".to_owned(), core::CoreType::String),
+                core::DbParamUsage::new("limitCount".to_owned(), core::CoreType::Int32),
+            ]
+        );
+    }
+
+    #[test]
+    fn value_type_override_in_subquery_preserves_later_inference_order() {
+        let query = raw_param_query(
+            "SELECT (SELECT ?) AS marker FROM users AS u WHERE u.email = ?;",
+            [
+                core::ParamUsage::new(
+                    "marker".to_owned(),
+                    Some(core::CoreType::String),
+                    false,
+                    core::SourceLocation::unknown(),
+                ),
+                core::ParamUsage::new(
+                    "email".to_owned(),
+                    None,
+                    false,
+                    core::SourceLocation::unknown(),
+                ),
+            ],
+        );
+        let schema_columns = [schema_column("users", "email", core::CoreType::String)];
+
+        let params = resolve_param_usage_metadata(&query, &schema_columns)
+            .expect("subquery valueType should not shift later Param inference");
+
+        assert_eq!(
+            params,
+            [
+                core::DbParamUsage::new("marker".to_owned(), core::CoreType::String),
+                core::DbParamUsage::new("email".to_owned(), core::CoreType::String),
+            ]
+        );
+    }
+
+    #[test]
     fn rejects_param_without_value_type_when_context_is_not_supported() {
         let query = raw_param_query(
             "SELECT u.id FROM users AS u WHERE COALESCE(?, u.email) = u.email;",
@@ -1069,6 +1838,53 @@ mod tests {
         assert_eq!(
             report.diagnostics()[0].message(),
             "Param `email` requires `valueType` because table alias `u` does not resolve to a current-database table"
+        );
+    }
+
+    #[test]
+    fn rejects_cte_source_shadowing_real_table_without_value_type() {
+        let query = raw_param_query(
+            "WITH u AS (SELECT id FROM users) SELECT u.id FROM u WHERE u.id = ?;",
+            [core::ParamUsage::new(
+                "userId".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            )],
+        );
+        let schema_columns = [schema_column("u", "id", core::CoreType::Int64)];
+
+        let report = resolve_param_usage_metadata(&query, &schema_columns)
+            .expect_err("CTE names should shadow current-database tables");
+
+        assert_eq!(
+            report.diagnostics()[0].message(),
+            "Param `userId` requires `valueType` because table alias `u` does not resolve to a current-database table"
+        );
+    }
+
+    #[test]
+    fn resolves_table_aliases_inside_nested_joins() {
+        let query = raw_param_query(
+            "SELECT u.id FROM (users AS u JOIN accounts AS a ON a.user_id = u.id) WHERE u.email = ?;",
+            [core::ParamUsage::new(
+                "email".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            )],
+        );
+        let schema_columns = [schema_column("users", "email", core::CoreType::String)];
+
+        let params = resolve_param_usage_metadata(&query, &schema_columns)
+            .expect("aliases inside parenthesized joins should resolve");
+
+        assert_eq!(
+            params,
+            [core::DbParamUsage::new(
+                "email".to_owned(),
+                core::CoreType::String
+            )]
         );
     }
 
