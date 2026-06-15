@@ -151,6 +151,8 @@ Responsibilities:
 - parse Hjson metadata payloads.
 - split files into raw query blocks.
 - preserve each query block's raw SQL string.
+- collect independent source-intake diagnostics across discovered SQL files before
+  returning failure.
 
 Source Intake is not fully independent from SQL syntax because it must scan SQL
 comments and avoid corrupting string literals or comment-like text. However, it

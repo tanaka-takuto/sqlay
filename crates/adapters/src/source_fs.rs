@@ -242,45 +242,78 @@ impl SourceReader for FileSystemSourceReader {
         let mut seen_ids = HashMap::new();
         let mut queries = Vec::new();
         let mut diagnostics = core::DiagnosticReport::default();
+        let mut fatal_diagnostics = core::DiagnosticReport::default();
 
         for path in discover_source_files(plan)? {
-            let source_path = plan.source_relative_path(&path).ok_or_else(|| {
-                file_error(
-                    format!(
-                        "source file `{}` is outside the configuration directory `{}`",
-                        path.display(),
-                        plan.config_dir().display()
+            let Some(source_path) = plan.source_relative_path(&path) else {
+                extend_diagnostics(
+                    &mut fatal_diagnostics,
+                    file_error(
+                        format!(
+                            "source file `{}` is outside the configuration directory `{}`",
+                            path.display(),
+                            plan.config_dir().display()
+                        ),
+                        &path,
                     ),
-                    &path,
-                )
-            })?;
-            let source = fs::read_to_string(&path).map_err(|error| {
-                file_error(
-                    format!(
-                        "failed to read SQL source file `{}`: {error}",
-                        path.display()
-                    ),
-                    &path,
-                )
-            })?;
-            let scan = scan_sqlcomp_blocks(&source).map_err(|report| attach_path(report, &path))?;
+                );
+                continue;
+            };
+            let source = match fs::read_to_string(&path) {
+                Ok(source) => source,
+                Err(error) => {
+                    extend_diagnostics(
+                        &mut fatal_diagnostics,
+                        file_error(
+                            format!(
+                                "failed to read SQL source file `{}`: {error}",
+                                path.display()
+                            ),
+                            &path,
+                        ),
+                    );
+                    continue;
+                }
+            };
+            let scan = match scan_sqlcomp_blocks(&source) {
+                Ok(scan) => scan,
+                Err(report) => {
+                    extend_diagnostics(&mut fatal_diagnostics, attach_path(report, &path));
+                    continue;
+                }
+            };
             if scan.blocks().is_empty()
                 && contains_non_comment_sql(scan.sql_without_sqlcomp_blocks())
             {
                 diagnostics.push(unannotated_sql_warning(&path));
             }
 
-            let file_queries = split_sqlcomp_query_blocks_from_scan(&source, &scan)
-                .map_err(|report| attach_path(report, &path))?;
+            let file_queries = match split_sqlcomp_query_blocks_from_scan(&source, &scan) {
+                Ok(file_queries) => file_queries,
+                Err(report) => {
+                    extend_diagnostics(&mut fatal_diagnostics, attach_path(report, &path));
+                    continue;
+                }
+            };
             let file_queries = file_queries
                 .into_iter()
                 .map(|query| attach_query_path(query, &path).with_source_path(source_path.clone()))
                 .collect::<Vec<_>>();
-            reject_duplicate_query_ids(&file_queries, &mut seen_ids)?;
+            collect_duplicate_query_ids(&file_queries, &mut seen_ids, &mut fatal_diagnostics);
             queries.extend(file_queries);
         }
 
+        if !fatal_diagnostics.is_empty() {
+            return Err(fatal_diagnostics);
+        }
+
         Ok(SourceRead::new(queries, diagnostics))
+    }
+}
+
+fn extend_diagnostics(diagnostics: &mut core::DiagnosticReport, report: core::DiagnosticReport) {
+    for diagnostic in report.into_diagnostics() {
+        diagnostics.push(diagnostic);
     }
 }
 
@@ -542,19 +575,18 @@ struct QueryDeclaration {
 
 type SeenQueryIds = HashMap<String, QueryDeclaration>;
 
-fn reject_duplicate_query_ids(
+fn collect_duplicate_query_ids(
     queries: &[core::RawQuery],
     seen_ids: &mut SeenQueryIds,
-) -> core::DiagnosticResult<()> {
+    diagnostics: &mut core::DiagnosticReport,
+) {
     for query in queries {
         let declaration = QueryDeclaration {
             location: query.source_location().cloned(),
         };
 
-        if let Some(first_declaration) =
-            seen_ids.insert(query.metadata().id().to_owned(), declaration)
-        {
-            return Err(core::DiagnosticReport::from_diagnostics(vec![
+        if let Some(first_declaration) = seen_ids.get(query.metadata().id()) {
+            diagnostics.push(
                 core::Diagnostic::error(format!(
                     "duplicate query id `{}`; query IDs must be unique across the full compile run",
                     query.metadata().id()
@@ -565,16 +597,19 @@ fn reject_duplicate_query_ids(
                         .cloned()
                         .unwrap_or_else(core::SourceLocation::unknown),
                 ),
+            );
+            diagnostics.push(
                 core::Diagnostic::note("first declared here").with_location(
                     first_declaration
                         .location
+                        .clone()
                         .unwrap_or_else(core::SourceLocation::unknown),
                 ),
-            ]));
+            );
+        } else {
+            seen_ids.insert(query.metadata().id().to_owned(), declaration);
         }
     }
-
-    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1690,6 +1725,89 @@ SELECT id FROM archived_users;
         fs::remove_dir_all(project_dir).expect("test project directory should be removed");
     }
 
+    #[test]
+    fn source_reader_collects_independent_source_intake_diagnostics_across_files() {
+        let project_dir = test_project_dir("aggregates-source-intake-diagnostics");
+        let exec_path = project_dir.join("sql").join("01_exec_cardinality.sql");
+        let first_duplicate_path = project_dir.join("sql").join("02_duplicate_first.sql");
+        let second_duplicate_path = project_dir.join("sql").join("03_duplicate_second.sql");
+        write_sql(
+            &exec_path,
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: execQuery
+  cardinality: exec
+}
+*/
+SELECT id FROM users;
+",
+        );
+        write_sql(
+            &first_duplicate_path,
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id FROM users;
+",
+        );
+        write_sql(
+            &second_duplicate_path,
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id FROM archived_users;
+",
+        );
+        let plan = compilation_plan(
+            &project_dir,
+            vec![project_dir.join("sql/**/*.sql")],
+            Vec::new(),
+        );
+
+        let report = FileSystemSourceReader
+            .read(&plan)
+            .expect_err("source intake diagnostics should be aggregated");
+
+        assert_eq!(
+            diagnostic_messages(&report),
+            [
+                "`cardinality: exec` is reserved for future non-SELECT support and is not supported in the MVP",
+                "duplicate query id `listUsers`; query IDs must be unique across the full compile run",
+                "first declared here",
+            ]
+        );
+        assert_eq!(
+            report.diagnostics()[0]
+                .location()
+                .and_then(core::SourceLocation::path),
+            Some(exec_path.as_path())
+        );
+        assert_eq!(
+            report.diagnostics()[1]
+                .location()
+                .and_then(core::SourceLocation::path),
+            Some(second_duplicate_path.as_path())
+        );
+        assert_eq!(
+            report.diagnostics()[2]
+                .location()
+                .and_then(core::SourceLocation::path),
+            Some(first_duplicate_path.as_path())
+        );
+
+        fs::remove_dir_all(project_dir).expect("test project directory should be removed");
+    }
+
     fn assert_duplicate_query_report(report: &core::DiagnosticReport, duplicate_path: &Path) {
         assert_eq!(report.diagnostics().len(), 2);
         assert_eq!(
@@ -1703,6 +1821,14 @@ SELECT id FROM archived_users;
             Some(duplicate_path)
         );
         assert_eq!(report.diagnostics()[1].message(), "first declared here");
+    }
+
+    fn diagnostic_messages(report: &core::DiagnosticReport) -> Vec<&str> {
+        report
+            .diagnostics()
+            .iter()
+            .map(core::Diagnostic::message)
+            .collect()
     }
 
     fn compilation_plan(

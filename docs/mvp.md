@@ -203,6 +203,8 @@ The implementation should cover these scenarios:
   `output.dir`.
 - duplicate query IDs are rejected.
 - invalid query IDs are rejected.
+- independent source-intake diagnostics across SQL files are reported together
+  before dialect analysis or database metadata lookup.
 - `check` performs a database-backed dry run without writing files.
 - `compile --clean` removes stale managed generated files.
 - non-`SELECT` statements are rejected.
