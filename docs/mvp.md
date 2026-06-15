@@ -38,6 +38,10 @@ The MVP exposes three commands:
   but does not write generated files.
 - `sqlcomp compile` writes generated TypeScript SQL builder files.
 
+After a successful `sqlcomp init`, the CLI prints the created config filename, a
+`DATABASE_URL=... sqlcomp check` next command example, and a minimal
+`@sqlcomp` query annotation template.
+
 `sqlcomp compile --clean` removes stale managed generated files that no longer
 correspond to an input SQL file. Normal `compile` does not remove stale files.
 
