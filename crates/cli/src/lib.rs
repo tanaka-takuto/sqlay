@@ -37,6 +37,60 @@ Options:
   --clean            Remove stale generated files during compile.
 ";
 
+const INIT_HELP: &str = "\
+Create a starter sqlcomp.config.json.
+
+Usage:
+  sqlcomp init
+
+Behavior:
+  Writes a starter sqlcomp.config.json in the current directory and refuses to overwrite an existing config file.
+
+Examples:
+  sqlcomp init
+";
+
+const CHECK_HELP: &str = "\
+Check SQL sources without writing generated files.
+
+Usage:
+  sqlcomp check [options]
+
+Behavior:
+  Loads sqlcomp.config.json, reads SQL files, validates MySQL SELECT queries, and renders generated TypeScript output in memory.
+  When --config is omitted, searches from the current working directory upward for sqlcomp.config.json.
+  Reads the database URL from the environment variable named by database.urlEnv.
+
+Options:
+  -h, --help         Print this help.
+  --config <path>    Use an explicit config path.
+
+Examples:
+  DATABASE_URL=... sqlcomp check
+  sqlcomp check --config ./sqlcomp.config.json
+";
+
+const COMPILE_HELP: &str = "\
+Compile SQL sources to generated TypeScript files.
+
+Usage:
+  sqlcomp compile [options]
+
+Behavior:
+  Loads sqlcomp.config.json, validates SQL sources, and writes generated TypeScript files under output.dir.
+  When --config is omitted, searches from the current working directory upward for sqlcomp.config.json.
+  Reads the database URL from the environment variable named by database.urlEnv.
+
+Options:
+  -h, --help         Print this help.
+  --config <path>    Use an explicit config path.
+  --clean            Remove stale generated files that no longer correspond to input SQL files.
+
+Examples:
+  DATABASE_URL=... sqlcomp compile
+  sqlcomp compile --config ./sqlcomp.config.json --clean
+";
+
 const INIT_NEXT_STEPS: &str = r"
 Next:
   DATABASE_URL=... sqlcomp check
@@ -74,9 +128,8 @@ pub fn run() -> ExitCode {
 
 fn run_with_args(args: impl IntoIterator<Item = OsString>) -> ExitCode {
     match parse_args(args) {
-        Ok(Command::Noop) => ExitCode::SUCCESS,
-        Ok(Command::Help) => {
-            print!("{HELP}");
+        Ok(Command::Help(topic)) => {
+            print!("{}", help_text(topic));
             ExitCode::SUCCESS
         }
         Ok(Command::Init) => run_init_command(),
@@ -90,8 +143,7 @@ fn run_with_args(args: impl IntoIterator<Item = OsString>) -> ExitCode {
 
 #[derive(Debug, Eq, PartialEq)]
 enum Command {
-    Noop,
-    Help,
+    Help(HelpTopic),
     Init,
     Check {
         config: Option<PathBuf>,
@@ -102,19 +154,38 @@ enum Command {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HelpTopic {
+    TopLevel,
+    Init,
+    Check,
+    Compile,
+}
+
+const fn help_text(topic: HelpTopic) -> &'static str {
+    match topic {
+        HelpTopic::TopLevel => HELP,
+        HelpTopic::Init => INIT_HELP,
+        HelpTopic::Check => CHECK_HELP,
+        HelpTopic::Compile => COMPILE_HELP,
+    }
+}
+
 fn parse_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticResult<Command> {
     let mut args = args.into_iter();
     let _program = args.next();
     let Some(command) = args.next() else {
-        return Ok(Command::Noop);
+        return Ok(Command::Help(HelpTopic::TopLevel));
     };
 
     match command.to_string_lossy().as_ref() {
-        "--help" | "-h" | "help" => parse_no_options(args).map(|()| Command::Help),
+        "--help" | "-h" | "help" => {
+            parse_no_options(args).map(|()| Command::Help(HelpTopic::TopLevel))
+        }
         "init" => parse_init_args(args),
         "check" => parse_options(args, CleanOption::Reject).map(|options| {
             if options.help {
-                Command::Help
+                Command::Help(HelpTopic::Check)
             } else {
                 Command::Check {
                     config: options.config,
@@ -123,7 +194,7 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticResul
         }),
         "compile" => parse_options(args, CleanOption::Allow).map(|options| {
             if options.help {
-                Command::Help
+                Command::Help(HelpTopic::Compile)
             } else {
                 Command::Compile {
                     config: options.config,
@@ -311,7 +382,7 @@ fn parse_init_args(args: impl IntoIterator<Item = OsString>) -> core::Diagnostic
     };
 
     if is_help_arg(&arg) {
-        parse_no_options(args).map(|()| Command::Help)
+        parse_no_options(args).map(|()| Command::Help(HelpTopic::Init))
     } else {
         Err(unexpected_argument(&arg))
     }
@@ -387,7 +458,7 @@ mod tests {
     use std::ffi::OsString;
     use std::path::PathBuf;
 
-    use super::{Command, parse_args};
+    use super::{Command, HelpTopic, parse_args};
 
     #[test]
     fn parses_check_without_config() {
@@ -401,20 +472,28 @@ mod tests {
     fn parses_help_flag() {
         assert_eq!(
             parse_args(["sqlcomp", "--help"].map(OsString::from)).expect("args should parse"),
-            Command::Help
+            Command::Help(HelpTopic::TopLevel)
+        );
+    }
+
+    #[test]
+    fn parses_no_args_as_top_level_help() {
+        assert_eq!(
+            parse_args(["sqlcomp"].map(OsString::from)).expect("args should parse"),
+            Command::Help(HelpTopic::TopLevel)
         );
     }
 
     #[test]
     fn parses_command_help_flags() {
-        for args in [
-            ["sqlcomp", "init", "--help"],
-            ["sqlcomp", "check", "--help"],
-            ["sqlcomp", "compile", "--help"],
+        for (args, expected) in [
+            (["sqlcomp", "init", "--help"], HelpTopic::Init),
+            (["sqlcomp", "check", "--help"], HelpTopic::Check),
+            (["sqlcomp", "compile", "--help"], HelpTopic::Compile),
         ] {
             assert_eq!(
                 parse_args(args.map(OsString::from)).expect("args should parse"),
-                Command::Help
+                Command::Help(expected)
             );
         }
     }
