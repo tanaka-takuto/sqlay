@@ -262,6 +262,22 @@ fn init_writes_starter_config_to_current_directory() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Created sqlcomp.config.json"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("DATABASE_URL=... sqlcomp check"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("/* @sqlcomp"), "stdout: {stdout}");
+    assert!(stdout.contains("type: query"), "stdout: {stdout}");
+    assert!(stdout.contains("id: listUsers"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("SELECT id, name FROM users;"),
+        "stdout: {stdout}"
+    );
 
     let config_path = config_dir.join("sqlcomp.config.json");
     let config = std::fs::read_to_string(&config_path).expect("starter config should be written");
@@ -323,6 +339,11 @@ fn init_refuses_to_overwrite_existing_config() {
             .contains("refusing to overwrite existing config file"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
     );
 
     std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");

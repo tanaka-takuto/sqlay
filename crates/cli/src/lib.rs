@@ -37,6 +37,20 @@ Options:
   --clean            Remove stale generated files during compile.
 ";
 
+const INIT_NEXT_STEPS: &str = r"
+Next:
+  DATABASE_URL=... sqlcomp check
+
+Add a query block such as:
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id, name FROM users;
+";
+
 /// Default CLI composition root.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DefaultPipeline;
@@ -205,7 +219,11 @@ fn run_init_command() -> ExitCode {
     };
 
     match DefaultProjectInitializer::init(&current_dir, &JsoncConfigTemplateWriter) {
-        Ok(_path) => ExitCode::SUCCESS,
+        Ok(_path) => {
+            println!("Created {}", app::CONFIG_FILE_NAME);
+            print!("{INIT_NEXT_STEPS}");
+            ExitCode::SUCCESS
+        }
         Err(report) => fail(&report),
     }
 }
