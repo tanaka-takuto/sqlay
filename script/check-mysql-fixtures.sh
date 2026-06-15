@@ -165,13 +165,17 @@ fixture_root=$repo_root/fixtures/sql
 tmp_fixture=$tmp_root/sql
 
 cp -R "$fixture_root" "$tmp_fixture"
+cp "$tmp_fixture/sqlcomp.valid.config.json" "$tmp_fixture/sqlcomp.config.json"
 rm -rf "$tmp_fixture/generated"
 
 load_mysql_file "$fixture_root/schema.sql"
 load_mysql_file "$fixture_root/seed.sql"
 
-cd "$repo_root"
-DATABASE_URL=$DATABASE_URL cargo run --locked -- compile --config "$tmp_fixture/sqlcomp.valid.config.json"
+(
+  cd "$tmp_fixture/valid/nested"
+  DATABASE_URL=$DATABASE_URL cargo run --manifest-path "$repo_root/Cargo.toml" --locked -- compile
+)
 compare_directories "$fixture_root/generated" "$tmp_fixture/generated"
+cd "$repo_root"
 cargo test --locked -p sqlcomp-adapters --all-features --tests -- --ignored --nocapture
 npm run typecheck:fixtures
