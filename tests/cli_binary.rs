@@ -548,6 +548,34 @@ fn explicit_config_path_bypasses_upward_discovery() {
 }
 
 #[test]
+fn top_level_config_path_is_accepted_before_check_command() {
+    let config_dir = unique_temp_dir("sqlcomp-cli-top-level-config");
+    let child_dir = config_dir.join("packages").join("api");
+    let explicit_path = child_dir.join("sqlcomp.config.json");
+    std::fs::create_dir_all(&child_dir).expect("temp child dir should be created");
+    std::fs::write(&explicit_path, VALID_CONFIG).expect("explicit config should be written");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlcomp"))
+        .args(["--config"])
+        .arg(&explicit_path)
+        .arg("check")
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
+        .output()
+        .expect("sqlcomp check should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Check passed."), "stdout: {stdout}");
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
 fn check_reports_when_config_is_not_found() {
     let start_dir = unique_temp_dir("sqlcomp-cli-missing-config");
     std::fs::create_dir_all(&start_dir).expect("temp start dir should be created");

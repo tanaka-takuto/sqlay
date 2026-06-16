@@ -15,7 +15,8 @@ where near-term work should point. The original MVP remains documented in
 - TypeScript SQL builder generation that preserves SQL source paths under
   `output.dir`.
 - `sqlcomp.config.json` project configuration, discovered from the working
-  directory upward when `--config` is omitted.
+  directory upward when `--config` is omitted. For `check` and `compile`, an
+  explicit config path is accepted before the command or as a command option.
 - `init`, `check`, and `compile` CLI commands.
 - SELECT value binding with paired inline `Param` markers as defined by
   [ADR 0008](./adr/0008-define-select-param-support.md).
