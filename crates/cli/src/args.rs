@@ -28,16 +28,19 @@ pub enum ConfiguredCommand {
 pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticResult<Command> {
     let mut args = args.into_iter();
     let _program = args.next();
-    let Some(command) = args.next() else {
+    let Some(first_arg) = args.next() else {
         return Ok(Command::Help(HelpTopic::TopLevel));
     };
+    let (command, config) = parse_leading_config(first_arg, &mut args)?;
 
     match command.to_string_lossy().as_ref() {
-        "--help" | "-h" | "help" => {
+        "--help" | "-h" | "help" if config.is_none() => {
             parse_no_options(args).map(|()| Command::Help(HelpTopic::TopLevel))
         }
+        "--help" | "-h" | "help" => Err(config_before_unsupported_command()),
+        "init" if config.is_some() => Err(config_before_unsupported_command()),
         "init" => parse_init_args(args),
-        "check" => parse_options(args, CleanOption::Reject).map(|options| {
+        "check" => parse_options(args, CleanOption::Reject, config).map(|options| {
             if options.help {
                 Command::Help(HelpTopic::Check)
             } else {
@@ -46,7 +49,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticR
                 }
             }
         }),
-        "compile" => parse_options(args, CleanOption::Allow).map(|options| {
+        "compile" => parse_options(args, CleanOption::Allow, config).map(|options| {
             if options.help {
                 Command::Help(HelpTopic::Compile)
             } else {
@@ -61,6 +64,32 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticR
             command.to_string_lossy()
         ))),
     }
+}
+
+fn parse_leading_config(
+    first_arg: OsString,
+    args: &mut impl Iterator<Item = OsString>,
+) -> core::DiagnosticResult<(OsString, Option<PathBuf>)> {
+    if first_arg == "--config" {
+        let Some(path) = args.next() else {
+            return Err(single_cli_error("missing value for `--config`"));
+        };
+        let Some(command) = args.next() else {
+            return Err(single_cli_error("missing command after `--config`"));
+        };
+
+        return Ok((command, Some(PathBuf::from(path))));
+    }
+
+    if let Some(path) = config_equals_path(&first_arg) {
+        let Some(command) = args.next() else {
+            return Err(single_cli_error("missing command after `--config`"));
+        };
+
+        return Ok((command, Some(path)));
+    }
+
+    Ok((first_arg, None))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -101,8 +130,12 @@ fn parse_no_options(args: impl IntoIterator<Item = OsString>) -> core::Diagnosti
 fn parse_options(
     args: impl IntoIterator<Item = OsString>,
     clean: CleanOption,
+    config: Option<PathBuf>,
 ) -> core::DiagnosticResult<CommandOptions> {
-    let mut options = CommandOptions::default();
+    let mut options = CommandOptions {
+        config,
+        ..CommandOptions::default()
+    };
     let mut args = args.into_iter();
 
     while let Some(arg) = args.next() {
@@ -126,11 +159,7 @@ fn parse_options(
             options.clean = true;
         } else if is_help_arg(&arg) {
             options.help = true;
-        } else if let Some(path) = arg
-            .to_str()
-            .and_then(|arg| arg.strip_prefix("--config="))
-            .map(PathBuf::from)
-        {
+        } else if let Some(path) = config_equals_path(&arg) {
             if options.config.replace(path).is_some() {
                 return Err(single_cli_error("`--config` may only be provided once"));
             }
@@ -144,6 +173,16 @@ fn parse_options(
 
 fn is_help_arg(arg: &OsString) -> bool {
     arg == "--help" || arg == "-h"
+}
+
+fn config_equals_path(arg: &OsString) -> Option<PathBuf> {
+    arg.to_str()
+        .and_then(|arg| arg.strip_prefix("--config="))
+        .map(PathBuf::from)
+}
+
+fn config_before_unsupported_command() -> core::DiagnosticReport {
+    single_cli_error("`--config` may only be used with `check` or `compile`")
 }
 
 fn unexpected_argument(arg: &OsString) -> core::DiagnosticReport {
@@ -220,6 +259,39 @@ mod tests {
             Command::Compile {
                 config: Some(PathBuf::from("custom/sqlcomp.config.json")),
                 clean: false,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_top_level_config_path_before_check_command() {
+        assert_eq!(
+            parse_args(
+                ["sqlcomp", "--config", "custom/sqlcomp.config.json", "check",].map(OsString::from),
+            )
+            .expect("args should parse"),
+            Command::Check {
+                config: Some(PathBuf::from("custom/sqlcomp.config.json")),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_top_level_equals_form_config_path_before_compile_command() {
+        assert_eq!(
+            parse_args(
+                [
+                    "sqlcomp",
+                    "--config=custom/sqlcomp.config.json",
+                    "compile",
+                    "--clean",
+                ]
+                .map(OsString::from),
+            )
+            .expect("args should parse"),
+            Command::Compile {
+                config: Some(PathBuf::from("custom/sqlcomp.config.json")),
+                clean: true,
             }
         );
     }
