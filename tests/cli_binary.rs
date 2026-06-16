@@ -202,6 +202,10 @@ fn compile_help_describes_output_writing_and_clean() {
         "stdout: {stdout}"
     );
     assert!(
+        stdout.contains("parameter placeholders and input fields"),
+        "stdout: {stdout}"
+    );
+    assert!(
         stdout.contains("BIGINT, DECIMAL, date/time, and enum values map conservatively"),
         "stdout: {stdout}"
     );

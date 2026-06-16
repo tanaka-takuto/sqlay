@@ -84,7 +84,7 @@ Behavior:
   When --config is omitted, searches from the current working directory upward for sqlcomp.config.json.
   Reads the database URL from the environment variable named by database.urlEnv.
   Generated TypeScript preserves each input SQL path relative to the config directory under output.dir.
-  The success summary reports matched SQL files, compiled queries, generated file paths, and stale-file cleanup.
+  The success summary reports matched SQL files, compiled queries, generated file paths, stale-file cleanup, and per-query parameter placeholders and input fields.
   TypeScript type mapping is conservative: BIGINT, DECIMAL, date/time, and enum values map conservatively to string; bytes map to Uint8Array; JSON and unknown types map to unknown; nullable metadata adds | null.
 
 Options:
