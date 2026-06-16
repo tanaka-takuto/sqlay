@@ -1490,6 +1490,13 @@ struct SourceUnitDeclaration {
     location: Option<core::SourceLocation>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SourceUnitOccurrence<'a> {
+    id: &'a str,
+    kind: SourceUnitKind,
+    location: Option<core::SourceLocation>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SourceUnitKind {
     Query,
@@ -1504,25 +1511,43 @@ fn collect_duplicate_source_unit_ids(
     seen_ids: &mut SeenSourceUnitIds,
     diagnostics: &mut core::DiagnosticReport,
 ) {
+    let mut source_units = Vec::with_capacity(queries.len() + fragments.len());
+
     for query in queries {
-        collect_duplicate_source_unit_id(
-            query.metadata().id(),
-            SourceUnitKind::Query,
-            query.source_location().cloned(),
-            seen_ids,
-            diagnostics,
-        );
+        source_units.push(SourceUnitOccurrence {
+            id: query.metadata().id(),
+            kind: SourceUnitKind::Query,
+            location: query.source_location().cloned(),
+        });
     }
 
     for fragment in fragments {
+        source_units.push(SourceUnitOccurrence {
+            id: fragment.metadata().id(),
+            kind: SourceUnitKind::Fragment,
+            location: fragment.source_location().cloned(),
+        });
+    }
+
+    source_units.sort_by_key(|source_unit| source_unit_location_key(source_unit.location.as_ref()));
+
+    for source_unit in source_units {
         collect_duplicate_source_unit_id(
-            fragment.metadata().id(),
-            SourceUnitKind::Fragment,
-            fragment.source_location().cloned(),
+            source_unit.id,
+            source_unit.kind,
+            source_unit.location,
             seen_ids,
             diagnostics,
         );
     }
+}
+
+fn source_unit_location_key(location: Option<&core::SourceLocation>) -> (usize, usize) {
+    location
+        .and_then(core::SourceLocation::range)
+        .map_or((usize::MAX, usize::MAX), |range| {
+            (range.start().line(), range.start().column())
+        })
 }
 
 fn collect_duplicate_source_unit_id(
@@ -3596,6 +3621,58 @@ AND u.active = 1
             &report,
             &fragment_path,
             "duplicate source unit id `activeOnly`; query and fragment IDs must be unique across the full compile run",
+        );
+        fs::remove_dir_all(project_dir).expect("test project directory should be removed");
+    }
+
+    #[test]
+    fn source_reader_reports_same_file_source_unit_collisions_in_source_order() {
+        let project_dir = test_project_dir("duplicate-source-unit-same-file-source-order");
+        let source_path = project_dir.join("sql").join("users.sql");
+        write_sql(
+            &source_path,
+            r"
+/* @sqlcomp
+{
+  type: fragment
+  id: activeOnly
+}
+*/
+AND u.active = 1
+
+/* @sqlcomp
+{
+  type: query
+  id: activeOnly
+}
+*/
+SELECT id FROM users;
+",
+        );
+        let plan = compilation_plan(&project_dir, vec![source_path.clone()], Vec::new());
+
+        let report = FileSystemSourceReader
+            .read(&plan)
+            .expect_err("same-file query and fragment ID collision should be rejected");
+
+        assert_duplicate_source_unit_report(
+            &report,
+            &source_path,
+            "duplicate source unit id `activeOnly`; query and fragment IDs must be unique across the full compile run",
+        );
+        assert_eq!(
+            report.diagnostics()[0]
+                .location()
+                .and_then(core::SourceLocation::range)
+                .map(|range| range.start().line()),
+            Some(15)
+        );
+        assert_eq!(
+            report.diagnostics()[1]
+                .location()
+                .and_then(core::SourceLocation::range)
+                .map(|range| range.start().line()),
+            Some(7)
         );
         fs::remove_dir_all(project_dir).expect("test project directory should be removed");
     }
