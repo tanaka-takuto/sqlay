@@ -47,6 +47,26 @@ impl QueryMetadata {
     }
 }
 
+/// Metadata parsed from a `type: fragment` annotation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FragmentMetadata {
+    id: String,
+}
+
+impl FragmentMetadata {
+    /// Build parsed fragment metadata.
+    #[must_use]
+    pub const fn new(id: String) -> Self {
+        Self { id }
+    }
+
+    /// Fragment ID exactly as written in source metadata.
+    #[must_use]
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
 /// One inline Param occurrence in source order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParamUsage {
@@ -117,6 +137,66 @@ impl ParamUsage {
     pub fn with_source_location(mut self, location: SourceLocation) -> Self {
         self.source_location = location;
         self
+    }
+}
+
+/// Raw fragment extracted from SQL source.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RawFragment {
+    metadata: FragmentMetadata,
+    sql: String,
+    source_path: Option<PathBuf>,
+    source_location: Option<SourceLocation>,
+}
+
+impl RawFragment {
+    /// Build a raw fragment from parsed metadata and SQL text.
+    #[must_use]
+    pub const fn new(metadata: FragmentMetadata, sql: String) -> Self {
+        Self {
+            metadata,
+            sql,
+            source_path: None,
+            source_location: None,
+        }
+    }
+
+    /// Attach the source SQL path relative to the configuration directory.
+    #[must_use]
+    pub fn with_source_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.source_path = Some(path.into());
+        self
+    }
+
+    /// Attach source location context for diagnostics.
+    #[must_use]
+    pub fn with_source_location(mut self, location: SourceLocation) -> Self {
+        self.source_location = Some(location);
+        self
+    }
+
+    /// Fragment metadata parsed from the source annotation.
+    #[must_use]
+    pub const fn metadata(&self) -> &FragmentMetadata {
+        &self.metadata
+    }
+
+    /// Raw SQL body for this fragment.
+    #[must_use]
+    pub fn sql(&self) -> &str {
+        &self.sql
+    }
+
+    /// Source SQL path relative to the configuration directory, when known.
+    #[must_use]
+    pub fn source_path(&self) -> Option<&Path> {
+        self.source_path.as_deref()
+    }
+
+    /// Optional source location for the SQL body.
+    #[must_use]
+    pub const fn source_location(&self) -> Option<&SourceLocation> {
+        self.source_location.as_ref()
     }
 }
 
@@ -246,8 +326,8 @@ mod tests {
     use std::path::Path;
 
     use crate::{
-        AnalyzedQuery, Cardinality, QueryMetadata, RawQuery, SourceLocation, SourcePosition,
-        SourceRange,
+        AnalyzedQuery, Cardinality, FragmentMetadata, QueryMetadata, RawFragment, RawQuery,
+        SourceLocation, SourcePosition, SourceRange,
     };
 
     #[test]
@@ -301,6 +381,27 @@ mod tests {
         );
         assert!(query.param_usages()[0].nullable_override());
         assert_eq!(query.param_usages()[0].source_location(), &location);
+    }
+
+    #[test]
+    fn raw_fragment_preserves_metadata_sql_source_path_and_optional_source_location() {
+        let location = SourceLocation::at_range(
+            "sql/fragments.sql",
+            SourceRange::point(
+                SourcePosition::one_based(7, 1).expect("test position should be valid"),
+            ),
+        );
+        let fragment = RawFragment::new(
+            FragmentMetadata::new("activeOnly".to_owned()),
+            "\nAND u.active = 1\n".to_owned(),
+        )
+        .with_source_path("sql/fragments.sql")
+        .with_source_location(location.clone());
+
+        assert_eq!(fragment.metadata().id(), "activeOnly");
+        assert_eq!(fragment.sql(), "\nAND u.active = 1\n");
+        assert_eq!(fragment.source_path(), Some(Path::new("sql/fragments.sql")));
+        assert_eq!(fragment.source_location(), Some(&location));
     }
 
     #[test]

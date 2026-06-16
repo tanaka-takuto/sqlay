@@ -150,7 +150,7 @@ Responsibilities:
 - read `.sql` files.
 - find `@sqlcomp` comments.
 - parse Hjson metadata payloads.
-- split files into raw query blocks.
+- split files into raw query and fragment source units.
 - preserve each query block's raw SQL string.
 - collect independent source-intake diagnostics across discovered SQL files before
   returning failure.
@@ -183,8 +183,15 @@ For query annotations:
 
 For SELECT `Param` intake, `type: query` remains the only annotation that starts a
 new query block. Inline `type: param` and `type: paramEnd` annotations are
-recognized inside query bodies as defined by
-[ADR 0008](./adr/0008-define-select-param-support.md).
+recognized inside query and fragment bodies as defined by
+[ADR 0008](./adr/0008-define-select-param-support.md) and
+[ADR 0009](./adr/0009-define-initial-select-slot-fragment-support.md).
+
+For initial `Fragment` intake, `type: fragment` starts a global source unit with an
+explicit `id` and a body that ends before the next global `query` or `fragment`
+annotation. Fragment source units are parsed and retained for the ADR 0009
+implementation slices, but end-to-end Slot/Fragment composition remains unsupported
+until the later resolution, validation, and generation slices land.
 
 ## Dialect Analyzer
 
