@@ -169,7 +169,10 @@ fn check_help_describes_config_discovery_and_database_url() {
         stdout.contains("preserves each input SQL path"),
         "stdout: {stdout}"
     );
-    assert!(stdout.contains("0 params"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("parameter placeholders and input fields"),
+        "stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -196,6 +199,10 @@ fn compile_help_describes_output_writing_and_clean() {
     assert!(stdout.contains("stale generated files"), "stdout: {stdout}");
     assert!(
         stdout.contains("preserves each input SQL path"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("parameter placeholders and input fields"),
         "stdout: {stdout}"
     );
     assert!(
