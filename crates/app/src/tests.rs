@@ -59,6 +59,20 @@ fn source_relative_path_rejects_paths_outside_config_directory() {
 }
 
 #[test]
+fn source_read_carries_fragment_source_units() {
+    let fragment = core::RawFragment::new(
+        core::FragmentMetadata::new("activeOnly".to_owned()),
+        "\nAND u.active = 1\n".to_owned(),
+    )
+    .with_source_path("sql/fragments.sql");
+
+    let source_read = SourceRead::from_queries(Vec::new()).with_fragments(vec![fragment.clone()]);
+
+    assert!(source_read.queries().is_empty());
+    assert_eq!(source_read.fragments(), [fragment]);
+}
+
+#[test]
 fn check_runs_full_generation_pipeline_without_writing_files() {
     let temp_dir = unique_temp_dir("sqlcomp-app-check-dry-run");
     std::fs::create_dir_all(&temp_dir).expect("temp project dir should be created");

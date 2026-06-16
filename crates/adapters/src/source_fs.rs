@@ -161,6 +161,7 @@ pub fn parse_sqlcomp_query_metadata(
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum SqlcompAnnotation {
     Query(core::QueryMetadata),
+    Fragment(core::FragmentMetadata),
     Param(ParsedParamMetadata),
     ParamEnd,
 }
@@ -178,11 +179,38 @@ struct ParsedSqlcompBlock<'a> {
     annotation: SqlcompAnnotation,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct SourceUnits {
+    queries: Vec<core::RawQuery>,
+    fragments: Vec<core::RawFragment>,
+}
+
+impl SourceUnits {
+    const fn new(queries: Vec<core::RawQuery>, fragments: Vec<core::RawFragment>) -> Self {
+        Self { queries, fragments }
+    }
+
+    #[cfg(test)]
+    fn queries(&self) -> &[core::RawQuery] {
+        &self.queries
+    }
+
+    #[cfg(test)]
+    fn fragments(&self) -> &[core::RawFragment] {
+        &self.fragments
+    }
+
+    fn into_parts(self) -> (Vec<core::RawQuery>, Vec<core::RawFragment>) {
+        (self.queries, self.fragments)
+    }
+}
+
 fn parse_sqlcomp_annotation(block: &SqlcompBlock) -> core::DiagnosticResult<SqlcompAnnotation> {
     let annotation_type = parse_annotation_type(block)?;
 
     match annotation_type.as_str() {
         "query" => parse_sqlcomp_query_metadata(block).map(SqlcompAnnotation::Query),
+        "fragment" => parse_fragment_metadata(block).map(SqlcompAnnotation::Fragment),
         "param" => parse_param_metadata(block).map(SqlcompAnnotation::Param),
         "paramEnd" => {
             parse_param_end_metadata(block)?;
@@ -194,7 +222,7 @@ fn parse_sqlcomp_annotation(block: &SqlcompBlock) -> core::DiagnosticResult<Sqlc
         )),
         _ => Err(metadata_error(
             format!(
-                "unsupported `@sqlcomp` annotation type `{annotation_type}`; supported values are `query`, `param`, and `paramEnd`"
+                "unsupported `@sqlcomp` annotation type `{annotation_type}`; supported values are `query`, `fragment`, `param`, and `paramEnd`"
             ),
             block.payload_range(),
         )),
@@ -423,6 +451,27 @@ fn parse_query_metadata(
     ))
 }
 
+fn parse_fragment_metadata(block: &SqlcompBlock) -> core::DiagnosticResult<core::FragmentMetadata> {
+    let metadata = parse_sqlcomp_metadata_object(block)?;
+    reject_unknown_metadata_fields(
+        &metadata,
+        &["type", "id"],
+        "fragment",
+        "`type` and `id`",
+        block,
+    )?;
+    let id = required_fragment_string_metadata_field(&metadata, "id", block)?;
+
+    if !is_valid_query_id(&id) {
+        return Err(metadata_error(
+            format!("invalid fragment id `{id}`; must match `^[A-Za-z_][A-Za-z0-9_]*$`"),
+            block.payload_range(),
+        ));
+    }
+
+    Ok(core::FragmentMetadata::new(id))
+}
+
 fn parse_param_metadata(block: &SqlcompBlock) -> core::DiagnosticResult<ParsedParamMetadata> {
     match parse_sqlcomp_metadata_object(block) {
         Ok(metadata) => parse_param_metadata_object(&metadata, block),
@@ -583,6 +632,24 @@ fn required_param_string_metadata_field(
     }
 }
 
+fn required_fragment_string_metadata_field(
+    metadata: &Map<String, Value>,
+    field: &str,
+    block: &SqlcompBlock,
+) -> core::DiagnosticResult<String> {
+    match metadata.get(field) {
+        Some(Value::String(value)) => Ok(value.clone()),
+        Some(_) => Err(metadata_error(
+            format!("`fragment` metadata field `{field}` must be a string"),
+            block.payload_range(),
+        )),
+        None => Err(metadata_error(
+            format!("missing required `fragment` metadata field `{field}`"),
+            block.payload_range(),
+        )),
+    }
+}
+
 fn optional_string_metadata_field(
     metadata: &Map<String, Value>,
     field: &str,
@@ -722,14 +789,18 @@ fn parse_cardinality(
 /// Returns diagnostics when sqlcomp block scanning fails or any query metadata
 /// payload is invalid.
 pub fn split_sqlcomp_query_blocks(source: &str) -> core::DiagnosticResult<Vec<core::RawQuery>> {
-    let scan = scan_sqlcomp_blocks(source)?;
-    split_sqlcomp_query_blocks_from_scan(source, &scan)
+    split_sqlcomp_source_units(source).map(|source_units| source_units.queries)
 }
 
-fn split_sqlcomp_query_blocks_from_scan(
+fn split_sqlcomp_source_units(source: &str) -> core::DiagnosticResult<SourceUnits> {
+    let scan = scan_sqlcomp_blocks(source)?;
+    split_sqlcomp_source_units_from_scan(source, &scan)
+}
+
+fn split_sqlcomp_source_units_from_scan(
     source: &str,
     scan: &SqlcompBlockScan,
-) -> core::DiagnosticResult<Vec<core::RawQuery>> {
+) -> core::DiagnosticResult<SourceUnits> {
     let blocks = scan.blocks();
     let mut parsed_blocks = Vec::with_capacity(blocks.len());
 
@@ -742,42 +813,62 @@ fn split_sqlcomp_query_blocks_from_scan(
 
     validate_inline_param_markers(&parsed_blocks)?;
 
-    let query_indexes = parsed_blocks
+    let source_unit_indexes = parsed_blocks
         .iter()
         .enumerate()
-        .filter_map(|(index, parsed_block)| {
-            matches!(parsed_block.annotation, SqlcompAnnotation::Query(_)).then_some(index)
-        })
+        .filter_map(|(index, parsed_block)| is_global_source_unit(parsed_block).then_some(index))
         .collect::<Vec<_>>();
-    let mut queries = Vec::with_capacity(query_indexes.len());
+    let mut queries = Vec::new();
+    let mut fragments = Vec::new();
 
-    for (query_position, parsed_index) in query_indexes.iter().copied().enumerate() {
+    for (source_unit_position, parsed_index) in source_unit_indexes.iter().copied().enumerate() {
         let parsed_block = &parsed_blocks[parsed_index];
-        let SqlcompAnnotation::Query(metadata) = &parsed_block.annotation else {
-            unreachable!("query indexes only point at query annotations");
-        };
         let body_start = parsed_block.block.comment_end_index();
-        let body_end = query_indexes
-            .get(query_position + 1)
-            .map_or(source.len(), |next_query_index| {
-                parsed_blocks[*next_query_index].block.comment_start_index()
-            });
+        let body_end = source_unit_indexes.get(source_unit_position + 1).map_or(
+            source.len(),
+            |next_source_unit_index| {
+                parsed_blocks[*next_source_unit_index]
+                    .block
+                    .comment_start_index()
+            },
+        );
         let sql = source[body_start..body_end].to_owned();
         let location = core::SourceLocation::from_range(source_range_for_sql_body(
             source, body_start, body_end,
         ));
-        let replacement =
-            replace_inline_param_ranges(source, body_start, body_end, &parsed_blocks)?;
 
-        queries.push(
-            core::RawQuery::new(metadata.clone(), sql)
-                .with_analysis_sql(replacement.analysis_sql)
-                .with_param_usages(replacement.param_usages)
-                .with_source_location(location),
-        );
+        match &parsed_block.annotation {
+            SqlcompAnnotation::Query(metadata) => {
+                let replacement =
+                    replace_inline_param_ranges(source, body_start, body_end, &parsed_blocks)?;
+
+                queries.push(
+                    core::RawQuery::new(metadata.clone(), sql)
+                        .with_analysis_sql(replacement.analysis_sql)
+                        .with_param_usages(replacement.param_usages)
+                        .with_source_location(location),
+                );
+            }
+            SqlcompAnnotation::Fragment(metadata) => {
+                reject_fragment_statement_separator(source, body_start, body_end)?;
+                fragments.push(
+                    core::RawFragment::new(metadata.clone(), sql).with_source_location(location),
+                );
+            }
+            SqlcompAnnotation::Param(_) | SqlcompAnnotation::ParamEnd => {
+                unreachable!("source unit indexes only point at global annotations");
+            }
+        }
     }
 
-    Ok(queries)
+    Ok(SourceUnits::new(queries, fragments))
+}
+
+const fn is_global_source_unit(parsed_block: &ParsedSqlcompBlock<'_>) -> bool {
+    matches!(
+        parsed_block.annotation,
+        SqlcompAnnotation::Query(_) | SqlcompAnnotation::Fragment(_)
+    )
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -809,6 +900,9 @@ fn replace_inline_param_ranges(
         match &parsed_block.annotation {
             SqlcompAnnotation::Query(_) => {
                 index += 1;
+            }
+            SqlcompAnnotation::Fragment(_) => {
+                unreachable!("fragment annotations are global source unit boundaries");
             }
             SqlcompAnnotation::Param(metadata) => {
                 append_non_param_sql(
@@ -915,27 +1009,46 @@ fn verify_placeholder_count(
     Ok(())
 }
 
+fn reject_fragment_statement_separator(
+    source: &str,
+    start: usize,
+    end: usize,
+) -> core::DiagnosticResult<()> {
+    if let Some(index) = first_statement_separator_index(source, start, end) {
+        return Err(metadata_error(
+            "raw statement separator `;` is not supported in fragment bodies",
+            source_range_for_span(source, index, index + 1),
+        ));
+    }
+
+    Ok(())
+}
+
+fn first_statement_separator_index(source: &str, start: usize, end: usize) -> Option<usize> {
+    StatementSeparatorScanner::new(source, start, end).next_separator_index()
+}
+
 fn validate_inline_param_markers(
     parsed_blocks: &[ParsedSqlcompBlock<'_>],
 ) -> core::DiagnosticResult<()> {
-    let mut inside_query = false;
+    let mut inside_source_unit = false;
     let mut open_param_block: Option<&SqlcompBlock> = None;
 
     for parsed_block in parsed_blocks {
         match parsed_block.annotation {
-            SqlcompAnnotation::Query(_) => {
+            SqlcompAnnotation::Query(_) | SqlcompAnnotation::Fragment(_) => {
                 if let Some(block) = open_param_block.take() {
                     return Err(metadata_error(
                         "`param` marker is missing a matching `paramEnd` marker",
                         block.payload_range(),
                     ));
                 }
-                inside_query = true;
+                inside_source_unit = true;
             }
             SqlcompAnnotation::Param(_) => {
-                if !inside_query {
+                if !inside_source_unit {
                     return Err(metadata_error(
-                        "Param markers must appear inside a query body",
+                        "Param markers must appear inside a query or fragment body",
                         parsed_block.block.payload_range(),
                     ));
                 }
@@ -948,9 +1061,9 @@ fn validate_inline_param_markers(
                 open_param_block = Some(parsed_block.block);
             }
             SqlcompAnnotation::ParamEnd => {
-                if !inside_query {
+                if !inside_source_unit {
                     return Err(metadata_error(
-                        "Param markers must appear inside a query body",
+                        "Param markers must appear inside a query or fragment body",
                         parsed_block.block.payload_range(),
                     ));
                 }
@@ -982,6 +1095,7 @@ impl SourceReader for FileSystemSourceReader {
     fn read(&self, plan: &core::CompilationPlan) -> core::DiagnosticResult<SourceRead> {
         let mut seen_ids = HashMap::new();
         let mut queries = Vec::new();
+        let mut fragments = Vec::new();
         let mut diagnostics = core::DiagnosticReport::default();
         let mut fatal_diagnostics = core::DiagnosticReport::default();
         let source_files = discover_source_files(plan)?;
@@ -1031,26 +1145,36 @@ impl SourceReader for FileSystemSourceReader {
                 diagnostics.push(unannotated_sql_warning(&path));
             }
 
-            let file_queries = match split_sqlcomp_query_blocks_from_scan(&source, &scan) {
-                Ok(file_queries) => file_queries,
+            let source_units = match split_sqlcomp_source_units_from_scan(&source, &scan) {
+                Ok(source_units) => source_units,
                 Err(report) => {
                     extend_diagnostics(&mut fatal_diagnostics, attach_path(report, &path));
                     continue;
                 }
             };
+            let (file_queries, file_fragments) = source_units.into_parts();
             let file_queries = file_queries
                 .into_iter()
                 .map(|query| attach_query_path(query, &path).with_source_path(source_path.clone()))
                 .collect::<Vec<_>>();
+            let file_fragments = file_fragments
+                .into_iter()
+                .map(|fragment| {
+                    attach_fragment_path(fragment, &path).with_source_path(source_path.clone())
+                })
+                .collect::<Vec<_>>();
             collect_duplicate_query_ids(&file_queries, &mut seen_ids, &mut fatal_diagnostics);
             queries.extend(file_queries);
+            fragments.extend(file_fragments);
         }
 
         if !fatal_diagnostics.is_empty() {
             return Err(fatal_diagnostics);
         }
 
-        Ok(SourceRead::new(queries, diagnostics).with_source_file_count(source_file_count))
+        Ok(SourceRead::new(queries, diagnostics)
+            .with_fragments(fragments)
+            .with_source_file_count(source_file_count))
     }
 }
 
@@ -1078,6 +1202,18 @@ fn attach_query_path(query: core::RawQuery, path: &Path) -> core::RawQuery {
     };
 
     query.with_param_usages(param_usages)
+}
+
+fn attach_fragment_path(fragment: core::RawFragment, path: &Path) -> core::RawFragment {
+    let range = fragment
+        .source_location()
+        .and_then(core::SourceLocation::range);
+
+    if let Some(range) = range {
+        fragment.with_source_location(core::SourceLocation::at_range(path, range))
+    } else {
+        fragment.with_source_location(core::SourceLocation::for_path(path))
+    }
 }
 
 fn attach_param_usage_path(usage: core::ParamUsage, path: &Path) -> core::ParamUsage {
@@ -1793,6 +1929,122 @@ impl<'a> PlaceholderScanner<'a> {
     }
 }
 
+struct StatementSeparatorScanner<'a> {
+    source: &'a str,
+    index: usize,
+    end: usize,
+}
+
+impl<'a> StatementSeparatorScanner<'a> {
+    const fn new(source: &'a str, start: usize, end: usize) -> Self {
+        Self {
+            source,
+            index: start,
+            end,
+        }
+    }
+
+    fn next_separator_index(&mut self) -> Option<usize> {
+        while !self.is_at_end() {
+            if self.starts_with("/*") {
+                self.skip_block_comment();
+            } else if self.is_line_comment_start() {
+                self.skip_line_comment();
+            } else if self.current_char().is_some_and(is_quote_delimiter) {
+                self.skip_quoted();
+            } else if self.current_char() == Some(';') {
+                let index = self.index;
+                self.advance_current();
+                return Some(index);
+            } else {
+                self.advance_current();
+            }
+        }
+
+        None
+    }
+
+    fn skip_block_comment(&mut self) {
+        self.advance_current();
+        self.advance_current();
+
+        while !self.is_at_end() {
+            if self.starts_with("*/") {
+                self.advance_current();
+                self.advance_current();
+                return;
+            }
+
+            self.advance_current();
+        }
+    }
+
+    fn skip_line_comment(&mut self) {
+        while let Some(char) = self.advance_current() {
+            if char == '\n' {
+                return;
+            }
+        }
+    }
+
+    fn skip_quoted(&mut self) {
+        let delimiter = self
+            .current_char()
+            .expect("quoted skip should start at a delimiter");
+        self.advance_current();
+
+        while let Some(char) = self.current_char() {
+            self.advance_current();
+
+            if delimiter != '`' && char == '\\' {
+                if !self.is_at_end() {
+                    self.advance_current();
+                }
+                continue;
+            }
+
+            if char == delimiter {
+                if self.current_char() == Some(delimiter) {
+                    self.advance_current();
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    fn advance_current(&mut self) -> Option<char> {
+        let char = self.current_char()?;
+        self.index += char.len_utf8();
+        Some(char)
+    }
+
+    fn current_char(&self) -> Option<char> {
+        if self.is_at_end() {
+            return None;
+        }
+
+        self.source[self.index..self.end].chars().next()
+    }
+
+    const fn is_at_end(&self) -> bool {
+        self.index >= self.end
+    }
+
+    fn starts_with(&self, needle: &str) -> bool {
+        self.source[self.index..self.end].starts_with(needle)
+    }
+
+    fn is_line_comment_start(&self) -> bool {
+        self.starts_with("#")
+            || (self.starts_with("--")
+                && self.source[self.index + 2..self.end]
+                    .chars()
+                    .next()
+                    .is_none_or(char::is_whitespace))
+    }
+}
+
 const fn is_quote_delimiter(char: char) -> bool {
     matches!(char, '\'' | '"' | '`')
 }
@@ -1886,7 +2138,7 @@ mod tests {
 
     use super::{
         FileSystemSourceReader, SqlcompBlock, parse_sqlcomp_query_metadata, scan_sqlcomp_blocks,
-        split_sqlcomp_query_blocks,
+        split_sqlcomp_query_blocks, split_sqlcomp_source_units,
     };
     use crate::dialect_mysql::MysqlDialectAnalyzer;
     use sqlcomp_app::{DialectAnalyzer, SourceReader};
@@ -2244,6 +2496,146 @@ SELECT 2;
         assert_eq!(queries[0].sql(), "\nSELECT 1;\n");
         assert_eq!(queries[1].metadata().id(), "secondQuery");
         assert_eq!(queries[1].sql(), "\nSELECT 2;\n-- trailing file content\n");
+    }
+
+    #[test]
+    fn splits_fragment_source_units_and_query_units_in_source_order() {
+        let source = r"
+/* @sqlcomp
+{
+  type: fragment
+  id: activeOnly
+}
+*/
+-- ordinary SQL comment stays in the fragment body
+AND u.active = 1
+/* @sqlcomp { type: param id: tenantId valueType: int64 } */
+42
+/* @sqlcomp { type: paramEnd } */
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT u.id FROM users AS u;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
+
+        let source_units = split_sqlcomp_source_units(source).expect("source units should split");
+
+        assert_eq!(source_units.fragments().len(), 1);
+        assert_eq!(source_units.fragments()[0].metadata().id(), "activeOnly");
+        assert_eq!(
+            source_units.fragments()[0].sql(),
+            "\n-- ordinary SQL comment stays in the fragment body\nAND u.active = 1\n/* @sqlcomp { type: param id: tenantId valueType: int64 } */\n42\n/* @sqlcomp { type: paramEnd } */\n"
+        );
+        assert_eq!(source_units.queries().len(), 1);
+        assert_eq!(source_units.queries()[0].metadata().id(), "listUsers");
+        assert_eq!(
+            source_units.queries()[0].sql(),
+            "\nSELECT u.id FROM users AS u;\n"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_fragment_metadata() {
+        for (source, expected_message) in [
+            (
+                r"
+/* @sqlcomp
+{
+  type: fragment
+}
+*/
+AND u.active = 1
+",
+                "missing required `fragment` metadata field `id`",
+            ),
+            (
+                r"
+/* @sqlcomp
+{
+  type: fragment
+  id: 1bad
+}
+*/
+AND u.active = 1
+",
+                "invalid fragment id `1bad`; must match `^[A-Za-z_][A-Za-z0-9_]*$`",
+            ),
+            (
+                r"
+/* @sqlcomp
+{
+  type: fragment
+  id: activeOnly
+  cardinality: many
+}
+*/
+AND u.active = 1
+",
+                "unknown `fragment` metadata field `cardinality`; supported fields are `type` and `id`",
+            ),
+        ] {
+            let source = source
+                .strip_prefix('\n')
+                .expect("raw SQL test source should start with a newline");
+            let report =
+                split_sqlcomp_source_units(source).expect_err("invalid fragment metadata rejected");
+
+            assert_eq!(diagnostic_messages(&report), [expected_message]);
+        }
+    }
+
+    #[test]
+    fn rejects_statement_separators_in_fragment_bodies() {
+        let source = r"
+/* @sqlcomp
+{
+  type: fragment
+  id: activeOnly
+}
+*/
+AND u.active = 1;
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
+
+        let report = split_sqlcomp_source_units(source)
+            .expect_err("fragment statement separators should be rejected");
+
+        assert_eq!(
+            diagnostic_messages(&report),
+            ["raw statement separator `;` is not supported in fragment bodies"]
+        );
+    }
+
+    #[test]
+    fn allows_statement_separator_text_inside_fragment_literals_and_comments() {
+        let source = r"
+/* @sqlcomp
+{
+  type: fragment
+  id: labelled
+}
+*/
+AND u.label = ';'
+-- semicolon in comment ;
+/* ordinary block comment ; */
+"
+        .strip_prefix('\n')
+        .expect("raw SQL test source should start with a newline");
+
+        let source_units = split_sqlcomp_source_units(source)
+            .expect("literal and comment semicolons should not be statement separators");
+
+        assert_eq!(source_units.fragments().len(), 1);
+        assert_eq!(
+            source_units.fragments()[0].sql(),
+            "\nAND u.label = ';'\n-- semicolon in comment ;\n/* ordinary block comment ; */\n"
+        );
     }
 
     #[test]
@@ -2626,7 +3018,7 @@ WHERE email = /* @sqlcomp { type: param id: email } */
 */
 SELECT id FROM users;
 ",
-                "Param markers must appear inside a query body",
+                "Param markers must appear inside a query or fragment body",
             ),
         ] {
             let source = source
@@ -2688,6 +3080,41 @@ SELECT id FROM users WHERE id = 1;
             Some(core::Cardinality::One)
         );
         assert_eq!(queries[1].sql(), "\nSELECT id FROM users WHERE id = 1;\n");
+
+        fs::remove_dir_all(project_dir).expect("test project directory should be removed");
+    }
+
+    #[test]
+    fn filesystem_source_reader_reads_fragment_only_files_without_unannotated_sql_warning() {
+        let project_dir = test_project_dir("reads-fragment-only-files");
+        let source_path = project_dir.join("sql").join("fragments.sql");
+        write_sql(
+            &source_path,
+            r"
+/* @sqlcomp
+{
+  type: fragment
+  id: activeOnly
+}
+*/
+AND u.active = 1
+",
+        );
+        let plan = compilation_plan(&project_dir, vec![source_path], Vec::new());
+
+        let source_read = FileSystemSourceReader
+            .read(&plan)
+            .expect("fragment-only SQL file should be read");
+
+        assert_eq!(source_read.source_file_count(), 1);
+        assert!(source_read.queries().is_empty());
+        assert_eq!(source_read.fragments().len(), 1);
+        assert_eq!(source_read.fragments()[0].metadata().id(), "activeOnly");
+        assert_eq!(
+            source_read.fragments()[0].source_path(),
+            Some(Path::new("sql/fragments.sql"))
+        );
+        assert!(source_read.diagnostics().is_empty());
 
         fs::remove_dir_all(project_dir).expect("test project directory should be removed");
     }

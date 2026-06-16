@@ -51,6 +51,7 @@ pub trait SourceReader {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SourceRead {
     queries: Vec<core::RawQuery>,
+    fragments: Vec<core::RawFragment>,
     diagnostics: core::DiagnosticReport,
     source_file_count: usize,
 }
@@ -61,6 +62,7 @@ impl SourceRead {
     pub const fn new(queries: Vec<core::RawQuery>, diagnostics: core::DiagnosticReport) -> Self {
         Self {
             queries,
+            fragments: Vec::new(),
             diagnostics,
             source_file_count: 0,
         }
@@ -82,10 +84,23 @@ impl SourceRead {
         self
     }
 
+    /// Attach global fragment source units found in included SQL sources.
+    #[must_use]
+    pub fn with_fragments(mut self, fragments: Vec<core::RawFragment>) -> Self {
+        self.fragments = fragments;
+        self
+    }
+
     /// Query blocks found in included SQL sources.
     #[must_use]
     pub fn queries(&self) -> &[core::RawQuery] {
         &self.queries
+    }
+
+    /// Fragment blocks found in included SQL sources.
+    #[must_use]
+    pub fn fragments(&self) -> &[core::RawFragment] {
+        &self.fragments
     }
 
     /// Non-fatal diagnostics found during source intake.
