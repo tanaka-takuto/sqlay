@@ -744,7 +744,11 @@ fn required_slot_targets_metadata_field(
     values
         .iter()
         .map(|value| match value {
-            Value::String(target) => Ok(target.clone()),
+            Value::String(target) if is_valid_query_id(target) => Ok(target.clone()),
+            Value::String(target) => Err(metadata_error(
+                format!("invalid Slot target `{target}`; must match `^[A-Za-z_][A-Za-z0-9_]*$`"),
+                block.payload_range(),
+            )),
             _ => Err(metadata_error(
                 "`slot` metadata field `targets` must be a string array",
                 block.payload_range(),
@@ -3105,6 +3109,30 @@ SELECT id FROM users/* @sqlcomp { type: slot id: filter targets: [] } */;
 SELECT id FROM users/* @sqlcomp { type: slot id: filter targets: activeOnly } */;
 ",
                 "`slot` metadata field `targets` must be a string array",
+            ),
+            (
+                r#"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id FROM users/* @sqlcomp { type: slot id: filter targets: ["bad-id"] } */;
+"#,
+                "invalid Slot target `bad-id`; must match `^[A-Za-z_][A-Za-z0-9_]*$`",
+            ),
+            (
+                r#"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id FROM users/* @sqlcomp { type: slot id: filter targets: [""] } */;
+"#,
+                "invalid Slot target ``; must match `^[A-Za-z_][A-Za-z0-9_]*$`",
             ),
             (
                 r"
