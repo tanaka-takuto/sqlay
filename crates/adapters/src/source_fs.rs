@@ -1159,6 +1159,11 @@ fn first_statement_separator_index(source: &str, start: usize, end: usize) -> Op
     StatementSeparatorScanner::new(source, start, end).next_separator_index()
 }
 
+/// Validates the structural constraints of inline `@sqlcomp` markers.
+///
+/// Ensures that `param` and `paramEnd` markers are paired without nesting, that inline
+/// markers appear only inside query or fragment bodies, that `slot` markers are used only
+/// in query bodies, and that `slot` markers do not nest within `param` ranges.
 fn validate_inline_markers(parsed_blocks: &[ParsedSqlcompBlock<'_>]) -> core::DiagnosticResult<()> {
     let mut context = InlineMarkerContext::OutsideSourceUnit;
     let mut open_param_block: Option<&SqlcompBlock> = None;
