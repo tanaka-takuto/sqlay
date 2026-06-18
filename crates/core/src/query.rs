@@ -179,6 +179,10 @@ impl SlotUsage {
     }
 
     /// Byte index in `RawQuery::analysis_sql()` where the slot marker was removed.
+    ///
+    /// `RawQuery::slot_usages()` must expose Slot usages in ascending insertion-index
+    /// order. Application Slot expansion validates and rebuilds SQL with a cursor that
+    /// relies on this ordering contract from source intake.
     #[must_use]
     pub const fn insertion_index(&self) -> usize {
         self.insertion_index

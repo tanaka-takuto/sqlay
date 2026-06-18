@@ -253,6 +253,66 @@ fn check_reports_token_adjacent_slot_replacement_from_dialect_validation() {
 }
 
 #[test]
+fn check_rejects_slot_expansion_above_variant_limit() {
+    let config = project_config(PathBuf::from("/tmp/sqlcomp-project"));
+    let calls = CallLog::default();
+    let targets = (0..256)
+        .map(|index| format!("fragment{index}"))
+        .collect::<Vec<_>>();
+    let query = core::RawQuery::new(
+        core::QueryMetadata::new("listUsers".to_owned(), None),
+        "SELECT u.id FROM users AS u WHERE 1 = 1/* @sqlcomp { type: slot id: filter targets: [fragment0] } */;".to_owned(),
+    )
+    .with_analysis_sql("SELECT u.id FROM users AS u WHERE 1 = 1;".to_owned())
+    .with_slot_usages(vec![core::SlotUsage::new(
+        "filter".to_owned(),
+        targets.clone(),
+        "SELECT u.id FROM users AS u WHERE 1 = 1".len(),
+        core::SourceLocation::unknown(),
+    )])
+    .with_source_path("sql/users.sql");
+    let fragments = targets
+        .iter()
+        .map(|target| {
+            core::RawFragment::new(
+                core::FragmentMetadata::new(target.clone()),
+                "\nAND u.active = 1".to_owned(),
+            )
+            .with_analysis_sql("\nAND u.active = 1".to_owned())
+            .with_source_path("sql/fragments.sql")
+        })
+        .collect::<Vec<_>>();
+    let source_read = SourceRead::from_queries(vec![query])
+        .with_fragments(fragments)
+        .with_source_file_count(2);
+    let source_reader = FakeSourceReader::new(calls.clone()).with_source_read(source_read);
+    let dialect_analyzer = FakeDialectAnalyzer::new(calls.clone());
+    let metadata_provider = FakeMetadataProvider::new(calls.clone());
+    let query_compiler = LoggingQueryCompiler::new(calls.clone());
+    let target_generator =
+        FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()));
+    let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
+    let pipeline = CompilePipeline {
+        planner: &DefaultCompilationPlanner,
+        source_reader: &source_reader,
+        dialect_analyzer: &dialect_analyzer,
+        metadata_provider: &metadata_provider,
+        query_compiler: &query_compiler,
+        target_generator: &target_generator,
+        generated_file_writer: &generated_file_writer,
+    };
+
+    let report = DefaultCompileUseCase::check(&config, &pipeline)
+        .expect_err("slot variant limit should be enforced before dialect validation");
+
+    assert_eq!(
+        diagnostic_messages(&report),
+        "Slot expansion would produce more than 256 SQL variants"
+    );
+    assert_eq!(calls.entries(), ["read"]);
+}
+
+#[test]
 fn compile_writes_generated_files_from_the_shared_pipeline() {
     let config = project_config(PathBuf::from("/tmp/sqlcomp-project"));
     let generated_files = core::GeneratedFiles::new(vec![core::GeneratedFile::new(
