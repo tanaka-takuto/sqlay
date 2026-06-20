@@ -178,7 +178,7 @@ fn render_input_type_alias(
     query: &core::CompiledQuery,
     symbols: &QuerySymbols,
 ) {
-    if query.input().is_empty() {
+    if query.input().is_empty() && !has_slot_inputs(query) {
         writeln!(
             output,
             "export type {} = Record<string, never>;",
@@ -199,7 +199,80 @@ fn render_input_type_alias(
         )
         .expect("writing to String cannot fail");
     }
+    if let Some(dynamic_body) = query.dynamic_body() {
+        for slot in dynamic_body.slots() {
+            render_slot_input_field(output, slot);
+        }
+    }
     output.push_str("};\n");
+}
+
+fn has_slot_inputs(query: &core::CompiledQuery) -> bool {
+    query
+        .dynamic_body()
+        .is_some_and(|dynamic_body| !dynamic_body.slots().is_empty())
+}
+
+fn render_slot_input_field(output: &mut String, slot: &core::CompiledSlotDefinition) {
+    let branch_types = slot
+        .branches()
+        .iter()
+        .map(render_slot_branch_input_type)
+        .collect::<Vec<_>>();
+    let slot_type = if branch_types.is_empty() {
+        "never".to_owned()
+    } else {
+        branch_types.join(" | ")
+    };
+
+    writeln!(
+        output,
+        "  {}?: {};",
+        typescript_property_name(slot.id()),
+        slot_type
+    )
+    .expect("writing to String cannot fail");
+}
+
+fn render_slot_branch_input_type(branch: &core::CompiledSlotBranch) -> String {
+    let params = unique_branch_params(branch);
+    let fragment = typescript_string_literal(branch.target_id());
+
+    if params.is_empty() {
+        return format!("{{ $fragment: {fragment} }}");
+    }
+
+    let mut output = String::new();
+    writeln!(&mut output, "{{").expect("writing to String cannot fail");
+    writeln!(&mut output, "    $fragment: {fragment};").expect("writing to String cannot fail");
+    for param in params {
+        writeln!(
+            &mut output,
+            "    {}: {};",
+            typescript_property_name(param.input_name()),
+            typescript_param_binding_type(param)
+        )
+        .expect("writing to String cannot fail");
+    }
+    output.push_str("  }");
+    output
+}
+
+fn unique_branch_params(branch: &core::CompiledSlotBranch) -> Vec<&core::ParamBinding> {
+    let mut params = Vec::new();
+
+    for segment in branch.segments() {
+        for param in segment.params() {
+            if !params
+                .iter()
+                .any(|existing: &&core::ParamBinding| existing.input_name() == param.input_name())
+            {
+                params.push(param);
+            }
+        }
+    }
+
+    params
 }
 
 fn render_function_input_parameter(
@@ -739,6 +812,134 @@ export function findCustomerActivity(
     }
 
     #[test]
+    fn renders_slot_input_types_with_fragment_discriminants() {
+        let dynamic_body = core::CompiledDynamicQuery::new(
+            vec![
+                sql_segment(
+                    "SELECT id FROM users WHERE status = ?",
+                    vec![param("status", core::CoreType::String, false)],
+                ),
+                sql_segment(" ", Vec::new()),
+                sql_segment(";", Vec::new()),
+            ],
+            vec![
+                core::CompiledSlotOccurrence::new("filter".to_owned()),
+                core::CompiledSlotOccurrence::new("sort".to_owned()),
+            ],
+            vec![
+                slot_definition(
+                    "filter",
+                    vec![
+                        slot_branch("activeOnly", " AND active = 1", Vec::new()),
+                        slot_branch(
+                            "byEmail",
+                            " AND email = ?",
+                            vec![param("email", core::CoreType::String, false)],
+                        ),
+                        slot_branch(
+                            "createdSince",
+                            " AND created_at >= ?",
+                            vec![param("since", core::CoreType::DateTime, true)],
+                        ),
+                    ],
+                ),
+                slot_definition(
+                    "sort",
+                    vec![slot_branch("orderByName", " ORDER BY name", Vec::new())],
+                ),
+            ],
+        );
+        let query = core::CompiledQuery::new(
+            core::QueryId::new("listUsers".to_owned()),
+            "SELECT id FROM users WHERE status = ?;".to_owned(),
+            core::Cardinality::Many,
+            vec![core::InputField::new(
+                "status".to_owned(),
+                core::CoreType::String,
+                false,
+            )],
+            vec![core::ResultColumn::new(
+                "id".to_owned(),
+                core::CoreType::Int64,
+                false,
+            )],
+        )
+        .with_params(vec![param("status", core::CoreType::String, false)])
+        .with_dynamic_body(dynamic_body);
+
+        assert_eq!(
+            render_query(&query),
+            r#"export type listUsers_Input = {
+  status: string;
+  filter?: { $fragment: "activeOnly" } | {
+    $fragment: "byEmail";
+    email: string;
+  } | {
+    $fragment: "createdSince";
+    since: string | null;
+  };
+  sort?: { $fragment: "orderByName" };
+};
+
+export type listUsers_Row = {
+  id: string;
+};
+
+export type listUsers_Output = listUsers_Row[];
+
+export function listUsers(
+  input: listUsers_Input,
+): { sql: string; params: readonly [string] } {
+  return {
+    sql: "SELECT id FROM users WHERE status = ?;",
+    params: [input.status] as const,
+  };
+}
+"#
+        );
+    }
+
+    #[test]
+    fn renders_slot_only_queries_as_input_objects() {
+        let dynamic_body = core::CompiledDynamicQuery::new(
+            vec![
+                sql_segment("SELECT id FROM users WHERE 1 = 1", Vec::new()),
+                sql_segment(";", Vec::new()),
+            ],
+            vec![core::CompiledSlotOccurrence::new("filter".to_owned())],
+            vec![slot_definition(
+                "filter",
+                vec![slot_branch(
+                    "byEmail",
+                    " AND email = ?",
+                    vec![param("email", core::CoreType::String, false)],
+                )],
+            )],
+        );
+        let query = core::CompiledQuery::new(
+            core::QueryId::new("searchUsers".to_owned()),
+            "SELECT id FROM users WHERE 1 = 1;".to_owned(),
+            core::Cardinality::Many,
+            Vec::new(),
+            vec![core::ResultColumn::new(
+                "id".to_owned(),
+                core::CoreType::Int64,
+                false,
+            )],
+        )
+        .with_dynamic_body(dynamic_body);
+
+        assert!(render_query(&query).contains(
+            r#"export type searchUsers_Input = {
+  filter?: {
+    $fragment: "byEmail";
+    email: string;
+  };
+};"#
+        ));
+    }
+
+    #[test]
     fn renders_result_column_names_as_typescript_property_names_without_transforming() {
         let query = core::CompiledQuery::new(
             core::QueryId::new("selectOddColumns".to_owned()),
@@ -900,6 +1101,29 @@ export function findCustomerActivity(
                 false,
             )],
         )
+    }
+
+    fn slot_definition(
+        id: &str,
+        branches: Vec<core::CompiledSlotBranch>,
+    ) -> core::CompiledSlotDefinition {
+        core::CompiledSlotDefinition::new(id.to_owned(), branches)
+    }
+
+    fn slot_branch(
+        target_id: &str,
+        sql: &str,
+        params: Vec<core::ParamBinding>,
+    ) -> core::CompiledSlotBranch {
+        core::CompiledSlotBranch::new(target_id.to_owned(), vec![sql_segment(sql, params)])
+    }
+
+    fn sql_segment(sql: &str, params: Vec<core::ParamBinding>) -> core::CompiledSqlSegment {
+        core::CompiledSqlSegment::new(sql.to_owned(), params)
+    }
+
+    fn param(name: &str, ty: core::CoreType, nullable: bool) -> core::ParamBinding {
+        core::ParamBinding::new(name.to_owned(), ty, nullable)
     }
 
     fn file_contents<'a>(files: &'a core::GeneratedFiles, path: &Path) -> &'a str {

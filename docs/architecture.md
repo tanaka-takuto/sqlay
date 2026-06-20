@@ -219,8 +219,9 @@ than per marker occurrence. Query direct Param IDs and Slot IDs are rejected whe
 they collide because they share the generated input namespace. Fragments that are
 not referenced by any Slot target produce non-fatal warnings. Variant cardinality
 and result row shape must match the all-slots-unselected base variant before
-generation can proceed. Later ADR 0009 slices still need to complete generated Slot
-input types, runtime SQL branch generation, and CLI summaries.
+generation can proceed. TypeScript generation emits Slot input type members from
+the compiled dynamic query IR. Later ADR 0009 slices still need to complete runtime
+SQL branch generation.
 
 ## Dialect Analyzer
 
@@ -384,6 +385,11 @@ export function listUsers(
   };
 }
 ```
+
+For Slot queries, generated input types add each unique Slot ID as an optional
+top-level property. Each Slot property is a `$fragment` discriminated object or
+union of objects in `targets` order. Fragment Params are nested inside the selected
+branch object and are not exported as independent fragment input aliases.
 
 Generated SQL must be emitted as a valid JavaScript string literal. The TypeScript
 target generator should escape the SQL text rather than embedding raw SQL in an

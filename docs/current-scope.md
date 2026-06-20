@@ -62,11 +62,11 @@ export type listUsers_Input = {
 };
 ```
 
-Optional input properties are not currently supported because omitting an input
-would require changing the SQL structure. Current query authors should either use a
-nullable sentinel pattern such as `param IS NULL OR column = param`, write separate
-queries for distinct shapes, or wait for Slot/Fragment support to handle dynamic SQL
-composition.
+Optional direct Param input properties are not currently supported because omitting
+a direct Param input would require changing the SQL structure. Current query authors
+should either use a nullable sentinel pattern such as `param IS NULL OR column =
+param`, write separate queries for distinct shapes, or use Slot/Fragment selection
+for supported dynamic SQL composition slices.
 
 ## Near-Term Direction
 
@@ -96,9 +96,11 @@ targets before dialect analysis. Validation also rejects expanded variants whose
 effective cardinality, after any explicit query metadata override is applied, or
 result row shape differs from the all-slots-unselected base variant, and repeated
 Slot occurrences whose selected Fragment Param type or nullability conflicts.
-End-to-end Slot/Fragment generated TypeScript support remains incomplete until the
-remaining ADR 0009 slices land. CLI success summaries now report Fragment, unique
-Slot, and validated variant counts for the validation slices.
+TypeScript generation now includes Slot input types with optional `$fragment`
+discriminated branch objects, nesting Fragment Params inside the selected Slot
+branch. End-to-end Slot/Fragment generated TypeScript support remains incomplete
+until runtime SQL branch generation lands. CLI success summaries now report Fragment,
+unique Slot, and validated variant counts for the validation slices.
 
 ## Defining ADRs
 
@@ -122,9 +124,9 @@ The following remain intentionally unsupported:
   duplicate Slot targets, queries that would produce more than 256 variants before
   dialect analysis, and variants whose effective cardinality or result row shape
   differs from the base variant, as well as repeated Slot occurrences whose selected
-  Fragment Param type or nullability conflicts; generated Slot input types and
-  runtime SQL branch generation remain follow-up work.
-- optional input properties that would require SQL structure changes.
+  Fragment Param type or nullability conflicts; generated Slot input types are
+  available, while runtime SQL branch generation remains follow-up work.
+- optional direct Param input properties that would require SQL structure changes.
 - `INSERT`, `UPDATE`, `DELETE`, DDL, `CALL`, and other non-SELECT statements.
 - multi-statement query blocks.
 - generated database execution functions.
