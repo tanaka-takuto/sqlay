@@ -411,9 +411,11 @@ where
             .describe(&base_variant.query, &base_variant.analysis)
             .map_err(|report| with_slot_variant_context(report, base_variant.context.as_ref()))?;
         for variant in analyzed_variants.iter().skip(1) {
-            pipeline
+            let metadata = pipeline
                 .metadata_provider
                 .describe(&variant.query, &variant.analysis)
+                .map_err(|report| with_slot_variant_context(report, variant.context.as_ref()))?;
+            crate::query_compiler::validate_param_bindings(&variant.query, &metadata)
                 .map_err(|report| with_slot_variant_context(report, variant.context.as_ref()))?;
         }
         let compiled = pipeline.query_compiler.compile(

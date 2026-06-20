@@ -623,6 +623,83 @@ fn check_describes_expanded_slot_variants_with_sql_ordered_params() {
 }
 
 #[test]
+fn check_rejects_param_type_conflicts_in_selected_slot_variants() {
+    let config = project_config(PathBuf::from("/tmp/sqlcomp-project"));
+    let calls = CallLog::default();
+    let base_sql = "SELECT u.id FROM users AS u WHERE u.email = ?;";
+    let slot_index = base_sql
+        .find(';')
+        .expect("Slot insertion point exists before statement terminator");
+    let query = core::RawQuery::new(
+        core::QueryMetadata::new("listUsers".to_owned(), None),
+        "SELECT u.id FROM users AS u WHERE u.email = /* @sqlcomp { type: param id: filter valueType: string } */ 'ada@example.test' /* @sqlcomp { type: paramEnd } *//* @sqlcomp { type: slot id: extraFilter targets: [byId] } */;".to_owned(),
+    )
+    .with_analysis_sql(base_sql.to_owned())
+    .with_param_usages(vec![
+        core::ParamUsage::new(
+            "filter".to_owned(),
+            Some(core::CoreType::String),
+            false,
+            core::SourceLocation::unknown(),
+        )
+        .with_placeholder_index(base_sql.find('?').expect("query Param placeholder exists")),
+    ])
+    .with_slot_usages(vec![core::SlotUsage::new(
+        "extraFilter".to_owned(),
+        vec!["byId".to_owned()],
+        slot_index,
+        core::SourceLocation::unknown(),
+    )])
+    .with_source_path("sql/users.sql");
+    let fragment_sql = " AND u.id = ?";
+    let fragment = core::RawFragment::new(
+        core::FragmentMetadata::new("byId".to_owned()),
+        " AND u.id = /* @sqlcomp { type: param id: filter valueType: int64 } */ 1 /* @sqlcomp { type: paramEnd } */".to_owned(),
+    )
+    .with_analysis_sql(fragment_sql.to_owned())
+    .with_param_usages(vec![
+        core::ParamUsage::new(
+            "filter".to_owned(),
+            Some(core::CoreType::Int64),
+            false,
+            core::SourceLocation::unknown(),
+        )
+        .with_placeholder_index(
+            fragment_sql
+                .find('?')
+                .expect("fragment Param placeholder exists"),
+        ),
+    ]);
+    let source_read = SourceRead::from_queries(vec![query])
+        .with_fragments(vec![fragment])
+        .with_source_file_count(2);
+    let source_reader = FakeSourceReader::new(calls.clone()).with_source_read(source_read);
+    let dialect_analyzer = FakeDialectAnalyzer::new(calls.clone());
+    let metadata_provider = FakeMetadataProvider::new(calls.clone());
+    let query_compiler = LoggingQueryCompiler::new(calls.clone());
+    let target_generator =
+        FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()));
+    let generated_file_writer = RecordingGeneratedFileWriter::new(calls);
+    let pipeline = CompilePipeline {
+        planner: &DefaultCompilationPlanner,
+        source_reader: &source_reader,
+        dialect_analyzer: &dialect_analyzer,
+        metadata_provider: &metadata_provider,
+        query_compiler: &query_compiler,
+        target_generator: &target_generator,
+        generated_file_writer: &generated_file_writer,
+    };
+
+    let report = DefaultCompileUseCase::check(&config, &pipeline)
+        .expect_err("Param type conflicts in selected Slot variants should be rejected");
+
+    assert_eq!(
+        diagnostic_messages(&report),
+        "conflicting Param `filter` types: first occurrence resolved to String but later occurrence resolved to Int64\nwhile validating Slot expansion variant for query `listUsers` with selections: extraFilter=byId\nSlot `extraFilter` selected `byId` in this variant"
+    );
+}
+
+#[test]
 fn check_rejects_repeated_slot_id_with_different_target_order() {
     let config = project_config(PathBuf::from("/tmp/sqlcomp-project"));
     let calls = CallLog::default();
@@ -1552,7 +1629,14 @@ impl MetadataProvider for FakeMetadataProvider {
         let param_usages = query
             .param_usages()
             .iter()
-            .map(|usage| core::DbParamUsage::new(usage.id().to_owned(), core::CoreType::String))
+            .map(|usage| {
+                core::DbParamUsage::new(
+                    usage.id().to_owned(),
+                    usage
+                        .value_type_override()
+                        .unwrap_or(core::CoreType::String),
+                )
+            })
             .collect();
 
         Ok(metadata().with_param_usages(param_usages))
