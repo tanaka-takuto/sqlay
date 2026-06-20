@@ -51,13 +51,13 @@ generate nested object graphs or ORM-style models.
 ## Current Boundaries
 
 The current implementation supports query metadata, result type extraction, SELECT
-value binding through inline `Param` markers, and TypeScript SQL builder output.
-`Slot` and `Fragment` remain part of the long-term design but are not currently
-supported.
+value binding through inline `Param` markers, TypeScript SQL builder output, and
+initial `Slot`/`Fragment` validation with generated Slot input types. Runtime Slot
+SQL branch generation remains incomplete.
 
 Non-SELECT statements, generated database execution functions, additional SQL
 dialects, and additional target generators require separate design decisions before
 implementation.
 
-Future `Slot` design should use `targets: [...]` rather than a single `target`, so
-exclusive choices and single choices can share one representation.
+`Slot` design uses `targets: [...]` rather than a single `target`, so exclusive
+choices and single choices share one representation.
