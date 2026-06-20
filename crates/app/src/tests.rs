@@ -1671,7 +1671,7 @@ fn fake_dialect_analyzer_matches_limit_one_case_insensitively_and_exactly() {
 
     assert_eq!(limit_one.cardinality(), core::Cardinality::One);
     assert_eq!(limit_ten.cardinality(), core::Cardinality::Many);
-    assert_eq!(limit_one_offset.cardinality(), core::Cardinality::Many);
+    assert_eq!(limit_one_offset.cardinality(), core::Cardinality::One);
 }
 
 fn diagnostic_messages(report: &core::DiagnosticReport) -> String {
@@ -1858,7 +1858,8 @@ fn analysis_sql_has_limit_one(sql: &str) -> bool {
             }
             "1" => {
                 return index + 2 == tokens.len()
-                    || (tokens.get(index + 2) == Some(&";") && index + 3 == tokens.len());
+                    || (tokens.get(index + 2) == Some(&";") && index + 3 == tokens.len())
+                    || tokens.get(index + 2) == Some(&"OFFSET");
             }
             _ => {}
         }
