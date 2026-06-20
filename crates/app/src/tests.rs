@@ -747,7 +747,7 @@ fn check_rejects_slot_variant_cardinality_mismatch_without_override() {
 
     assert_eq!(
         diagnostic_messages(&report),
-        "Slot expansion variant for query `listUsers` resolved cardinality `one`, but the base variant resolved cardinality `many`; all variants must have matching cardinality after query metadata override\nwhile validating Slot expansion variant for query `listUsers` with selections: limiter=limitOne\nSlot `limiter` selected `limitOne` in this variant"
+        "Slot expansion variant for query `listUsers` resolved effective cardinality `one`, but the base variant resolved effective cardinality `many`; all variants must have matching effective cardinality, using an explicit query metadata `cardinality` override when present and dialect analysis otherwise\nwhile validating Slot expansion variant for query `listUsers` with selections: limiter=limitOne\nSlot `limiter` selected `limitOne` in this variant"
     );
     assert_eq!(calls.entries(), ["read", "analyze", "analyze"]);
 }
@@ -1646,6 +1646,34 @@ fn test_param_usage(id: &str, placeholder_index: usize) -> core::ParamUsage {
         .with_placeholder_index(placeholder_index)
 }
 
+#[test]
+fn fake_dialect_analyzer_matches_limit_one_case_insensitively_and_exactly() {
+    let analyzer = FakeDialectAnalyzer::new(CallLog::default()).with_limit_one_inference();
+
+    let limit_one = analyzer
+        .analyze(&core::RawQuery::new(
+            core::QueryMetadata::new("limitOne".to_owned(), None),
+            "SELECT id FROM users limit 1;".to_owned(),
+        ))
+        .expect("lowercase limit one should be analyzed");
+    let limit_ten = analyzer
+        .analyze(&core::RawQuery::new(
+            core::QueryMetadata::new("limitTen".to_owned(), None),
+            "SELECT id FROM users LIMIT 10;".to_owned(),
+        ))
+        .expect("limit ten should be analyzed");
+    let limit_one_offset = analyzer
+        .analyze(&core::RawQuery::new(
+            core::QueryMetadata::new("limitOneOffset".to_owned(), None),
+            "SELECT id FROM users LIMIT 1 OFFSET 5;".to_owned(),
+        ))
+        .expect("limit one with additional clause should be analyzed");
+
+    assert_eq!(limit_one.cardinality(), core::Cardinality::One);
+    assert_eq!(limit_ten.cardinality(), core::Cardinality::Many);
+    assert_eq!(limit_one_offset.cardinality(), core::Cardinality::Many);
+}
+
 fn diagnostic_messages(report: &core::DiagnosticReport) -> String {
     report
         .diagnostics()
@@ -1805,14 +1833,38 @@ impl DialectAnalyzer for FakeDialectAnalyzer {
             return Err(failure.report());
         }
 
-        let cardinality = if self.infer_limit_one && query.analysis_sql().contains("LIMIT 1") {
-            core::Cardinality::One
-        } else {
-            core::Cardinality::Many
-        };
+        let cardinality =
+            if self.infer_limit_one && analysis_sql_has_limit_one(query.analysis_sql()) {
+                core::Cardinality::One
+            } else {
+                core::Cardinality::Many
+            };
 
         Ok(core::AnalyzedQuery::new(cardinality))
     }
+}
+
+fn analysis_sql_has_limit_one(sql: &str) -> bool {
+    let tokens = sql.split_ascii_whitespace().collect::<Vec<_>>();
+
+    for index in 0..tokens.len().saturating_sub(1) {
+        if !tokens[index].eq_ignore_ascii_case("LIMIT") {
+            continue;
+        }
+
+        match tokens[index + 1] {
+            "1;" => {
+                return index + 2 == tokens.len();
+            }
+            "1" => {
+                return index + 2 == tokens.len()
+                    || (tokens.get(index + 2) == Some(&";") && index + 3 == tokens.len());
+            }
+            _ => {}
+        }
+    }
+
+    false
 }
 
 #[derive(Clone, Debug)]

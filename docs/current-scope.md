@@ -93,8 +93,9 @@ Slots and global Fragments can be resolved into concrete validation variants dur
 normalization and preserve expanded-SQL Param ordering. Validation rejects queries
 that would produce more than 256 variants, unknown Slot targets, or duplicate Slot
 targets before dialect analysis. Validation also rejects expanded variants whose
-effective cardinality or result row shape differs from the all-slots-unselected base
-variant. End-to-end Slot/Fragment generated TypeScript support remains incomplete
+effective cardinality, after any explicit query metadata override is applied, or
+result row shape differs from the all-slots-unselected base variant. End-to-end
+Slot/Fragment generated TypeScript support remains incomplete
 until the remaining ADR 0009 slices land.
 
 ## Defining ADRs
