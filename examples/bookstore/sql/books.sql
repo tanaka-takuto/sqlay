@@ -26,6 +26,7 @@ LEFT JOIN bookstore_reviews AS r
   ON r.book_id = b.id
   AND r.approved = 1
 WHERE b.stock_quantity > 0
+/* @sqlcomp { type: slot id: discoveryFilter targets: [staffPicksOnly, byBookFormat] } */
 GROUP BY
   b.id,
   b.isbn,
@@ -120,6 +121,8 @@ INNER JOIN bookstore_authors AS a
 INNER JOIN bookstore_reviews AS r
   ON r.book_id = b.id
   AND r.approved = 1
+WHERE 1 = 1
+/* @sqlcomp { type: slot id: discoveryFilter targets: [staffPicksOnly, byBookFormat] } */
 GROUP BY
   b.id,
   b.title,
