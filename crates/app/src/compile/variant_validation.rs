@@ -41,14 +41,17 @@ pub(super) fn validate_variant_row_shape(
     let variant_columns = variant_metadata.columns();
 
     if variant_columns.len() != base_columns.len() {
-        return Err(query_error(
-            &variant.query,
-            format!(
-                "Slot expansion variant for query `{}` returned {} result columns, but the base variant returned {}; all variants must have matching result row shape",
-                variant.query.metadata().id(),
-                variant_columns.len(),
-                base_columns.len(),
+        return Err(with_slot_variant_context(
+            query_error(
+                &variant.query,
+                format!(
+                    "Slot expansion variant for query `{}` returned {} result columns, but the base variant returned {}; all variants must have matching result row shape",
+                    variant.query.metadata().id(),
+                    variant_columns.len(),
+                    base_columns.len(),
+                ),
             ),
+            variant.context.as_ref(),
         ));
     }
 
@@ -89,12 +92,15 @@ fn row_shape_difference_error(
     variant: &AnalyzedQueryVariant,
     difference: &str,
 ) -> core::DiagnosticReport {
-    query_error(
-        &variant.query,
-        format!(
-            "Slot expansion variant for query `{}` {difference}; all variants must have matching result row shape",
-            variant.query.metadata().id(),
+    with_slot_variant_context(
+        query_error(
+            &variant.query,
+            format!(
+                "Slot expansion variant for query `{}` {difference}; all variants must have matching result row shape",
+                variant.query.metadata().id(),
+            ),
         ),
+        variant.context.as_ref(),
     )
 }
 

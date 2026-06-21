@@ -82,8 +82,7 @@ where
                 .metadata_provider
                 .describe(&variant.query, &variant.analysis)
                 .map_err(|report| with_slot_variant_context(report, variant.context.as_ref()))?;
-            validate_variant_row_shape(&base_metadata, variant, &metadata)
-                .map_err(|report| with_slot_variant_context(report, variant.context.as_ref()))?;
+            validate_variant_row_shape(&base_metadata, variant, &metadata)?;
             validate_expanded_variant_param_bindings(
                 variant,
                 &metadata,

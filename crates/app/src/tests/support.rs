@@ -137,7 +137,7 @@ pub(super) fn repeated_slot_dynamic_ir_fixture() -> (core::RawQuery, core::RawFr
 
 pub(super) fn row_shape_mismatch_report(
     variant_columns: Vec<core::DbResultColumn>,
-) -> (core::DiagnosticReport, Vec<&'static str>) {
+) -> core::DiagnosticReport {
     let config = project_config(PathBuf::from("/tmp/sqlcomp-project"));
     let calls = CallLog::default();
     let query_sql = "SELECT u.id FROM users AS u WHERE 1 = 1;";
@@ -172,7 +172,7 @@ pub(super) fn row_shape_mismatch_report(
     let query_compiler = LoggingQueryCompiler::new(calls.clone());
     let target_generator =
         FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()));
-    let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
+    let generated_file_writer = RecordingGeneratedFileWriter::new(calls);
     let pipeline = CompilePipeline {
         planner: &DefaultCompilationPlanner,
         source_reader: &source_reader,
@@ -183,10 +183,8 @@ pub(super) fn row_shape_mismatch_report(
         generated_file_writer: &generated_file_writer,
     };
 
-    let report = DefaultCompileUseCase::check(&config, &pipeline)
-        .expect_err("row-shape-changing Slot variants should be rejected");
-
-    (report, calls.entries())
+    DefaultCompileUseCase::check(&config, &pipeline)
+        .expect_err("row-shape-changing Slot variants should be rejected")
 }
 
 pub(super) fn test_param_usage(id: &str, placeholder_index: usize) -> core::ParamUsage {

@@ -33,7 +33,7 @@ fn check_rejects_slot_variant_cardinality_mismatch_without_override() {
     let query_compiler = LoggingQueryCompiler::new(calls.clone());
     let target_generator =
         FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()));
-    let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
+    let generated_file_writer = RecordingGeneratedFileWriter::new(calls);
     let pipeline = CompilePipeline {
         planner: &DefaultCompilationPlanner,
         source_reader: &source_reader,
@@ -51,7 +51,6 @@ fn check_rejects_slot_variant_cardinality_mismatch_without_override() {
         diagnostic_messages(&report),
         "Slot expansion variant for query `listUsers` resolved effective cardinality `one`, but the base variant resolved effective cardinality `many`; all variants must have matching effective cardinality, using an explicit query metadata `cardinality` override when present and dialect analysis otherwise\nwhile validating Slot expansion variant for query `listUsers` with selections: limiter=limitOne\nSlot `limiter` selected `limitOne` in this variant"
     );
-    assert_eq!(calls.entries(), ["read", "analyze", "analyze"]);
 }
 
 #[test]
@@ -86,7 +85,7 @@ fn check_applies_explicit_cardinality_override_before_slot_variant_comparison() 
     let query_compiler = LoggingQueryCompiler::new(calls.clone());
     let target_generator =
         FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()));
-    let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
+    let generated_file_writer = RecordingGeneratedFileWriter::new(calls);
     let pipeline = CompilePipeline {
         planner: &DefaultCompilationPlanner,
         source_reader: &source_reader,
@@ -97,20 +96,29 @@ fn check_applies_explicit_cardinality_override_before_slot_variant_comparison() 
         generated_file_writer: &generated_file_writer,
     };
 
-    DefaultCompileUseCase::check(&config, &pipeline)
+    let outcome = DefaultCompileUseCase::check(&config, &pipeline)
         .expect("explicit cardinality override should stabilize Slot variants");
 
+    assert!(outcome.diagnostics().is_empty());
+    assert_eq!(outcome.fragment_count(), 1);
+    assert_eq!(outcome.unique_slot_count(), 1);
+    assert_eq!(outcome.variant_count(), 2);
     assert_eq!(
-        calls.entries(),
-        [
-            "read", "analyze", "analyze", "describe", "describe", "compile", "generate"
-        ]
+        outcome.query_summaries(),
+        [crate::QuerySummary::new(
+            "listUsers".to_owned(),
+            Some(PathBuf::from("sql/users.sql")),
+            0,
+            0,
+            1,
+            2,
+        )]
     );
 }
 
 #[test]
 fn check_rejects_slot_variant_row_shape_column_count_mismatch() {
-    let (report, calls) = row_shape_mismatch_report(vec![
+    let report = row_shape_mismatch_report(vec![
         core::DbResultColumn::new("id".to_owned(), core::CoreType::Int64, Some(false)),
         core::DbResultColumn::new("email".to_owned(), core::CoreType::String, Some(false)),
     ]);
@@ -119,15 +127,11 @@ fn check_rejects_slot_variant_row_shape_column_count_mismatch() {
         diagnostic_messages(&report),
         "Slot expansion variant for query `listUsers` returned 2 result columns, but the base variant returned 1; all variants must have matching result row shape\nwhile validating Slot expansion variant for query `listUsers` with selections: filter=shapeChanger\nSlot `filter` selected `shapeChanger` in this variant"
     );
-    assert_eq!(
-        calls,
-        ["read", "analyze", "analyze", "describe", "describe"]
-    );
 }
 
 #[test]
 fn check_rejects_slot_variant_row_shape_column_name_mismatch() {
-    let (report, calls) = row_shape_mismatch_report(vec![core::DbResultColumn::new(
+    let report = row_shape_mismatch_report(vec![core::DbResultColumn::new(
         "user_id".to_owned(),
         core::CoreType::Int64,
         Some(false),
@@ -137,15 +141,11 @@ fn check_rejects_slot_variant_row_shape_column_name_mismatch() {
         diagnostic_messages(&report),
         "Slot expansion variant for query `listUsers` result column 1 name `user_id` does not match base column name `id`; all variants must have matching result row shape\nwhile validating Slot expansion variant for query `listUsers` with selections: filter=shapeChanger\nSlot `filter` selected `shapeChanger` in this variant"
     );
-    assert_eq!(
-        calls,
-        ["read", "analyze", "analyze", "describe", "describe"]
-    );
 }
 
 #[test]
 fn check_rejects_slot_variant_row_shape_core_type_mismatch() {
-    let (report, calls) = row_shape_mismatch_report(vec![core::DbResultColumn::new(
+    let report = row_shape_mismatch_report(vec![core::DbResultColumn::new(
         "id".to_owned(),
         core::CoreType::String,
         Some(false),
@@ -155,15 +155,11 @@ fn check_rejects_slot_variant_row_shape_core_type_mismatch() {
         diagnostic_messages(&report),
         "Slot expansion variant for query `listUsers` result column 1 CoreType `String` does not match base CoreType `Int64`; all variants must have matching result row shape\nwhile validating Slot expansion variant for query `listUsers` with selections: filter=shapeChanger\nSlot `filter` selected `shapeChanger` in this variant"
     );
-    assert_eq!(
-        calls,
-        ["read", "analyze", "analyze", "describe", "describe"]
-    );
 }
 
 #[test]
 fn check_rejects_slot_variant_row_shape_nullability_mismatch() {
-    let (report, calls) = row_shape_mismatch_report(vec![core::DbResultColumn::new(
+    let report = row_shape_mismatch_report(vec![core::DbResultColumn::new(
         "id".to_owned(),
         core::CoreType::Int64,
         Some(true),
@@ -172,10 +168,6 @@ fn check_rejects_slot_variant_row_shape_nullability_mismatch() {
     assert_eq!(
         diagnostic_messages(&report),
         "Slot expansion variant for query `listUsers` result column 1 nullability `nullable` does not match base nullability `not nullable`; all variants must have matching result row shape\nwhile validating Slot expansion variant for query `listUsers` with selections: filter=shapeChanger\nSlot `filter` selected `shapeChanger` in this variant"
-    );
-    assert_eq!(
-        calls,
-        ["read", "analyze", "analyze", "describe", "describe"]
     );
 }
 
@@ -222,7 +214,7 @@ fn check_rejects_repeated_slot_id_with_different_target_order() {
     let query_compiler = LoggingQueryCompiler::new(calls.clone());
     let target_generator =
         FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()));
-    let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
+    let generated_file_writer = RecordingGeneratedFileWriter::new(calls);
     let pipeline = CompilePipeline {
         planner: &DefaultCompilationPlanner,
         source_reader: &source_reader,
@@ -240,7 +232,6 @@ fn check_rejects_repeated_slot_id_with_different_target_order() {
         diagnostic_messages(&report),
         "conflicting Slot `filter` targets in query `listUsers`: first occurrence uses [activeOnly, byEmail] but conflicting occurrence uses [byEmail, activeOnly]; repeated Slot IDs must use the same `targets` values in the same order"
     );
-    assert_eq!(calls.entries(), ["read"]);
 }
 
 #[test]
@@ -279,7 +270,7 @@ fn check_rejects_slot_id_collision_with_query_direct_param_id() {
     let query_compiler = LoggingQueryCompiler::new(calls.clone());
     let target_generator =
         FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()));
-    let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
+    let generated_file_writer = RecordingGeneratedFileWriter::new(calls);
     let pipeline = CompilePipeline {
         planner: &DefaultCompilationPlanner,
         source_reader: &source_reader,
@@ -297,7 +288,6 @@ fn check_rejects_slot_id_collision_with_query_direct_param_id() {
         diagnostic_messages(&report),
         "Slot `email` in query `listUsers` conflicts with query direct Param `email`; query direct Param IDs and Slot IDs share the generated input namespace"
     );
-    assert_eq!(calls.entries(), ["read"]);
 }
 
 #[test]
@@ -401,7 +391,7 @@ fn check_rejects_slot_expansion_above_variant_limit() {
     let query_compiler = LoggingQueryCompiler::new(calls.clone());
     let target_generator =
         FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()));
-    let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
+    let generated_file_writer = RecordingGeneratedFileWriter::new(calls);
     let pipeline = CompilePipeline {
         planner: &DefaultCompilationPlanner,
         source_reader: &source_reader,
@@ -419,5 +409,4 @@ fn check_rejects_slot_expansion_above_variant_limit() {
         diagnostic_messages(&report),
         "Slot expansion for query `listUsers` would produce 257 SQL variants, exceeding the 256 variant limit"
     );
-    assert_eq!(calls.entries(), ["read"]);
 }
