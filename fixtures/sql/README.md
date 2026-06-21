@@ -19,6 +19,11 @@ MVP and post-MVP Param coverage. They are test fixtures, not user-facing example
 - `valid/param_bindings.sql` exercises Param binding behavior, including direct
   column inference, inline `valueType`, `nullable: true`, repeated Param IDs, and
   `IN` predicates with one placeholder per marker.
+- `valid/slot_fragment_composition.sql` and
+  `valid/slot_fragment_fragments.sql` exercise valid Slot/Fragment composition,
+  including cross-file fragments, fragment-only source files, mixed query/fragment
+  source files, repeated Slot IDs, stable variants, and generated runtime branch
+  builders.
 - `valid/nested/path_mapping.sql` verifies that generated output preserves nested
   config-relative source paths.
 - `generated/` contains committed generated TypeScript expected artifacts.

@@ -38,6 +38,14 @@ import {
   slotRuntimeSearch,
 } from "./generated/valid/slot_runtime";
 import {
+  type slotFragmentContextualParam_Input,
+  type slotFragmentContextualParam_Output,
+  type slotFragmentSearch_Input,
+  type slotFragmentSearch_Output,
+  slotFragmentContextualParam,
+  slotFragmentSearch,
+} from "./generated/valid/slot_fragment_composition";
+import {
   type typeMetadataAggregateExpressions_Output,
   type typeMetadataDirectColumns_Output,
   type typeMetadataExpressions_Output,
@@ -152,6 +160,59 @@ const slotRuntimeOptionalFilterParams: readonly unknown[] =
   slotRuntimeOptionalFilterSelectedQuery.params;
 const slotRuntimeOptionalFilterOutput: slotRuntimeOptionalFilter_Output = [];
 
+const slotFragmentSearchInput: slotFragmentSearch_Input = {
+  minId: "1",
+  filter: {
+    $fragment: "slotFixtureByAmount",
+    minAmount: "10.00",
+  },
+  repeatFilter: {
+    $fragment: "slotFixtureActiveOnly",
+  },
+};
+const slotFragmentSearchQuery = slotFragmentSearch(slotFragmentSearchInput);
+const slotFragmentSearchParams: readonly unknown[] = slotFragmentSearchQuery.params;
+const slotFragmentSearchOutput: slotFragmentSearch_Output = [];
+
+const slotFragmentSearchTextBranch: slotFragmentSearch_Input = {
+  minId: "1",
+  filter: {
+    $fragment: "slotFixtureByText",
+    textFilter: "varchar-320-a",
+  },
+};
+const slotFragmentSearchNullableBranch: slotFragmentSearch_Input = {
+  minId: "1",
+  filter: {
+    $fragment: "slotFixtureNullableCreated",
+    createdAfter: null,
+  },
+};
+const slotFragmentSearchLocalBranch: slotFragmentSearch_Input = {
+  minId: "1",
+  filter: {
+    $fragment: "slotFixtureByState",
+    state: "state_a",
+  },
+};
+
+const slotFragmentContextualParamInput: slotFragmentContextualParam_Input = {
+  textComparator: {
+    $fragment: "slotFixtureEqualsValue",
+    value: "varchar-320-a",
+  },
+  numberComparator: {
+    $fragment: "slotFixtureEqualsValue",
+    value: 42,
+  },
+};
+const slotFragmentContextualParamQuery = slotFragmentContextualParam(
+  slotFragmentContextualParamInput,
+);
+const slotFragmentContextualParamParams: readonly unknown[] =
+  slotFragmentContextualParamQuery.params;
+const slotFragmentContextualParamOutput: slotFragmentContextualParam_Output = [];
+
 void directColumnsQuery;
 void directColumnsOutput;
 void joinColumnsQuery;
@@ -191,3 +252,10 @@ void slotRuntimeSearchOutput;
 void slotRuntimeOptionalFilterQuery;
 void slotRuntimeOptionalFilterParams;
 void slotRuntimeOptionalFilterOutput;
+void slotFragmentSearchParams;
+void slotFragmentSearchOutput;
+void slotFragmentSearchTextBranch;
+void slotFragmentSearchNullableBranch;
+void slotFragmentSearchLocalBranch;
+void slotFragmentContextualParamParams;
+void slotFragmentContextualParamOutput;
