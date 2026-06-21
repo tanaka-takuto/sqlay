@@ -95,8 +95,12 @@ pub fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system time should be after Unix epoch")
         .as_nanos();
+    let thread_id = std::thread::current().id();
 
-    std::env::temp_dir().join(format!("{prefix}-{}-{unique}", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "{prefix}-{}-{thread_id:?}-{unique}",
+        std::process::id()
+    ))
 }
 
 /// Writes a config plus one fragment-only SQL source and returns the output SQL dir.
