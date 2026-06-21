@@ -117,9 +117,82 @@ export type findBook_Input = {
 };
 ```
 
-Optional input properties are not currently supported because they imply SQL
-structure changes. Use a nullable sentinel pattern, separate queries for distinct
-SQL shapes, or the future Slot/Fragment path for dynamic composition.
+Optional direct Param input properties are not currently supported because they
+imply SQL structure changes. Use a nullable sentinel pattern, separate queries for
+distinct SQL shapes, or Slot/Fragment composition for supported dynamic SQL.
+
+## Slot/Fragment Composition
+
+Fragments are global source units that hold reusable SQL insertion text. Slots are
+query-local insertion points that choose from the global fragments named in their
+`targets` list. Initial slots are optional single-select slots: a caller may select
+one target fragment, or omit the slot input to insert an empty string.
+
+Fragment-only SQL files are valid inputs, but they do not produce path-matching
+`.ts` files. Cross-file fragments are embedded into the generated TypeScript file
+for each query that uses them.
+
+```sql
+/* @sqlcomp
+{
+  type: fragment
+  id: staffPicksOnly
+}
+*/
+  AND EXISTS (
+    SELECT 1
+    FROM bookstore_book_categories AS filter_bc
+    INNER JOIN bookstore_categories AS filter_c
+      ON filter_c.id = filter_bc.category_id
+    WHERE filter_bc.book_id = b.id
+      AND filter_c.slug = 'staff-picks'
+  )
+
+/* @sqlcomp
+{
+  type: fragment
+  id: byBookFormat
+}
+*/
+  AND b.format = /* @sqlcomp { type: param id: format } */
+    'paperback'
+    /* @sqlcomp { type: paramEnd } */
+
+/* @sqlcomp
+{
+  type: query
+  id: listAvailableBooks
+}
+*/
+SELECT b.id, b.title
+FROM bookstore_books AS b
+WHERE b.stock_quantity > 0
+/* @sqlcomp { type: slot id: discoveryFilter targets: [staffPicksOnly, byBookFormat] } */;
+```
+
+Generated slot inputs use `$fragment` as the branch discriminant. Fragment Params
+are nested under the selected slot branch instead of being lifted to the query
+input top level:
+
+```ts
+export type listAvailableBooks_Input = {
+  discoveryFilter?: { $fragment: "staffPicksOnly" } | {
+    $fragment: "byBookFormat";
+    format: string;
+  };
+};
+
+listAvailableBooks({
+  discoveryFilter: { $fragment: "byBookFormat", format: "paperback" },
+});
+
+listAvailableBooks();
+```
+
+During `check` and `compile`, sqlcomp validates every Slot expansion variant up to
+the 256 variant limit. All variants must keep the same result row shape and
+effective cardinality as the all-slots-unselected base variant. Fragment-local
+slots and required slots are reserved for future work.
 
 ## Local MySQL
 
