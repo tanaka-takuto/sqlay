@@ -309,3 +309,83 @@ struct RawSqlcompParamMetadata {
     value_type: Option<String>,
     nullable: Option<bool>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_block() -> SqlcompBlock {
+        let position =
+            core::SourcePosition::one_based(1, 1).expect("test position should be valid");
+        let range = core::SourceRange::point(position);
+
+        SqlcompBlock::new(String::new(), range, range)
+    }
+
+    fn raw_param(
+        annotation_type: Option<&str>,
+        id: Option<&str>,
+        value_type: Option<&str>,
+        nullable: Option<bool>,
+    ) -> RawSqlcompParamMetadata {
+        RawSqlcompParamMetadata {
+            annotation_type: annotation_type.map(str::to_owned),
+            id: id.map(str::to_owned),
+            value_type: value_type.map(str::to_owned),
+            nullable,
+        }
+    }
+
+    #[test]
+    fn parse_param_metadata_raw_accepts_valid_optional_fields() {
+        for (raw, expected_type, expected_nullable) in [
+            (
+                raw_param(Some("param"), Some("email"), Some("string"), Some(true)),
+                Some(core::CoreType::String),
+                true,
+            ),
+            (
+                raw_param(Some("param"), Some("tenantId"), None, None),
+                None,
+                false,
+            ),
+        ] {
+            let metadata =
+                parse_param_metadata_raw(raw, &test_block()).expect("raw Param metadata parses");
+
+            assert_eq!(metadata.value_type, expected_type);
+            assert_eq!(metadata.nullable, expected_nullable);
+        }
+    }
+
+    #[test]
+    fn parse_param_metadata_raw_rejects_invalid_required_fields() {
+        for (raw, expected_message) in [
+            (
+                raw_param(Some("query"), Some("email"), Some("string"), None),
+                "expected `param` metadata",
+            ),
+            (
+                raw_param(Some("param"), None, Some("string"), None),
+                "missing required `param` metadata field `id`",
+            ),
+            (
+                raw_param(Some("param"), Some("1bad"), Some("string"), None),
+                "invalid Param id `1bad`; must match `^[A-Za-z_][A-Za-z0-9_]*$`",
+            ),
+            (
+                raw_param(Some("param"), Some("email"), Some("string"), Some(false)),
+                "`nullable: false` is not supported for Param metadata; omit `nullable` for non-null inputs",
+            ),
+        ] {
+            let report = parse_param_metadata_raw(raw, &test_block())
+                .expect_err("invalid raw Param metadata rejected");
+            let diagnostic = report
+                .diagnostics()
+                .first()
+                .expect("a diagnostic should be returned");
+
+            assert_eq!(diagnostic.message(), expected_message);
+        }
+    }
+}

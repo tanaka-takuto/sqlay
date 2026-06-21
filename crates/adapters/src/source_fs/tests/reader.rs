@@ -157,6 +157,141 @@ AND u.private = 0
 }
 
 #[test]
+fn filesystem_source_reader_matches_question_mark_globs_and_deduplicates_sources() {
+    let project_dir = test_project_dir("question-mark-glob-dedupes");
+    let matched_path = project_dir.join("sql").join("user1.sql");
+    let unmatched_path = project_dir.join("sql").join("user10.sql");
+    let ignored_path = project_dir.join("sql").join("notes.txt");
+    write_sql(
+        &matched_path,
+        r"
+/* @sqlcomp
+{
+  type: query
+  id: findUser1
+}
+*/
+SELECT id FROM users WHERE id = 1;
+",
+    );
+    write_sql(
+        &unmatched_path,
+        r"
+/* @sqlcomp
+{
+  type: query
+  id: findUser10
+}
+*/
+SELECT id FROM users WHERE id = 10;
+",
+    );
+    fs::write(&ignored_path, "not sql").expect("test text file should be written");
+    let plan = compilation_plan(
+        &project_dir,
+        vec![
+            project_dir.join("sql/./user?.sql"),
+            project_dir.join("sql/user?.sql"),
+            project_dir.join("sql/*.txt"),
+        ],
+        Vec::new(),
+    );
+
+    let source_read = FileSystemSourceReader
+        .read(&plan)
+        .expect("question-mark glob should discover SQL files");
+
+    assert_eq!(source_read.source_file_count(), 1);
+    assert_eq!(source_read.queries().len(), 1);
+    assert_eq!(source_read.queries()[0].metadata().id(), "findUser1");
+    assert_eq!(
+        source_read.queries()[0].source_path(),
+        Some(Path::new("sql/user1.sql"))
+    );
+
+    fs::remove_dir_all(project_dir).expect("test project directory should be removed");
+}
+
+#[test]
+fn filesystem_source_reader_rejects_source_files_outside_config_dir() {
+    let project_dir = test_project_dir("outside-config-root");
+    let outside_dir = test_project_dir("outside-config-source");
+    let outside_path = outside_dir.join("users.sql");
+    write_sql(
+        &outside_path,
+        r"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id FROM users;
+",
+    );
+    let plan = compilation_plan(&project_dir, vec![outside_path.clone()], Vec::new());
+
+    let report = FileSystemSourceReader
+        .read(&plan)
+        .expect_err("outside source files should be rejected");
+    let diagnostic = report
+        .diagnostics()
+        .first()
+        .expect("a diagnostic should be returned");
+
+    assert!(diagnostic.message().starts_with(&format!(
+        "source file `{}` is outside the configuration directory `{}`",
+        outside_path.display(),
+        project_dir.display()
+    )));
+    assert_eq!(
+        diagnostic.location().and_then(core::SourceLocation::path),
+        Some(outside_path.as_path())
+    );
+
+    fs::remove_dir_all(project_dir).expect("test project directory should be removed");
+    fs::remove_dir_all(outside_dir).expect("outside test directory should be removed");
+}
+
+#[test]
+fn filesystem_source_reader_attaches_file_path_to_scan_diagnostics() {
+    let project_dir = test_project_dir("scan-diagnostic-path");
+    let source_path = project_dir.join("sql").join("broken.sql");
+    let parent = source_path
+        .parent()
+        .expect("test path should include a parent directory");
+    fs::create_dir_all(parent).expect("test SQL directory should be created");
+    fs::write(
+        &source_path,
+        r"/* @sqlcomp
+{
+  type: query
+  id: brokenQuery
+}
+SELECT id FROM users;
+",
+    )
+    .expect("broken SQL file should be written");
+    let plan = compilation_plan(&project_dir, vec![source_path.clone()], Vec::new());
+
+    let report = FileSystemSourceReader
+        .read(&plan)
+        .expect_err("unterminated sqlcomp block should be rejected");
+    let diagnostic = report
+        .diagnostics()
+        .first()
+        .expect("a diagnostic should be returned");
+
+    assert_eq!(diagnostic.message(), "unterminated SQL block comment");
+    assert_eq!(
+        diagnostic.location().and_then(core::SourceLocation::path),
+        Some(source_path.as_path())
+    );
+
+    fs::remove_dir_all(project_dir).expect("test project directory should be removed");
+}
+
+#[test]
 fn filesystem_source_reader_attaches_file_path_to_query_locations() {
     let project_dir = test_project_dir("attaches-query-locations");
     let sql_dir = project_dir.join("sql");

@@ -119,6 +119,56 @@ SELECT id FROM users WHERE email = /* @sqlcomp { type: param id: email valueType
 }
 
 #[test]
+fn split_query_blocks_accepts_supported_inline_param_value_types() {
+    for (index, (value_type, core_type, sample_sql)) in [
+        ("bool", core::CoreType::Bool, "TRUE"),
+        ("int32", core::CoreType::Int32, "1"),
+        ("int64", core::CoreType::Int64, "1"),
+        ("float64", core::CoreType::Float64, "1.5"),
+        ("decimal", core::CoreType::Decimal, "1.5"),
+        ("string", core::CoreType::String, "'ada@example.test'"),
+        ("bytes", core::CoreType::Bytes, "X'01'"),
+        ("date", core::CoreType::Date, "'2026-06-21'"),
+        ("time", core::CoreType::Time, "'12:34:56'"),
+        (
+            "datetime",
+            core::CoreType::DateTime,
+            "'2026-06-21 12:34:56'",
+        ),
+        ("json", core::CoreType::Json, "JSON_OBJECT()"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let source = format!(
+            r"
+/* @sqlcomp
+{{
+  type: query
+  id: typedParam{index}
+}}
+*/
+SELECT id FROM users
+WHERE value = /* @sqlcomp {{ type: param id: value{index} valueType: {value_type} }} */
+  {sample_sql}
+  /* @sqlcomp {{ type: paramEnd }} */;
+"
+        );
+        let source = source
+            .strip_prefix('\n')
+            .expect("raw SQL test source should start with a newline");
+        let queries =
+            split_sqlcomp_query_blocks(source).expect("supported Param valueType should parse");
+
+        assert_eq!(queries[0].param_usages()[0].id(), format!("value{index}"));
+        assert_eq!(
+            queries[0].param_usages()[0].value_type_override(),
+            Some(core_type)
+        );
+    }
+}
+
+#[test]
 fn split_query_blocks_deletes_inline_slot_markers_and_records_usages() {
     let source = r"
 /* @sqlcomp
@@ -158,6 +208,30 @@ SELECT u.id FROM users AS u WHERE 1 = 1/* @sqlcomp { type: slot id: filter targe
 #[test]
 fn rejects_invalid_inline_slot_metadata() {
     for (source, expected_message) in [
+        (
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id FROM users/* @sqlcomp { type: slot targets: [activeOnly] } */;
+",
+            "missing required `slot` metadata field `id`",
+        ),
+        (
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id FROM users/* @sqlcomp { type: slot id: true targets: [activeOnly] } */;
+",
+            "`slot` metadata field `id` must be a string",
+        ),
         (
             r"
 /* @sqlcomp
@@ -352,6 +426,36 @@ SELECT id FROM users WHERE email = /* @sqlcomp { type: param id: email } */ ? /*
 }
 
 #[test]
+fn split_query_blocks_allows_question_marks_inside_literals_and_comments() {
+    let source = r"
+/* @sqlcomp
+{
+  type: query
+  id: literalQuestionMarks
+}
+*/
+SELECT
+  '?' AS plain_literal,
+  'escaped \? literal' AS escaped_literal,
+  'doubled ''?'' literal' AS doubled_literal,
+  `?identifier` AS quoted_identifier
+/* ? inside block comment */
+-- ? inside line comment
+# ? inside hash comment
+;
+"
+    .strip_prefix('\n')
+    .expect("raw SQL test source should start with a newline");
+
+    let queries = split_sqlcomp_query_blocks(source)
+        .expect("question marks inside literals and comments should be ignored");
+
+    assert_eq!(queries.len(), 1);
+    assert_eq!(queries[0].param_usages(), []);
+    assert!(queries[0].analysis_sql().contains("'escaped \\? literal'"));
+}
+
+#[test]
 fn rejects_invalid_param_ids_at_param_marker_location() {
     let source = r"
 /* @sqlcomp
@@ -383,6 +487,110 @@ WHERE email = /* @sqlcomp { type: param id: 1bad } */
         "invalid Param id `1bad`; must match `^[A-Za-z_][A-Za-z0-9_]*$`"
     );
     assert_eq!(range.start().line(), 8);
+}
+
+#[test]
+fn rejects_invalid_inline_param_metadata_required_fields_and_types() {
+    for (source, expected_message) in [
+        (
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: findUserByEmail
+}
+*/
+SELECT id FROM users
+WHERE email = /* @sqlcomp { type: param valueType: string } */
+  'test@example.test'
+  /* @sqlcomp { type: paramEnd } */;
+",
+            "missing required `param` metadata field `id`",
+        ),
+        (
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: findUserByEmail
+}
+*/
+SELECT id FROM users
+WHERE email = /* @sqlcomp { type: param id: true } */
+  'test@example.test'
+  /* @sqlcomp { type: paramEnd } */;
+",
+            "`param` metadata field `id` must be a string",
+        ),
+        (
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: findUserByEmail
+}
+*/
+SELECT id FROM users
+WHERE email = /* @sqlcomp { type: param id: email valueType: true } */
+  'test@example.test'
+  /* @sqlcomp { type: paramEnd } */;
+",
+            "`@sqlcomp` metadata field `valueType` must be a string",
+        ),
+        (
+            r#"
+/* @sqlcomp
+{
+  type: query
+  id: findUserByEmail
+}
+*/
+SELECT id FROM users
+WHERE email = /* @sqlcomp { type: param id: email valueType: "" } */
+  'test@example.test'
+  /* @sqlcomp { type: paramEnd } */;
+"#,
+            "`param` metadata field `valueType` must not be empty",
+        ),
+        (
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: findUserByEmail
+}
+*/
+SELECT id FROM users
+WHERE email = /* @sqlcomp { type: param id: email nullable: false } */
+  'test@example.test'
+  /* @sqlcomp { type: paramEnd } */;
+",
+            "`nullable: false` is not supported for Param metadata; omit `nullable` for non-null inputs",
+        ),
+        (
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: findUserByEmail
+}
+*/
+SELECT id FROM users
+WHERE email = /* @sqlcomp { type: param id: email nullable: maybe } */
+  'test@example.test'
+  /* @sqlcomp { type: paramEnd } */;
+",
+            "`param` metadata field `nullable` must be `true`",
+        ),
+    ] {
+        let source = source
+            .strip_prefix('\n')
+            .expect("raw SQL test source should start with a newline");
+        let report =
+            split_sqlcomp_query_blocks(source).expect_err("invalid Param metadata rejected");
+
+        assert_eq!(diagnostic_messages(&report), [expected_message]);
+    }
 }
 
 #[test]
@@ -519,6 +727,47 @@ WHERE email = 'test@example.test'
   /* @sqlcomp { type: paramEnd } */;
 ",
             "`paramEnd` marker has no matching `param` marker",
+        ),
+        (
+            r"
+/* @sqlcomp
+{
+  type: query
+  id: findUserByEmail
+}
+*/
+SELECT id FROM users
+WHERE email = /* @sqlcomp { type: param id: email } */
+  'test@example.test'
+/* @sqlcomp
+{
+  type: query
+  id: listUsers
+}
+*/
+SELECT id FROM users;
+",
+            "`param` marker is missing a matching `paramEnd` marker",
+        ),
+        (
+            r"
+/* @sqlcomp
+{
+  type: fragment
+  id: byTenant
+}
+*/
+AND tenant_id = /* @sqlcomp { type: param id: tenantId valueType: int64 } */
+  1
+/* @sqlcomp
+{
+  type: fragment
+  id: activeOnly
+}
+*/
+AND active = 1
+",
+            "`param` marker is missing a matching `paramEnd` marker",
         ),
         (
             r"

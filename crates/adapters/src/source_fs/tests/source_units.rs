@@ -158,6 +158,18 @@ AND u.active = 1
 /* @sqlcomp
 {
   type: fragment
+  id: true
+}
+*/
+AND u.active = 1
+",
+            "`fragment` metadata field `id` must be a string",
+        ),
+        (
+            r"
+/* @sqlcomp
+{
+  type: fragment
   id: 1bad
 }
 */
@@ -187,6 +199,67 @@ AND u.active = 1
 
         assert_eq!(diagnostic_messages(&report), [expected_message]);
     }
+}
+
+#[test]
+fn rejects_invalid_top_level_annotation_metadata() {
+    for (source, expected_message) in [
+        (
+            r"
+/* @sqlcomp
+{
+  id: listUsers
+}
+*/
+SELECT id FROM users;
+",
+            "missing required `@sqlcomp` metadata field `type`",
+        ),
+        (
+            r"
+/* @sqlcomp
+{
+  type: mutation
+  id: updateUser
+}
+*/
+UPDATE users SET name = 'Ada';
+",
+            "unsupported `@sqlcomp` annotation type `mutation`; supported values are `query`, `fragment`, `param`, `paramEnd`, and `slot`",
+        ),
+    ] {
+        let source = source
+            .strip_prefix('\n')
+            .expect("raw SQL test source should start with a newline");
+        let report =
+            split_sqlcomp_source_units(source).expect_err("invalid annotation metadata rejected");
+
+        assert_eq!(diagnostic_messages(&report), [expected_message]);
+    }
+}
+
+#[test]
+fn rejects_boolean_top_level_annotation_type_metadata_as_unsupported_type() {
+    let source = r"
+/* @sqlcomp
+{
+  type: false
+  id: listUsers
+}
+*/
+SELECT id FROM users;
+"
+    .strip_prefix('\n')
+    .expect("raw SQL test source should start with a newline");
+    let report =
+        split_sqlcomp_source_units(source).expect_err("unsupported annotation type rejected");
+
+    assert_eq!(
+        diagnostic_messages(&report),
+        [
+            "unsupported `@sqlcomp` annotation type `false`; supported values are `query`, `fragment`, `param`, `paramEnd`, and `slot`"
+        ]
+    );
 }
 
 #[test]
@@ -222,6 +295,8 @@ fn allows_statement_separator_text_inside_fragment_literals_and_comments() {
 }
 */
 AND u.label = ';'
+AND u.escaped = 'escaped \; separator'
+AND u.name = 'Ada''; Lovelace'
 -- semicolon in comment ;
 /* ordinary block comment ; */
 "
@@ -234,7 +309,7 @@ AND u.label = ';'
     assert_eq!(source_units.fragments().len(), 1);
     assert_eq!(
         source_units.fragments()[0].sql(),
-        "\nAND u.label = ';'\n-- semicolon in comment ;\n/* ordinary block comment ; */\n"
+        "\nAND u.label = ';'\nAND u.escaped = 'escaped \\; separator'\nAND u.name = 'Ada''; Lovelace'\n-- semicolon in comment ;\n/* ordinary block comment ; */\n"
     );
 }
 
