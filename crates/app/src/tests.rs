@@ -722,6 +722,95 @@ fn check_passes_dynamic_slot_core_ir_to_target_generation() {
 }
 
 #[test]
+fn check_passes_repeated_slot_occurrences_to_dynamic_core_ir() {
+    let config = project_config(PathBuf::from("/tmp/sqlcomp-project"));
+    let calls = CallLog::default();
+    let (query, fragment) = repeated_slot_dynamic_ir_fixture();
+    let source_read = SourceRead::from_queries(vec![query])
+        .with_fragments(vec![fragment])
+        .with_source_file_count(2);
+    let source_reader = FakeSourceReader::new(calls.clone()).with_source_read(source_read);
+    let dialect_analyzer = FakeDialectAnalyzer::new(calls.clone());
+    let metadata_provider = FakeMetadataProvider::new(calls.clone());
+    let query_compiler = LoggingQueryCompiler::new(calls.clone());
+    let target_generator =
+        FakeTargetGenerator::new(calls.clone(), core::GeneratedFiles::new(Vec::new()));
+    let generated_file_writer = RecordingGeneratedFileWriter::new(calls.clone());
+    let pipeline = CompilePipeline {
+        planner: &DefaultCompilationPlanner,
+        source_reader: &source_reader,
+        dialect_analyzer: &dialect_analyzer,
+        metadata_provider: &metadata_provider,
+        query_compiler: &query_compiler,
+        target_generator: &target_generator,
+        generated_file_writer: &generated_file_writer,
+    };
+
+    DefaultCompileUseCase::check(&config, &pipeline)
+        .expect("repeated Slot occurrences should compile into dynamic Core IR");
+
+    let generated_queries = target_generator.generated_queries();
+    assert_eq!(generated_queries.len(), 1);
+    let dynamic = generated_queries[0]
+        .dynamic_body()
+        .expect("repeated Slot query should carry dynamic Core IR");
+    assert_eq!(dynamic.base_segments().len(), 3);
+    assert_eq!(
+        dynamic.base_segments()[0].sql(),
+        "SELECT u.id FROM users AS u WHERE u.tenant_id = ? AND 1 = 1"
+    );
+    assert_eq!(
+        dynamic.base_segments()[0].params(),
+        [core::ParamBinding::new(
+            "tenantId".to_owned(),
+            core::CoreType::String,
+            false,
+        )]
+    );
+    assert_eq!(
+        dynamic.base_segments()[1].sql(),
+        " AND EXISTS (SELECT 1 FROM users AS ux WHERE ux.id = u.id"
+    );
+    assert!(dynamic.base_segments()[1].params().is_empty());
+    assert_eq!(dynamic.base_segments()[2].sql(), ");");
+    assert_eq!(dynamic.slot_occurrences().len(), 2);
+    assert_eq!(dynamic.slot_occurrences()[0].slot_id(), "filter");
+    assert_eq!(dynamic.slot_occurrences()[1].slot_id(), "filter");
+    assert_eq!(dynamic.slots().len(), 1);
+    assert_eq!(dynamic.slots()[0].id(), "filter");
+    assert_eq!(dynamic.slots()[0].branches().len(), 1);
+    let branch = &dynamic.slots()[0].branches()[0];
+    assert_eq!(branch.target_id(), "activeOnly");
+    assert_eq!(branch.segments().len(), 1);
+    assert_eq!(branch.segments()[0].sql(), "\nAND u.active = ?");
+    assert_eq!(
+        branch.segments()[0].params(),
+        [core::ParamBinding::new(
+            "active".to_owned(),
+            core::CoreType::String,
+            false,
+        )]
+    );
+    assert_eq!(
+        metadata_provider.described_param_ids(),
+        [
+            vec!["tenantId".to_owned()],
+            vec![
+                "tenantId".to_owned(),
+                "active".to_owned(),
+                "active".to_owned(),
+            ],
+        ]
+    );
+    assert_eq!(
+        calls.entries(),
+        [
+            "read", "analyze", "analyze", "describe", "describe", "compile", "generate"
+        ]
+    );
+}
+
+#[test]
 fn check_allows_same_fragment_param_id_with_different_types_in_different_slot_scopes() {
     let config = project_config(PathBuf::from("/tmp/sqlcomp-project"));
     let calls = CallLog::default();
@@ -2027,6 +2116,58 @@ fn slot_param_order_fixture() -> (core::RawQuery, core::RawFragment) {
                 .expect("role Param placeholder exists"),
         ),
     ])
+    .with_source_path("sql/fragments.sql");
+
+    (query, fragment)
+}
+
+fn repeated_slot_dynamic_ir_fixture() -> (core::RawQuery, core::RawFragment) {
+    let base_sql = "SELECT u.id FROM users AS u WHERE u.tenant_id = ? AND 1 = 1 AND EXISTS (SELECT 1 FROM users AS ux WHERE ux.id = u.id);";
+    let first_slot_index = base_sql
+        .find(" AND EXISTS")
+        .expect("first Slot insertion point exists before EXISTS predicate");
+    let second_slot_index = base_sql
+        .find(");")
+        .expect("second Slot insertion point exists before statement terminator");
+    let query = core::RawQuery::new(
+        core::QueryMetadata::new("listUsers".to_owned(), None),
+        "SELECT u.id FROM users AS u WHERE u.tenant_id = ? AND 1 = 1/* @sqlcomp { type: slot id: filter targets: [activeOnly] } */ AND EXISTS (SELECT 1 FROM users AS ux WHERE ux.id = u.id/* @sqlcomp { type: slot id: filter targets: [activeOnly] } */);"
+            .to_owned(),
+    )
+    .with_analysis_sql(base_sql.to_owned())
+    .with_param_usages(vec![test_param_usage(
+        "tenantId",
+        base_sql
+            .find('?')
+            .expect("tenant Param placeholder exists"),
+    )])
+    .with_slot_usages(vec![
+        core::SlotUsage::new(
+            "filter".to_owned(),
+            vec!["activeOnly".to_owned()],
+            first_slot_index,
+            core::SourceLocation::unknown(),
+        ),
+        core::SlotUsage::new(
+            "filter".to_owned(),
+            vec!["activeOnly".to_owned()],
+            second_slot_index,
+            core::SourceLocation::unknown(),
+        ),
+    ])
+    .with_source_path("sql/users.sql");
+    let fragment_sql = "\nAND u.active = ?";
+    let fragment = core::RawFragment::new(
+        core::FragmentMetadata::new("activeOnly".to_owned()),
+        fragment_sql.to_owned(),
+    )
+    .with_analysis_sql(fragment_sql.to_owned())
+    .with_param_usages(vec![test_param_usage(
+        "active",
+        fragment_sql
+            .find('?')
+            .expect("active Param placeholder exists"),
+    )])
     .with_source_path("sql/fragments.sql");
 
     (query, fragment)

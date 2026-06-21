@@ -1056,6 +1056,108 @@ export function listUsers(
     }
 
     #[test]
+    fn renders_repeated_slot_runtime_branches_from_one_slot_input() {
+        let dynamic_body = core::CompiledDynamicQuery::new(
+            vec![
+                sql_segment(
+                    "SELECT id FROM users WHERE tenant_id = ?",
+                    vec![param("tenantId", core::CoreType::String, false)],
+                ),
+                sql_segment(
+                    " AND status = ? AND EXISTS (SELECT 1 FROM role_links AS rl WHERE rl.user_id = users.id",
+                    vec![param("status", core::CoreType::String, false)],
+                ),
+                sql_segment(");", Vec::new()),
+            ],
+            vec![
+                core::CompiledSlotOccurrence::new("filter".to_owned()),
+                core::CompiledSlotOccurrence::new("filter".to_owned()),
+            ],
+            vec![slot_definition(
+                "filter",
+                vec![slot_branch(
+                    "byRole",
+                    " AND (role_id = ? OR fallback_role_id = ?)",
+                    vec![
+                        param("roleId", core::CoreType::String, false),
+                        param("roleId", core::CoreType::String, false),
+                    ],
+                )],
+            )],
+        );
+        let query = core::CompiledQuery::new(
+            core::QueryId::new("searchUsers".to_owned()),
+            "SELECT id FROM users WHERE tenant_id = ? AND status = ?;".to_owned(),
+            core::Cardinality::Many,
+            vec![
+                core::InputField::new("tenantId".to_owned(), core::CoreType::String, false),
+                core::InputField::new("status".to_owned(), core::CoreType::String, false),
+            ],
+            vec![core::ResultColumn::new(
+                "id".to_owned(),
+                core::CoreType::Int64,
+                false,
+            )],
+        )
+        .with_params(vec![
+            param("tenantId", core::CoreType::String, false),
+            param("status", core::CoreType::String, false),
+        ])
+        .with_dynamic_body(dynamic_body);
+
+        assert_eq!(
+            render_query(&query),
+            r#"export type searchUsers_Input = {
+  tenantId: string;
+  status: string;
+  filter?: {
+    $fragment: "byRole";
+    roleId: string;
+  };
+};
+
+export type searchUsers_Row = {
+  id: string;
+};
+
+export type searchUsers_Output = searchUsers_Row[];
+
+export function searchUsers(
+  input: searchUsers_Input,
+): { sql: string; params: readonly SqlParam[] } {
+  const sqlParts: string[] = [];
+  const params: SqlParam[] = [];
+
+  sqlParts.push("SELECT id FROM users WHERE tenant_id = ?");
+  params.push(input.tenantId);
+  switch (input.filter?.$fragment) {
+    case "byRole":
+      sqlParts.push(" AND (role_id = ? OR fallback_role_id = ?)");
+      params.push(input.filter.roleId);
+      params.push(input.filter.roleId);
+      break;
+  }
+  sqlParts.push(" AND status = ? AND EXISTS (SELECT 1 FROM role_links AS rl WHERE rl.user_id = users.id");
+  params.push(input.status);
+  switch (input.filter?.$fragment) {
+    case "byRole":
+      sqlParts.push(" AND (role_id = ? OR fallback_role_id = ?)");
+      params.push(input.filter.roleId);
+      params.push(input.filter.roleId);
+      break;
+  }
+  sqlParts.push(");");
+
+  return {
+    sql: sqlParts.join(""),
+    params,
+  };
+}
+"#
+        );
+    }
+
+    #[test]
     fn renders_slot_only_query_input_with_empty_object_default() {
         let dynamic_body = core::CompiledDynamicQuery::new(
             vec![
