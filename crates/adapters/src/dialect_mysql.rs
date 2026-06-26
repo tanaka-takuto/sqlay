@@ -1,5 +1,7 @@
 //! `MySQL` dialect analysis adapter.
 
+mod mutation;
+
 use sqlay_app::DialectAnalyzer;
 use sqlay_core as core;
 use sqlparser::ast::{Expr, LimitClause, Query, SetExpr, Statement};
@@ -7,7 +9,7 @@ use sqlparser::dialect::MySqlDialect;
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, Tokenizer};
 
-const RAW_PLACEHOLDER_GUIDANCE: &str = "raw `?` placeholders are not supported in source SQL; use paired `@sqlay` Param markers around a sample expression, such as `/* @sqlay { type: param id: value } */ 1 /* @sqlay { type: paramEnd } */`";
+pub(super) const RAW_PLACEHOLDER_GUIDANCE: &str = "raw `?` placeholders are not supported in source SQL; use paired `@sqlay` Param markers around a sample expression, such as `/* @sqlay { type: param id: value } */ 1 /* @sqlay { type: paramEnd } */`";
 
 /// `MySQL` dialect analyzer backed by `sqlparser-rs`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -56,7 +58,7 @@ fn tokenize_query(query: &core::RawQuery) -> core::DiagnosticResult<Vec<Token>> 
         .map_err(|error| query_error(query, format!("failed to parse MySQL SQL: {error}")))
 }
 
-fn ends_with_statement_terminator(tokens: &[Token]) -> bool {
+pub(super) fn ends_with_statement_terminator(tokens: &[Token]) -> bool {
     matches!(
         tokens
             .iter()
@@ -197,7 +199,7 @@ fn unsupported_statement_error(
     )
 }
 
-fn statement_keyword(statement: &Statement) -> String {
+pub(super) fn statement_keyword(statement: &Statement) -> String {
     statement
         .to_string()
         .split_whitespace()

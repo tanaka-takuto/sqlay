@@ -12,6 +12,18 @@ pub(super) fn query_error(
     core::DiagnosticReport::new(diagnostic)
 }
 
+pub(super) fn mutation_error(
+    mutation: &core::RawMutation,
+    message: impl Into<String>,
+) -> core::DiagnosticReport {
+    let mut diagnostic = core::Diagnostic::error(message);
+    if let Some(location) = mutation.source_location() {
+        diagnostic = diagnostic.with_location(location.clone());
+    }
+
+    core::DiagnosticReport::new(diagnostic)
+}
+
 pub(super) fn param_usage_error(
     query: &core::RawQuery,
     usage: &core::ParamUsage,
@@ -22,6 +34,24 @@ pub(super) fn param_usage_error(
             usage.source_location().clone()
         } else {
             query
+                .source_location()
+                .cloned()
+                .unwrap_or_else(core::SourceLocation::unknown)
+        };
+
+    core::DiagnosticReport::new(core::Diagnostic::error(message).with_location(location))
+}
+
+pub(super) fn mutation_param_usage_error(
+    mutation: &core::RawMutation,
+    usage: &core::ParamUsage,
+    message: impl Into<String>,
+) -> core::DiagnosticReport {
+    let location =
+        if usage.source_location().range().is_some() || usage.source_location().path().is_some() {
+            usage.source_location().clone()
+        } else {
+            mutation
                 .source_location()
                 .cloned()
                 .unwrap_or_else(core::SourceLocation::unknown)

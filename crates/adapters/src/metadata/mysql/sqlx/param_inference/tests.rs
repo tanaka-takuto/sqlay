@@ -2,7 +2,10 @@ use sqlay_core as core;
 
 use super::super::result_mapping::map_mysql_result_column_metadata;
 use super::super::schema_columns::MysqlSchemaColumn;
-use super::{param_value_type_required_message, resolve_param_usage_metadata};
+use super::{
+    param_value_type_required_message, resolve_mutation_param_usage_metadata,
+    resolve_param_usage_metadata,
+};
 
 #[test]
 fn maps_representative_mysql_type_names_to_core_types() {
@@ -500,12 +503,187 @@ fn rejects_unknown_current_database_column_without_value_type() {
     );
 }
 
+#[test]
+fn resolves_insert_values_and_on_duplicate_update_mutation_param_types() {
+    let mutation = raw_param_mutation(
+        "INSERT INTO users (email, name) VALUES (?, ?) ON DUPLICATE KEY UPDATE name = ?, updated_at = ?;",
+        [
+            core::ParamUsage::new(
+                "email".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            ),
+            core::ParamUsage::new(
+                "name".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            ),
+            core::ParamUsage::new(
+                "upsertName".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            ),
+            core::ParamUsage::new(
+                "updatedAt".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            ),
+        ],
+    );
+    let schema_columns = [
+        schema_column("users", "email", core::CoreType::String),
+        schema_column("users", "name", core::CoreType::String),
+        schema_column("users", "updated_at", core::CoreType::DateTime),
+    ];
+
+    let params = resolve_mutation_param_usage_metadata(&mutation, &schema_columns)
+        .expect("direct mutation column contexts should resolve");
+
+    assert_eq!(
+        params,
+        [
+            core::DbParamUsage::new("email".to_owned(), core::CoreType::String),
+            core::DbParamUsage::new("name".to_owned(), core::CoreType::String),
+            core::DbParamUsage::new("upsertName".to_owned(), core::CoreType::String),
+            core::DbParamUsage::new("updatedAt".to_owned(), core::CoreType::DateTime),
+        ]
+    );
+}
+
+#[test]
+fn resolves_update_set_qualified_predicate_and_in_mutation_param_types() {
+    let mutation = raw_param_mutation(
+        "UPDATE users AS u SET u.name = ? WHERE u.id IN (?, ?) AND u.email = ?;",
+        [
+            core::ParamUsage::new(
+                "name".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            ),
+            core::ParamUsage::new(
+                "primaryUserId".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            ),
+            core::ParamUsage::new(
+                "secondaryUserId".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            ),
+            core::ParamUsage::new(
+                "email".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            ),
+        ],
+    );
+    let schema_columns = [
+        schema_column("users", "id", core::CoreType::Int64),
+        schema_column("users", "name", core::CoreType::String),
+        schema_column("users", "email", core::CoreType::String),
+    ];
+
+    let params = resolve_mutation_param_usage_metadata(&mutation, &schema_columns)
+        .expect("direct update column contexts should resolve");
+
+    assert_eq!(
+        params,
+        [
+            core::DbParamUsage::new("name".to_owned(), core::CoreType::String),
+            core::DbParamUsage::new("primaryUserId".to_owned(), core::CoreType::Int64),
+            core::DbParamUsage::new("secondaryUserId".to_owned(), core::CoreType::Int64),
+            core::DbParamUsage::new("email".to_owned(), core::CoreType::String),
+        ]
+    );
+}
+
+#[test]
+fn rejects_column_list_free_insert_mutation_param_without_value_type() {
+    let mutation = raw_param_mutation(
+        "INSERT INTO users VALUES (?);",
+        [core::ParamUsage::new(
+            "email".to_owned(),
+            None,
+            false,
+            core::SourceLocation::unknown(),
+        )],
+    );
+    let schema_columns = [schema_column("users", "email", core::CoreType::String)];
+
+    let report = resolve_mutation_param_usage_metadata(&mutation, &schema_columns)
+        .expect_err("column-list-free INSERT Params should require valueType");
+
+    assert_eq!(
+        report.diagnostics()[0].message(),
+        param_value_type_required_message(
+            "email",
+            "no supported mutation column context was found"
+        )
+    );
+}
+
+#[test]
+fn rejects_unqualified_mutation_predicate_param_without_value_type() {
+    let mutation = raw_param_mutation(
+        "UPDATE users AS u SET u.name = ? WHERE id = ?;",
+        [
+            core::ParamUsage::new(
+                "name".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            ),
+            core::ParamUsage::new(
+                "userId".to_owned(),
+                None,
+                false,
+                core::SourceLocation::unknown(),
+            ),
+        ],
+    );
+    let schema_columns = [
+        schema_column("users", "id", core::CoreType::Int64),
+        schema_column("users", "name", core::CoreType::String),
+    ];
+
+    let report = resolve_mutation_param_usage_metadata(&mutation, &schema_columns)
+        .expect_err("unqualified predicate columns should require valueType");
+
+    assert_eq!(
+        report.diagnostics()[0].message(),
+        param_value_type_required_message(
+            "userId",
+            "no supported mutation column context was found"
+        )
+    );
+}
+
 fn raw_param_query(
     analysis_sql: &str,
     param_usages: impl IntoIterator<Item = core::ParamUsage>,
 ) -> core::RawQuery {
     core::RawQuery::new(
         core::QueryMetadata::new("findUsers".to_owned(), None),
+        analysis_sql.to_owned(),
+    )
+    .with_analysis_sql(analysis_sql.to_owned())
+    .with_param_usages(param_usages.into_iter().collect())
+}
+
+fn raw_param_mutation(
+    analysis_sql: &str,
+    param_usages: impl IntoIterator<Item = core::ParamUsage>,
+) -> core::RawMutation {
+    core::RawMutation::new(
+        core::MutationMetadata::new("writeUsers".to_owned()),
         analysis_sql.to_owned(),
     )
     .with_analysis_sql(analysis_sql.to_owned())

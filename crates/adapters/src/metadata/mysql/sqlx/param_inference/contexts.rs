@@ -214,7 +214,7 @@ fn collect_limit_clause_param_contexts(
 }
 
 #[allow(clippy::too_many_lines)]
-fn collect_expr_param_contexts(expr: &Expr, contexts: &mut Vec<Option<ColumnRef>>) {
+pub(super) fn collect_expr_param_contexts(expr: &Expr, contexts: &mut Vec<Option<ColumnRef>>) {
     if is_placeholder(expr) {
         contexts.push(None);
         return;
