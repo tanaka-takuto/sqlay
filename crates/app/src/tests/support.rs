@@ -638,12 +638,17 @@ impl MutationMetadataProvider for FakeMetadataProvider {
         if let Some(failure) = self.failure {
             return Err(failure.report());
         }
-        if let Some((id, message)) = self.param_failure
-            && let Some(usage) = mutation
+        if let Some((id, message)) = self.param_failure {
+            let Some(usage) = mutation
                 .param_usages()
                 .iter()
                 .find(|usage| usage.id() == id)
-        {
+            else {
+                return Err(core::DiagnosticReport::new(core::Diagnostic::error(
+                    format!("test fake mutation Param failure targets unknown Param id `{id}`"),
+                )));
+            };
+
             return Err(core::DiagnosticReport::new(
                 core::Diagnostic::error(message).with_location(usage.source_location().clone()),
             ));
@@ -783,11 +788,12 @@ impl TargetGenerator for FakeTargetGenerator {
         builders: &[core::CompiledBuilder],
     ) -> core::DiagnosticResult<core::GeneratedFiles> {
         self.calls.push("generate");
-        self.builders.borrow_mut().extend_from_slice(builders);
 
         if let Some(failure) = self.failure {
             return Err(failure.report());
         }
+
+        self.builders.borrow_mut().extend_from_slice(builders);
 
         Ok(self.files.clone())
     }
