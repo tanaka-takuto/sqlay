@@ -46,8 +46,13 @@ fn generator_keeps_slotless_files_on_static_builder_surface_when_slots_are_compi
         .with_dynamic_body(dynamic_body)
         .with_source_path("sql/dynamic.sql");
 
+    let builders = vec![
+        query_builder(no_param_query),
+        query_builder(param_query),
+        query_builder(slot_query),
+    ];
     let files = TypeScriptTargetGenerator
-        .generate(&plan, &[no_param_query, param_query, slot_query])
+        .generate(&plan, &builders)
         .expect("generator should preserve each file's generated surface independently");
 
     let static_contents = file_contents(
@@ -84,8 +89,9 @@ fn generator_maps_nested_sql_paths_under_output_dir() {
     let query = compiled_query("listAdmins", "SELECT id FROM admins;")
         .with_source_path("sql/admin/users.sql");
 
+    let builders = vec![query_builder(query)];
     let files = TypeScriptTargetGenerator
-        .generate(&plan, &[query])
+        .generate(&plan, &builders)
         .expect("generator should map SQL source path to TypeScript output path");
 
     assert_eq!(files.files().len(), 1);
@@ -131,8 +137,9 @@ fn generator_embeds_cross_file_fragment_branches_in_query_source_output() {
         .with_dynamic_body(dynamic_body)
         .with_source_path("sql/users.sql");
 
+    let builders = vec![query_builder(query)];
     let files = TypeScriptTargetGenerator
-        .generate(&plan, &[query])
+        .generate(&plan, &builders)
         .expect("query output should embed selected fragment SQL branches");
 
     assert_eq!(files.files().len(), 1);
@@ -172,8 +179,9 @@ fn generator_generates_param_queries() {
     )])
     .with_source_path("sql/users.sql");
 
+    let builders = vec![query_builder(query)];
     let files = TypeScriptTargetGenerator
-        .generate(&plan, &[query])
+        .generate(&plan, &builders)
         .expect("Param TypeScript generation should emit input and params");
 
     let users_contents = file_contents(
@@ -190,16 +198,22 @@ fn generator_generates_param_queries() {
 #[test]
 fn generator_combines_queries_from_same_sql_file_into_one_module() {
     let plan = compilation_plan();
-    let queries = [
-        compiled_query("listUsers", "SELECT id FROM users;").with_source_path("sql/users.sql"),
-        compiled_query("findLatestUser", "SELECT id FROM users LIMIT 1;")
-            .with_source_path("sql/users.sql"),
-        compiled_query("listRoles", "SELECT id FROM roles;")
-            .with_source_path("sql/admin/roles.sql"),
+    let builders = vec![
+        query_builder(
+            compiled_query("listUsers", "SELECT id FROM users;").with_source_path("sql/users.sql"),
+        ),
+        query_builder(
+            compiled_query("findLatestUser", "SELECT id FROM users LIMIT 1;")
+                .with_source_path("sql/users.sql"),
+        ),
+        query_builder(
+            compiled_query("listRoles", "SELECT id FROM roles;")
+                .with_source_path("sql/admin/roles.sql"),
+        ),
     ];
 
     let files = TypeScriptTargetGenerator
-        .generate(&plan, &queries)
+        .generate(&plan, &builders)
         .expect("generator should group queries by source SQL file");
 
     assert_eq!(files.files().len(), 2);
@@ -210,4 +224,8 @@ fn generator_combines_queries_from_same_sql_file_into_one_module() {
     assert!(users_contents.contains("export function listUsers("));
     assert!(users_contents.contains("export function findLatestUser("));
     assert!(!users_contents.contains("export function listRoles("));
+}
+
+fn query_builder(query: core::CompiledQuery) -> core::CompiledBuilder {
+    core::CompiledBuilder::Query(query)
 }
