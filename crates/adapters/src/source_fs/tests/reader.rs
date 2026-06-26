@@ -690,10 +690,22 @@ AND u.active = 1
         Some(mutation_path.as_path())
     );
     assert_eq!(
+        report.diagnostics()[1]
+            .location()
+            .and_then(core::SourceLocation::path),
+        Some(query_path.as_path())
+    );
+    assert_eq!(
         report.diagnostics()[2]
             .location()
             .and_then(core::SourceLocation::path),
         Some(fragment_path.as_path())
+    );
+    assert_eq!(
+        report.diagnostics()[3]
+            .location()
+            .and_then(core::SourceLocation::path),
+        Some(query_path.as_path())
     );
 
     fs::remove_dir_all(project_dir).expect("test project directory should be removed");
