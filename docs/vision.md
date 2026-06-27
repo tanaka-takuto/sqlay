@@ -69,6 +69,11 @@ accepted direction for MySQL mutation builders covering `INSERT`, `UPDATE`,
 transaction management, and driver-specific result types stay outside generated
 code.
 
+[ADR 0011](./adr/0011-define-repeat-for-variable-length-sql-repetition.md) defines
+the accepted direction for `Repeat`, which repeats one SQL list item template for
+dynamic `IN` lists and bulk `VALUES` rows while keeping generated code as SQL
+builder output only.
+
 Additional SQL dialects and additional target generators require separate design
 decisions before implementation.
 

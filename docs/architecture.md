@@ -64,6 +64,7 @@ CLI Driver
 
 Source Intake
   -> RawSourceUnit(Query | Mutation | Fragment)
+  -> inline Param, Slot, and Repeat usage metadata
 
 Dialect Analyzer
   RawQuery + dialect rules
@@ -248,10 +249,24 @@ used for downstream analysis. Initial slots remain optional single-select slots:
 each unique Slot ID contributes one unselected choice plus one choice per target
 fragment.
 
+For `Repeat` intake, inline `type: repeat` and `type: repeatEnd` annotations are
+recognized inside query, mutation, and fragment bodies. A Repeat range encloses one
+variable-length list item template and has required `id` and `separator` metadata.
+The surrounding list syntax, such as `IN (` and `)`, or the `VALUES` keyword, stays
+outside the Repeat range. Repeat ranges may contain Param ranges, but they may not
+contain Slot markers or nested Repeat ranges. Param ranges may not contain Repeat
+markers. Repeat ranges without any Param markers are rejected.
+
 Repeated Slot IDs in one query or mutation are accepted only when their `targets`
-arrays match exactly, including order. Direct Param IDs and Slot IDs collide when
-they would share the same generated input namespace. Fragment Params are nested
-inside selected slot branch objects.
+arrays match exactly, including order. Repeated Repeat IDs share one generated
+array input when their item Param ID set, CoreType, and nullability are compatible.
+The first Repeat occurrence fixes generated item field order; later occurrences may
+use different SQL text, separators, and Param occurrence order.
+
+Direct Param IDs, Slot IDs, and Repeat IDs collide when they would share the same
+generated top-level input namespace. Fragment Params and Fragment Repeats are
+nested inside selected slot branch objects and share that branch object's namespace.
+Repeat item Params are nested inside each Repeat item object.
 
 Fragments that are not referenced by any Slot target produce non-fatal warnings.
 
@@ -336,6 +351,11 @@ Application flow should preserve source order across mixed query and mutation
 builders. Fragment-only files do not generate path-matching TypeScript files, but
 their fragments may be embedded into query or mutation builder files that use them.
 
+Dynamic SQL validation is counted in validation cases, not only Slot variants. A
+validation case is the product of Slot selection variants and Repeat representative
+cases. Initial Repeat validation uses one representative case, a two-item expansion
+that exercises the separator. The validation case limit remains 256.
+
 ## Compilation Core
 
 Compilation Core is the innermost crate. It owns shared domain vocabulary and
@@ -373,6 +393,12 @@ struct CompiledMutation {
     params: Vec<ParamBinding>,
 }
 ```
+
+Dynamic Core IR should represent Slot and Repeat emission without merging SELECT
+query IR and mutation IR. Repeat definitions need enough language-neutral
+information for target generators to render non-empty array inputs, runtime
+empty-array guards, separators, item SQL segments, and Param bindings in emitted
+SQL order.
 
 Database-specific type mapping should stop at Core IR:
 
@@ -466,6 +492,20 @@ branch object and are not exported as independent fragment input aliases. Genera
 Slot builder functions use a private `SqlParam` alias, append SQL segments with
 `sqlParts.push(...)`, branch on `input.slotId?.$fragment` without a default case,
 and return `sqlParts.join("")` with Params appended in expanded SQL order.
+
+For Repeat builders, generated input types add each unique Repeat ID as a required
+non-empty readonly array of inline item objects. Repeat item type aliases are not
+exported. A single-Param Repeat item still uses an object item, such as
+`ids: readonly [{ id: string }, ...{ id: string }[]]`, not a scalar array. Builders
+with any Repeat return `params: readonly SqlParam[]`, because runtime input length
+changes the number of placeholders. Generated builders check each emitted Repeat
+input for an empty array before expanding it.
+
+Repeat SQL generation uses the same `sqlParts` and `params` append model as Slot
+generation. A loop emits each item, pushes the Repeat separator before every item
+after the first, and appends item Params in that occurrence's SQL placeholder
+order. Repeat inputs inside optional Slot branches are checked and expanded only
+when that branch is selected.
 
 Generated SQL must be emitted as a valid JavaScript string literal. The TypeScript
 target generator should escape the SQL text rather than embedding raw SQL in an

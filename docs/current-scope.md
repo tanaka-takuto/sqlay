@@ -111,10 +111,37 @@ as SELECT queries, but validation is mutation-specific: every variant must remai
 supported single mutation statement with the same statement kind as the base
 variant.
 
+## Accepted Repeat Direction
+
+[ADR 0011](./adr/0011-define-repeat-for-variable-length-sql-repetition.md) defines
+the accepted direction for `Repeat`, a future variable-length SQL repetition
+feature for dynamic `IN` lists and bulk `VALUES` rows.
+
+Repeat uses paired inline `repeat` and `repeatEnd` markers around one list item
+template. The surrounding list syntax remains ordinary SQL:
+
+```sql
+AND u.id IN (
+  /* @sqlay { type: repeat id: ids separator: "," } */
+  /* @sqlay { type: param id: id valueType: int64 } */
+  1
+  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: repeatEnd } */
+)
+```
+
+Repeat input is always a non-empty readonly array of item objects. Single-Param
+items still use object items, not scalar arrays. Repeat arrays reject empty input at
+runtime and do not define `maxItems` in the initial design.
+
+Repeat is accepted for SELECT queries, mutations, and fragments used by
+Slot/Fragment composition. Repeat may contain Params, but it may not contain Slots
+or nested Repeat ranges.
+
 ## Near-Term Direction
 
 The near-term direction is to stabilize the current SELECT builder workflow while
-implementing ADR 0010 in focused slices:
+implementing ADR 0010 and then ADR 0011 in focused slices:
 
 - keep contributor and user documentation aligned with the supported and accepted
   post-MVP scope.
@@ -146,6 +173,7 @@ The current scope is defined by these accepted ADRs:
 - [ADR 0008: Define SELECT Param Support](./adr/0008-define-select-param-support.md)
 - [ADR 0009: Define Initial SELECT Slot/Fragment Support](./adr/0009-define-initial-select-slot-fragment-support.md)
 - [ADR 0010: Define Initial MySQL Mutation Builder Support](./adr/0010-define-initial-mysql-mutation-builder-support.md)
+- [ADR 0011: Define Repeat for Variable-Length SQL Repetition](./adr/0011-define-repeat-for-variable-length-sql-repetition.md)
 
 ## Out Of Scope
 
@@ -155,6 +183,10 @@ The following remain intentionally unsupported:
   including required slots, default fragments, multi-select slots, fragment-local
   slots, fragment include or alias, and result-shape-changing SELECT variants.
 - optional direct Param input properties that would require SQL structure changes.
+- `Repeat` behavior outside ADR 0011, including empty-array fallback SQL,
+  `maxItems` or `minItems`, scalar array inputs, exported Repeat item type aliases,
+  nested Repeat ranges, Slot markers inside Repeat ranges, and Param-less
+  count-based SQL duplication.
 - mutation forms outside ADR 0010, including multi-table `UPDATE` and `DELETE`,
   `INSERT ... SELECT`, `REPLACE ... SELECT`, top-level CTE mutations, `CALL`,
   `LOAD DATA`, `TRUNCATE`, DDL, transaction control, and administrative
