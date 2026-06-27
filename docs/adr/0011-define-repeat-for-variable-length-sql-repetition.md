@@ -33,6 +33,13 @@ A Repeat range starts with `type: repeat` and ends with `type: repeatEnd`.
 Initial Repeat metadata accepts only `type`, `id`, and `separator`.
 `repeatEnd` accepts only `type`.
 
+Each `repeat` marker must provide an `id`. Repeat IDs use the same portable
+identifier rule as query, mutation, fragment, Param, and Slot IDs:
+
+```text
+^[A-Za-z_][A-Za-z0-9_]*$
+```
+
 ```sql
 AND u.id IN (
   /* @sqlay { type: repeat id: ids separator: "," } */
