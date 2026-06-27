@@ -192,6 +192,116 @@ fn check_rejects_repeated_query_repeat_id_with_incompatible_item_shape() {
 }
 
 #[test]
+fn check_rejects_repeated_query_repeat_id_with_item_value_type_conflict() {
+    let sql = "SELECT u.id FROM users AS u WHERE u.id IN (?) OR u.id IN (?);";
+    let first_placeholder = sql.find('?').expect("first Repeat placeholder exists");
+    let second_placeholder = sql.rfind('?').expect("second Repeat placeholder exists");
+    let query = core::RawQuery::new(
+        core::QueryMetadata::new("findUsers".to_owned(), None),
+        sql.to_owned(),
+    )
+    .with_analysis_sql(sql.to_owned())
+    .with_repeat_usages(vec![
+        core::RepeatUsage::new(
+            "values".to_owned(),
+            ",".to_owned(),
+            first_placeholder,
+            first_placeholder + 1,
+            core::SourceLocation::unknown(),
+        )
+        .with_item_param_usages(vec![
+            core::ParamUsage::new(
+                "id".to_owned(),
+                Some(core::CoreType::Int64),
+                false,
+                core::SourceLocation::unknown(),
+            )
+            .with_placeholder_index(first_placeholder),
+        ]),
+        core::RepeatUsage::new(
+            "values".to_owned(),
+            ",".to_owned(),
+            second_placeholder,
+            second_placeholder + 1,
+            core::SourceLocation::unknown(),
+        )
+        .with_item_param_usages(vec![
+            core::ParamUsage::new(
+                "id".to_owned(),
+                Some(core::CoreType::String),
+                false,
+                core::SourceLocation::unknown(),
+            )
+            .with_placeholder_index(second_placeholder),
+        ]),
+    ])
+    .with_source_path("sql/users.sql");
+
+    let report = check_single_query(query)
+        .expect_err("repeated Repeat item Params with conflicting valueTypes should be rejected");
+
+    assert_eq!(
+        diagnostic_messages(&report),
+        "conflicting Repeat `values` item shape in query `findUsers` item Param `id` type conflict: first occurrence uses Int64 but conflicting occurrence uses String; repeated Repeat IDs must use the same item Param ID set with matching valueType and nullability"
+    );
+}
+
+#[test]
+fn check_rejects_repeated_query_repeat_id_with_item_nullability_conflict() {
+    let sql = "SELECT u.id FROM users AS u WHERE u.id IN (?) OR u.id IN (?);";
+    let first_placeholder = sql.find('?').expect("first Repeat placeholder exists");
+    let second_placeholder = sql.rfind('?').expect("second Repeat placeholder exists");
+    let query = core::RawQuery::new(
+        core::QueryMetadata::new("findUsers".to_owned(), None),
+        sql.to_owned(),
+    )
+    .with_analysis_sql(sql.to_owned())
+    .with_repeat_usages(vec![
+        core::RepeatUsage::new(
+            "values".to_owned(),
+            ",".to_owned(),
+            first_placeholder,
+            first_placeholder + 1,
+            core::SourceLocation::unknown(),
+        )
+        .with_item_param_usages(vec![
+            core::ParamUsage::new(
+                "id".to_owned(),
+                Some(core::CoreType::Int64),
+                false,
+                core::SourceLocation::unknown(),
+            )
+            .with_placeholder_index(first_placeholder),
+        ]),
+        core::RepeatUsage::new(
+            "values".to_owned(),
+            ",".to_owned(),
+            second_placeholder,
+            second_placeholder + 1,
+            core::SourceLocation::unknown(),
+        )
+        .with_item_param_usages(vec![
+            core::ParamUsage::new(
+                "id".to_owned(),
+                Some(core::CoreType::Int64),
+                true,
+                core::SourceLocation::unknown(),
+            )
+            .with_placeholder_index(second_placeholder),
+        ]),
+    ])
+    .with_source_path("sql/users.sql");
+
+    let report = check_single_query(query)
+        .expect_err("repeated Repeat item Params with conflicting nullability should be rejected");
+
+    assert_eq!(
+        diagnostic_messages(&report),
+        "conflicting Repeat `values` item shape in query `findUsers` item Param `id` nullability conflict: first occurrence is nullable false but conflicting occurrence is nullable true; repeated Repeat IDs must use the same item Param ID set with matching valueType and nullability"
+    );
+}
+
+#[test]
 fn check_allows_repeated_query_repeat_id_with_different_item_param_order() {
     let sql = "SELECT u.id FROM users AS u WHERE (u.id, u.kind) IN ((?, ?)) OR (u.kind, u.id) IN ((?, ?));";
     let placeholders = sql
