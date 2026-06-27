@@ -230,8 +230,8 @@ remain outside generated code.
 
 Later ADRs may define:
 
-- `Repeat` for variable-length SQL repetition such as bulk `VALUES` rows or
-  dynamic `IN` lists.
+- `Repeat` extensions beyond
+  [ADR 0011](./0011-define-repeat-for-variable-length-sql-repetition.md).
 - multi-table `UPDATE` and `DELETE`.
 - `INSERT ... SELECT` and `REPLACE ... SELECT`.
 - top-level CTE mutation forms.
