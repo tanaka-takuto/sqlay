@@ -211,19 +211,62 @@ const mutationValueTypeOverrideQuery = mutationValueTypeOverride(
 const mutationValueTypeOverrideParams: readonly [number, string] =
   mutationValueTypeOverrideQuery.params;
 
-const mutationSlotAssignmentInput: mutationSlotAssignment_Input = {
+type MutationSlotNullableTextAssignment = Extract<
+  NonNullable<mutationSlotAssignment_Input["assignment"]>,
+  { $fragment: "mutationAssignNullableText" }
+>;
+type MutationSlotDecimalAssignment = Extract<
+  NonNullable<mutationSlotAssignment_Input["assignment"]>,
+  { $fragment: "mutationAssignDecimal" }
+>;
+
+const mutationSlotAssignmentNullableTextAssignment: MutationSlotNullableTextAssignment = {
+  $fragment: "mutationAssignNullableText",
+  textValue: null,
+};
+const mutationSlotAssignmentNullableTextInput: mutationSlotAssignment_Input = {
   textValue: "slot-base",
   bigintId: "1",
-  assignment: {
-    $fragment: "mutationAssignNullableText",
-    textValue: null,
-  },
+  assignment: mutationSlotAssignmentNullableTextAssignment,
 };
-const mutationSlotAssignmentQuery = mutationSlotAssignment(
-  mutationSlotAssignmentInput,
+const mutationSlotAssignmentNullableTextQuery = mutationSlotAssignment(
+  mutationSlotAssignmentNullableTextInput,
 );
-const mutationSlotAssignmentParams: readonly unknown[] =
-  mutationSlotAssignmentQuery.params;
+const mutationSlotAssignmentNullableTextExpectedParams: readonly [
+  string,
+  string | null,
+  string,
+] = [
+  mutationSlotAssignmentNullableTextInput.textValue,
+  mutationSlotAssignmentNullableTextAssignment.textValue,
+  mutationSlotAssignmentNullableTextInput.bigintId,
+];
+const mutationSlotAssignmentNullableTextParams: readonly unknown[] =
+  mutationSlotAssignmentNullableTextQuery.params;
+
+const mutationSlotAssignmentDecimalAssignment: MutationSlotDecimalAssignment = {
+  $fragment: "mutationAssignDecimal",
+  amount: "55.5000",
+};
+const mutationSlotAssignmentDecimalInput: mutationSlotAssignment_Input = {
+  textValue: "slot-base",
+  bigintId: "1",
+  assignment: mutationSlotAssignmentDecimalAssignment,
+};
+const mutationSlotAssignmentDecimalQuery = mutationSlotAssignment(
+  mutationSlotAssignmentDecimalInput,
+);
+const mutationSlotAssignmentDecimalExpectedParams: readonly [
+  string,
+  string,
+  string,
+] = [
+  mutationSlotAssignmentDecimalInput.textValue,
+  mutationSlotAssignmentDecimalAssignment.amount,
+  mutationSlotAssignmentDecimalInput.bigintId,
+];
+const mutationSlotAssignmentDecimalParams: readonly unknown[] =
+  mutationSlotAssignmentDecimalQuery.params;
 
 const directParamInput: paramDirectColumnInference_Input = {
   parentBigintNnCol: "1",
@@ -372,7 +415,10 @@ void mutationReplaceSetParams;
 void mutationUpdateAliasLimitedParams;
 void mutationDeleteAliasLimitedParams;
 void mutationValueTypeOverrideParams;
-void mutationSlotAssignmentParams;
+void mutationSlotAssignmentNullableTextExpectedParams;
+void mutationSlotAssignmentNullableTextParams;
+void mutationSlotAssignmentDecimalExpectedParams;
+void mutationSlotAssignmentDecimalParams;
 void directParamParams;
 void directParamOutput;
 void valueTypeParamParams;

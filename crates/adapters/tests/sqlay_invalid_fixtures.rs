@@ -147,7 +147,7 @@ fn invalid_mutation_sql_shape_fixtures_fail_before_metadata_lookup() {
         (
             "mutation_load_data.sql",
             MUTATION_LOAD_DATA,
-            "failed to parse MySQL SQL",
+            "unsupported mutation SQL statement `LOAD DATA`; supported statement kinds are `INSERT`, `UPDATE`, `DELETE`, and `REPLACE`",
         ),
         (
             "mutation_truncate.sql",
