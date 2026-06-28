@@ -50,6 +50,19 @@ import {
   paramValueTypeOverride,
 } from "./generated/valid/param_bindings";
 import {
+  type repeatBulkInsertRows_Input,
+  repeatBulkInsertRows,
+  type repeatDynamicInList_Input,
+  type repeatDynamicInList_Output,
+  repeatDynamicInList,
+  type repeatFragmentSlotSearch_Input,
+  type repeatFragmentSlotSearch_Output,
+  repeatFragmentSlotSearch,
+  type repeatRepeatedIdEmission_Input,
+  type repeatRepeatedIdEmission_Output,
+  repeatRepeatedIdEmission,
+} from "./generated/valid/repeat_builders";
+import {
   type slotRuntimeOptionalFilter_Input,
   type slotRuntimeOptionalFilter_Output,
   type slotRuntimeSearch_Input,
@@ -81,6 +94,95 @@ import {
   typeMetadataOddColumnNames,
   typeMetadataSingleRow,
 } from "./generated/valid/type_metadata_matrix";
+
+type Assert<T extends true> = T;
+type IsExact<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
+    ? (<T>() => T extends B ? 1 : 2) extends <T>() => T extends A ? 1 : 2
+      ? true
+      : false
+    : false;
+
+type RepeatDynamicInListInputContract = Assert<
+  IsExact<
+    repeatDynamicInList_Input,
+    {
+      states: readonly [{ state: string }, ...{ state: string }[]];
+    }
+  >
+>;
+type RepeatDynamicInListReturnContract = Assert<
+  IsExact<
+    ReturnType<typeof repeatDynamicInList>,
+    { sql: string; params: readonly unknown[] }
+  >
+>;
+
+type RepeatBulkInsertRowsInputContract = Assert<
+  IsExact<
+    repeatBulkInsertRows_Input,
+    {
+      rows: readonly [
+        {
+          childId: string;
+          parentId: string;
+          childLabel: string;
+          childAmount: string;
+        },
+        ...{
+          childId: string;
+          parentId: string;
+          childLabel: string;
+          childAmount: string;
+        }[],
+      ];
+    }
+  >
+>;
+type RepeatBulkInsertRowsReturnContract = Assert<
+  IsExact<
+    ReturnType<typeof repeatBulkInsertRows>,
+    { sql: string; params: readonly unknown[] }
+  >
+>;
+
+type RepeatRepeatedIdEmissionInputContract = Assert<
+  IsExact<
+    repeatRepeatedIdEmission_Input,
+    {
+      childPairs: readonly [
+        { childId: string; parentId: string },
+        ...{ childId: string; parentId: string }[],
+      ];
+    }
+  >
+>;
+type RepeatRepeatedIdEmissionReturnContract = Assert<
+  IsExact<
+    ReturnType<typeof repeatRepeatedIdEmission>,
+    { sql: string; params: readonly unknown[] }
+  >
+>;
+
+type RepeatFixtureChildIdsBranch = {
+  $fragment: "repeatFixtureChildIds";
+  childIds: readonly [{ childId: string }, ...{ childId: string }[]];
+};
+type RepeatFragmentSlotSearchInputContract = Assert<
+  IsExact<
+    repeatFragmentSlotSearch_Input,
+    {
+      requiredChildFilter?: RepeatFixtureChildIdsBranch;
+      optionalChildFilter?: RepeatFixtureChildIdsBranch;
+    }
+  >
+>;
+type RepeatFragmentSlotSearchReturnContract = Assert<
+  IsExact<
+    ReturnType<typeof repeatFragmentSlotSearch>,
+    { sql: string; params: readonly unknown[] }
+  >
+>;
 
 const directColumnsQuery = typeMetadataDirectColumns();
 const directColumnsOutput: typeMetadataDirectColumns_Output = [];
@@ -304,6 +406,75 @@ const inListParamQuery = paramInListMarkers(inListParamInput);
 const inListParamParams: readonly [string, string] = inListParamQuery.params;
 const inListParamOutput: paramInListMarkers_Output = [];
 
+const repeatDynamicInListInput: repeatDynamicInList_Input = {
+  states: [{ state: "state_a" }, { state: "state_b" }],
+};
+const repeatDynamicInListQuery = repeatDynamicInList(repeatDynamicInListInput);
+const repeatDynamicInListParams: readonly unknown[] =
+  repeatDynamicInListQuery.params;
+const repeatDynamicInListOutput: repeatDynamicInList_Output = [];
+
+const repeatBulkInsertRowsInput: repeatBulkInsertRows_Input = {
+  rows: [
+    {
+      childId: "300",
+      parentId: "1",
+      childLabel: "child-repeat-a",
+      childAmount: "42.50",
+    },
+    {
+      childId: "301",
+      parentId: "1",
+      childLabel: "child-repeat-b",
+      childAmount: "43.75",
+    },
+  ],
+};
+const repeatBulkInsertRowsQuery = repeatBulkInsertRows(repeatBulkInsertRowsInput);
+const repeatBulkInsertRowsParams: readonly unknown[] =
+  repeatBulkInsertRowsQuery.params;
+
+const repeatRepeatedIdEmissionInput: repeatRepeatedIdEmission_Input = {
+  childPairs: [
+    { childId: "100", parentId: "1" },
+    { childId: "101", parentId: "1" },
+  ],
+};
+const repeatRepeatedIdEmissionQuery = repeatRepeatedIdEmission(
+  repeatRepeatedIdEmissionInput,
+);
+const repeatRepeatedIdEmissionParams: readonly unknown[] =
+  repeatRepeatedIdEmissionQuery.params;
+const repeatRepeatedIdEmissionOutput: repeatRepeatedIdEmission_Output = [];
+
+type RepeatFragmentRequiredChildFilter = Extract<
+  NonNullable<repeatFragmentSlotSearch_Input["requiredChildFilter"]>,
+  { $fragment: "repeatFixtureChildIds" }
+>;
+type RepeatFragmentOptionalChildFilter = Extract<
+  NonNullable<repeatFragmentSlotSearch_Input["optionalChildFilter"]>,
+  { $fragment: "repeatFixtureChildIds" }
+>;
+
+const repeatFragmentRequiredChildFilter: RepeatFragmentRequiredChildFilter = {
+  $fragment: "repeatFixtureChildIds",
+  childIds: [{ childId: "100" }],
+};
+const repeatFragmentOptionalChildFilter: RepeatFragmentOptionalChildFilter = {
+  $fragment: "repeatFixtureChildIds",
+  childIds: [{ childId: "101" }],
+};
+const repeatFragmentSlotSearchInput: repeatFragmentSlotSearch_Input = {
+  requiredChildFilter: repeatFragmentRequiredChildFilter,
+  optionalChildFilter: repeatFragmentOptionalChildFilter,
+};
+const repeatFragmentSlotSearchQuery = repeatFragmentSlotSearch(
+  repeatFragmentSlotSearchInput,
+);
+const repeatFragmentSlotSearchParams: readonly unknown[] =
+  repeatFragmentSlotSearchQuery.params;
+const repeatFragmentSlotSearchOutput: repeatFragmentSlotSearch_Output = [];
+
 const slotRuntimeSearchInput: slotRuntimeSearch_Input = {
   minId: "1",
   state: "state_a",
@@ -429,6 +600,13 @@ void repeatedParamParams;
 void repeatedParamOutput;
 void inListParamParams;
 void inListParamOutput;
+void repeatDynamicInListParams;
+void repeatDynamicInListOutput;
+void repeatBulkInsertRowsParams;
+void repeatRepeatedIdEmissionParams;
+void repeatRepeatedIdEmissionOutput;
+void repeatFragmentSlotSearchParams;
+void repeatFragmentSlotSearchOutput;
 void slotRuntimeSearchParams;
 void slotRuntimeSearchOutput;
 void slotRuntimeOptionalFilterQuery;

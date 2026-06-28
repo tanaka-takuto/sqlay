@@ -28,6 +28,9 @@ fixtures, not user-facing examples.
 - `valid/mutation_builders.sql` exercises valid mutation builders, including
   `INSERT`, `UPDATE`, `DELETE`, `REPLACE`, direct Param inference, explicit
   `valueType`, and mutation Slot/Fragment composition.
+- `valid/repeat_builders.sql` exercises valid Repeat builders, including dynamic
+  `IN` lists, bulk `VALUES` rows, Fragment-contained Repeat, repeated Repeat IDs,
+  non-empty array inputs, runtime empty-array guards, and Repeat parameter order.
 - `valid/nested/path_mapping.sql` verifies that generated output preserves nested
   config-relative source paths.
 - `generated/` contains committed generated TypeScript expected artifacts.
