@@ -4,7 +4,6 @@ type SqlParam = unknown;
 
 export type slotRuntimeSearch_Input = {
   minId: string;
-  state: string;
   filter?: { $fragment: "slotRuntimeActiveOnly" } | {
     $fragment: "slotRuntimeByVarchar";
     varcharFilter: string;
@@ -12,6 +11,7 @@ export type slotRuntimeSearch_Input = {
     $fragment: "slotRuntimeByChildAmount";
     minAmount: string;
   };
+  state: string;
 };
 
 export type slotRuntimeSearch_Row = {
