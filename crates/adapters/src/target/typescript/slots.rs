@@ -135,8 +135,8 @@ fn render_repeat_occurrence<F>(
 ) where
     F: Fn(&str) -> String,
 {
-    let index_name = format!("{}Index", repeat.repeat_id());
-    let item_name = format!("{}Item", repeat.repeat_id());
+    let index_name = "repeatIndex";
+    let item_name = "repeatItem";
     let input_access = repeat_input_access(repeat.repeat_id());
     let item_indent = format!("{indent}    ");
 
@@ -157,7 +157,7 @@ fn render_repeat_occurrence<F>(
     .expect("writing to String cannot fail");
     writeln!(output, "{indent}    }}").expect("writing to String cannot fail");
     render_dynamic_sql_segment(output, &item_indent, repeat.item_segment(), |param| {
-        input_param_access(&item_name, param.input_name())
+        input_param_access(item_name, param.input_name())
     });
     writeln!(output, "{item_indent}{index_name} += 1;").expect("writing to String cannot fail");
     writeln!(output, "{indent}  }}").expect("writing to String cannot fail");

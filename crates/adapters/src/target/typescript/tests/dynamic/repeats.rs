@@ -52,14 +52,14 @@ export function findUsersByIds(
 
   sqlParts.push("SELECT id FROM users WHERE id IN (");
   {
-    let idsIndex = 0;
-    for (const idsItem of input.ids) {
-      if (idsIndex > 0) {
+    let repeatIndex = 0;
+    for (const repeatItem of input.ids) {
+      if (repeatIndex > 0) {
         sqlParts.push(",");
       }
       sqlParts.push("?");
-      params.push(idsItem.id);
-      idsIndex += 1;
+      params.push(repeatItem.id);
+      repeatIndex += 1;
     }
   }
   sqlParts.push(");");
@@ -129,15 +129,15 @@ export function createUsers(
 
   sqlParts.push("INSERT INTO users (email, name) VALUES ");
   {
-    let rowsIndex = 0;
-    for (const rowsItem of input.rows) {
-      if (rowsIndex > 0) {
+    let repeatIndex = 0;
+    for (const repeatItem of input.rows) {
+      if (repeatIndex > 0) {
         sqlParts.push(",");
       }
       sqlParts.push("(?, ?)");
-      params.push(rowsItem.name);
-      params.push(rowsItem.email);
-      rowsIndex += 1;
+      params.push(repeatItem.name);
+      params.push(repeatItem.email);
+      repeatIndex += 1;
     }
   }
   sqlParts.push(";");
@@ -218,14 +218,14 @@ export function findUsers(
       }
       sqlParts.push(" AND id IN (");
       {
-        let idsIndex = 0;
-        for (const idsItem of input.filter.ids) {
-          if (idsIndex > 0) {
+        let repeatIndex = 0;
+        for (const repeatItem of input.filter.ids) {
+          if (repeatIndex > 0) {
             sqlParts.push(",");
           }
           sqlParts.push("?");
-          params.push(idsItem.id);
-          idsIndex += 1;
+          params.push(repeatItem.id);
+          repeatIndex += 1;
         }
       }
       sqlParts.push(")");
