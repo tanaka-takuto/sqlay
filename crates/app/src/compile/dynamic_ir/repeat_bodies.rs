@@ -488,15 +488,21 @@ fn compiled_query_repeat_params(
     scope: &RepeatBindingScope,
     scoped_param_bindings: &[ScopedParamBinding],
 ) -> core::DiagnosticResult<Vec<core::ParamBinding>> {
-    let mut item_params = repeat.item_param_usages().iter().collect::<Vec<_>>();
-    item_params.sort_by_key(|usage| {
-        query_repeat_param_placeholder_index(query, repeat, usage).unwrap_or(usize::MAX)
-    });
+    let mut item_params = repeat
+        .item_param_usages()
+        .iter()
+        .map(|usage| {
+            Ok((
+                query_repeat_param_placeholder_index(query, repeat, usage)?,
+                usage,
+            ))
+        })
+        .collect::<core::DiagnosticResult<Vec<_>>>()?;
+    item_params.sort_by_key(|(placeholder_index, _)| *placeholder_index);
     let param_scope = scope.expanded_scope(repeat.id());
-
     item_params
         .into_iter()
-        .map(|usage| compiled_param_binding(query, usage, &param_scope, scoped_param_bindings))
+        .map(|(_, usage)| compiled_param_binding(query, usage, &param_scope, scoped_param_bindings))
         .collect()
 }
 
@@ -506,15 +512,21 @@ fn compiled_mutation_repeat_params(
     scope: &RepeatBindingScope,
     scoped_param_bindings: &[ScopedParamBinding],
 ) -> core::DiagnosticResult<Vec<core::ParamBinding>> {
-    let mut item_params = repeat.item_param_usages().iter().collect::<Vec<_>>();
-    item_params.sort_by_key(|usage| {
-        mutation_repeat_param_placeholder_index(mutation, repeat, usage).unwrap_or(usize::MAX)
-    });
+    let mut item_params = repeat
+        .item_param_usages()
+        .iter()
+        .map(|usage| {
+            Ok((
+                mutation_repeat_param_placeholder_index(mutation, repeat, usage)?,
+                usage,
+            ))
+        })
+        .collect::<core::DiagnosticResult<Vec<_>>>()?;
+    item_params.sort_by_key(|(placeholder_index, _)| *placeholder_index);
     let param_scope = scope.expanded_scope(repeat.id());
-
     item_params
         .into_iter()
-        .map(|usage| {
+        .map(|(_, usage)| {
             compiled_mutation_param_binding(mutation, usage, &param_scope, scoped_param_bindings)
         })
         .collect()

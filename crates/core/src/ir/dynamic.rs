@@ -136,22 +136,21 @@ impl CompiledSqlBody {
     }
 
     fn legacy_segment(&self) -> CompiledSqlSegment {
-        let sql = self
-            .base_segments
-            .iter()
-            .map(Self::segment_sql)
-            .collect::<String>();
-        let params = self
-            .base_segments
-            .iter()
-            .flat_map(|segment| segment.params().iter().cloned())
-            .collect();
+        let mut sql = String::new();
+        let mut params = Vec::new();
+
+        for (index, segment) in self.base_segments.iter().enumerate() {
+            sql.push_str(segment.sql());
+            params.extend(segment.params().iter().cloned());
+
+            if let Some(repeat) = self.repeat_occurrences.get(index) {
+                let item_segment = repeat.item_segment();
+                sql.push_str(item_segment.sql());
+                params.extend(item_segment.params().iter().cloned());
+            }
+        }
 
         CompiledSqlSegment::new(sql, params)
-    }
-
-    fn segment_sql(segment: &CompiledSqlSegment) -> &str {
-        segment.sql()
     }
 }
 
@@ -311,7 +310,12 @@ impl CompiledSlotBranch {
     /// Build a compiled Slot branch with static SQL segments.
     #[must_use]
     pub fn new(target_id: String, segments: Vec<CompiledSqlSegment>) -> Self {
-        let body = CompiledSqlBody::new(segments.clone(), Vec::new());
+        let sql = segments.iter().map(CompiledSqlSegment::sql).collect();
+        let params = segments
+            .iter()
+            .flat_map(|segment| segment.params().iter().cloned())
+            .collect();
+        let body = CompiledSqlBody::from_segment(CompiledSqlSegment::new(sql, params));
         Self {
             target_id,
             body,
