@@ -128,7 +128,6 @@ export function mutationValueTypeOverride(
 
 export type mutationSlotAssignment_Input = {
   textValue: string;
-  bigintId: string;
   assignment?: {
     $fragment: "mutationAssignNullableText";
     textValue: string | null;
@@ -136,6 +135,7 @@ export type mutationSlotAssignment_Input = {
     $fragment: "mutationAssignDecimal";
     amount: string;
   };
+  bigintId: string;
 };
 
 export function mutationSlotAssignment(
