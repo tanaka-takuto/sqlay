@@ -11,7 +11,7 @@ use sqlay_adapters::source_fs::FileSystemSourceReader;
 use sqlay_adapters::target::typescript::TypeScriptTargetGenerator;
 use sqlay_app::{
     self as app, CompilePipeline, ConfigLoader, DefaultCompilationPlanner, DefaultCompileUseCase,
-    DefaultProjectInitializer, DefaultQueryCompiler,
+    DefaultProjectInitializer, DefaultQueryCompiler, MetadataProvider, MutationMetadataProvider,
 };
 use sqlay_core as core;
 
@@ -19,6 +19,9 @@ use crate::args::{Command, ConfiguredCommand, parse_args};
 use crate::diagnostics::{fail, print_diagnostics, single_cli_error};
 use crate::help::{INIT_NEXT_STEPS, help_text};
 use crate::output::{ConfiguredCommandOutcome, print_success_summary};
+
+const EMPTY_SOURCE_SET_DIAGNOSTIC_PREFIX: &str =
+    "source.include matched no SQL files after applying source.exclude";
 
 /// Default CLI composition root.
 #[derive(Clone, Copy, Debug, Default)]
@@ -48,10 +51,21 @@ fn run_with_args(args: impl IntoIterator<Item = OsString>) -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(Command::Init) => run_init_command(),
-        Ok(Command::Check { config }) => run_configured_command(ConfiguredCommand::Check, config),
-        Ok(Command::Compile { config, clean }) => {
-            run_configured_command(ConfiguredCommand::Compile { clean }, config)
-        }
+        Ok(Command::Check {
+            config,
+            fail_on_empty,
+        }) => run_configured_command(ConfiguredCommand::Check { fail_on_empty }, config),
+        Ok(Command::Compile {
+            config,
+            clean,
+            fail_on_empty,
+        }) => run_configured_command(
+            ConfiguredCommand::Compile {
+                clean,
+                fail_on_empty,
+            },
+            config,
+        ),
         Err(report) => fail(&report),
     }
 }
@@ -64,10 +78,10 @@ fn run_configured_command(command: ConfiguredCommand, config: Option<PathBuf>) -
 
     let planner = DefaultCompilationPlanner;
 
-    match loader
-        .load()
-        .and_then(|config| run_configured_use_case(command, &config, &planner))
-    {
+    match loader.load().and_then(|config| {
+        run_configured_use_case(command, &config, &planner)
+            .map_err(|report| add_empty_source_cli_remediation(report, command))
+    }) {
         Ok(outcome) => {
             print_diagnostics(outcome.diagnostics());
             print_success_summary(&outcome);
@@ -84,8 +98,7 @@ fn run_configured_use_case(
 ) -> core::DiagnosticResult<ConfiguredCommandOutcome> {
     let source_reader = FileSystemSourceReader;
     let dialect_analyzer = MysqlDialectAnalyzer;
-    let database_url = database_url_from_env(config.database())?;
-    let metadata_provider = SqlxMysqlMetadataProvider::new(database_url);
+    let metadata_provider = LazySqlxMysqlMetadataProvider::new(config.database());
     let query_compiler = DefaultQueryCompiler;
     let target_generator = TypeScriptTargetGenerator;
     let generated_file_writer = FileSystemGeneratedFileWriter;
@@ -100,13 +113,99 @@ fn run_configured_use_case(
     };
 
     match command {
-        ConfiguredCommand::Check => {
-            DefaultCompileUseCase::check(config, &pipeline).map(ConfiguredCommandOutcome::Check)
+        ConfiguredCommand::Check { fail_on_empty } => {
+            DefaultCompileUseCase::check_with_empty_source_policy(
+                config,
+                &pipeline,
+                empty_source_policy(fail_on_empty),
+            )
+            .map(ConfiguredCommandOutcome::Check)
         }
-        ConfiguredCommand::Compile { clean } => {
-            let outcome = DefaultCompileUseCase::compile(config, &pipeline, clean)?;
+        ConfiguredCommand::Compile {
+            clean,
+            fail_on_empty,
+        } => {
+            let outcome = DefaultCompileUseCase::compile_with_empty_source_policy(
+                config,
+                &pipeline,
+                clean,
+                empty_source_policy(fail_on_empty),
+            )?;
 
             Ok(ConfiguredCommandOutcome::Compile(outcome))
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LazySqlxMysqlMetadataProvider<'a> {
+    database: &'a core::DatabaseConfig,
+}
+
+impl<'a> LazySqlxMysqlMetadataProvider<'a> {
+    const fn new(database: &'a core::DatabaseConfig) -> Self {
+        Self { database }
+    }
+
+    fn provider(self) -> core::DiagnosticResult<SqlxMysqlMetadataProvider> {
+        Ok(SqlxMysqlMetadataProvider::new(database_url_from_env(
+            self.database,
+        )?))
+    }
+}
+
+impl MetadataProvider for LazySqlxMysqlMetadataProvider<'_> {
+    fn describe(
+        &self,
+        query: &core::RawQuery,
+        analysis: &core::AnalyzedQuery,
+    ) -> core::DiagnosticResult<core::DbQueryMetadata> {
+        self.provider()?.describe(query, analysis)
+    }
+}
+
+impl MutationMetadataProvider for LazySqlxMysqlMetadataProvider<'_> {
+    fn describe_mutation(
+        &self,
+        mutation: &core::RawMutation,
+        analysis: &core::AnalyzedMutation,
+    ) -> core::DiagnosticResult<core::DbMutationMetadata> {
+        self.provider()?.describe_mutation(mutation, analysis)
+    }
+}
+
+const fn empty_source_policy(fail_on_empty: bool) -> app::EmptySourceSetPolicy {
+    if fail_on_empty {
+        app::EmptySourceSetPolicy::Fail
+    } else {
+        app::EmptySourceSetPolicy::Warn
+    }
+}
+
+fn add_empty_source_cli_remediation(
+    mut report: core::DiagnosticReport,
+    command: ConfiguredCommand,
+) -> core::DiagnosticReport {
+    if !command.fail_on_empty()
+        || !report.diagnostics().iter().any(|diagnostic| {
+            diagnostic
+                .message()
+                .starts_with(EMPTY_SOURCE_SET_DIAGNOSTIC_PREFIX)
+        })
+    {
+        return report;
+    }
+
+    report.push(core::Diagnostic::note(
+        "disable `--fail-on-empty` only when an empty source set is intentional",
+    ));
+    report
+}
+
+impl ConfiguredCommand {
+    const fn fail_on_empty(self) -> bool {
+        match self {
+            Self::Check { fail_on_empty } | Self::Compile { fail_on_empty, .. } => fail_on_empty,
         }
     }
 }

@@ -1,8 +1,9 @@
 use std::process::Command;
 
 use crate::support::{
-    TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL, VALID_CONFIG, unique_temp_dir,
-    write_fragment_only_project, write_managed_generated_file,
+    TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL, VALID_CONFIG, assert_empty_source_diagnostic,
+    unique_temp_dir, write_fragment_only_project, write_managed_generated_file,
+    write_simple_query_project,
 };
 
 #[test]
@@ -64,6 +65,111 @@ fn compile_prints_generated_or_updated_file_count() {
     assert!(
         stdout.contains("Generated files: none."),
         "stdout: {stdout}"
+    );
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
+fn compile_warns_when_source_include_matches_no_sql_files() {
+    let config_dir = unique_temp_dir("sqlay-cli-empty-source-compile-warning");
+    std::fs::create_dir_all(&config_dir).expect("temp config dir should be created");
+    std::fs::write(config_dir.join("sqlay.config.json"), VALID_CONFIG)
+        .expect("temp config should be written");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .arg("compile")
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
+        .output()
+        .expect("sqlay compile should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("warning:"), "stderr: {stderr}");
+    assert_empty_source_diagnostic(&stderr, &config_dir);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Matched 0 SQL files."), "stdout: {stdout}");
+    assert!(
+        stdout.contains("Generated or updated 0 files."),
+        "stdout: {stdout}"
+    );
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
+fn compile_fail_on_empty_rejects_empty_source_matches_before_cleaning() {
+    let config_dir = unique_temp_dir("sqlay-cli-empty-source-compile-fail");
+    let stale_path = config_dir.join("src/generated/sqlay/sql/stale.ts");
+    std::fs::create_dir_all(
+        stale_path
+            .parent()
+            .expect("stale file should have a parent"),
+    )
+    .expect("temp output dir should be created");
+    std::fs::write(config_dir.join("sqlay.config.json"), VALID_CONFIG)
+        .expect("temp config should be written");
+    write_managed_generated_file(&stale_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .args(["compile", "--clean", "--fail-on-empty"])
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
+        .output()
+        .expect("sqlay compile should run");
+
+    assert_eq!(output.status.code(), Some(1), "status: {:?}", output.status);
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error:"), "stderr: {stderr}");
+    assert_empty_source_diagnostic(&stderr, &config_dir);
+    assert!(
+        stderr.contains("disable `--fail-on-empty`"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        stale_path.exists(),
+        "compile --fail-on-empty should stop before cleaning stale generated files"
+    );
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
+fn compile_fail_on_empty_reports_empty_source_before_database_url_requirement() {
+    let config_dir = unique_temp_dir("sqlay-cli-empty-source-compile-fail-without-database-url");
+    std::fs::create_dir_all(&config_dir).expect("temp config dir should be created");
+    std::fs::write(config_dir.join("sqlay.config.json"), VALID_CONFIG)
+        .expect("temp config should be written");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .args(["compile", "--fail-on-empty"])
+        .current_dir(&config_dir)
+        .env_remove(TEST_DATABASE_URL_ENV)
+        .output()
+        .expect("sqlay compile should run");
+
+    assert_eq!(output.status.code(), Some(1), "status: {:?}", output.status);
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error:"), "stderr: {stderr}");
+    assert_empty_source_diagnostic(&stderr, &config_dir);
+    assert!(
+        !stderr.contains("database.urlEnv"),
+        "stderr should not require the database URL before empty-source enforcement: {stderr}"
     );
 
     std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
@@ -223,9 +329,7 @@ fn compile_clean_prints_removed_stale_generated_file_count() {
 #[test]
 fn compile_clean_uses_compile_pipeline_database_configuration() {
     let config_dir = unique_temp_dir("sqlay-cli-compile-clean");
-    std::fs::create_dir_all(&config_dir).expect("temp config dir should be created");
-    std::fs::write(config_dir.join("sqlay.config.json"), VALID_CONFIG)
-        .expect("temp config should be written");
+    write_simple_query_project(&config_dir);
 
     let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
         .args(["compile", "--clean"])
