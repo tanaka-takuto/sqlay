@@ -145,6 +145,11 @@ Override priority is narrowest-first:
 4. `core.<core-type>`.
 5. sqlay's built-in conservative TypeScript mapping.
 
+The schema-backed `ENUM` default is not treated as a broad `core.string` mapping.
+Projects that need a different annotation for enum columns should use a
+`columns.<column-reference>` or builder-local override so the opt-out is tied to a
+specific schema field or generated API surface.
+
 Column references are flat strings:
 
 - `table.column` means a table in the connection's current database.
@@ -178,9 +183,9 @@ returns SET values as strings, including comma-separated combinations such as
 initial support does not emit arrays or generated SET aliases.
 
 Configured overrides must be applied during `check` or `compile`. Unused overrides,
-unknown builders, unknown fields, unknown Params, unknown Repeats, unknown Repeat
-item fields, and unknown schema columns are configuration errors rather than
-warnings.
+unknown core types, unknown builders, unknown fields, unknown Params, unknown
+Repeats, unknown Repeat item fields, and unknown schema columns are configuration
+errors rather than warnings.
 
 ## Consequences
 

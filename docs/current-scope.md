@@ -172,6 +172,11 @@ Overrides apply narrowest-first: builder-local overrides, column overrides,
 schema-backed MySQL `ENUM` literal union defaults, Core type overrides, and then
 sqlay's built-in conservative TypeScript mapping.
 
+Schema-backed `ENUM` defaults intentionally sit ahead of broad Core type overrides
+so enum literal unions are not accidentally erased by a `core.string` mapping.
+Projects that need to opt enum columns out should use column or builder-local
+overrides.
+
 MySQL `ENUM` columns that resolve to schema-backed real columns generate inline
 TypeScript literal unions by default. MySQL `SET` columns remain plain strings in
 the initial design because TypeScript MySQL drivers return SET values as strings,
