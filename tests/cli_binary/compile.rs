@@ -133,6 +133,10 @@ fn compile_fail_on_empty_rejects_empty_source_matches_before_cleaning() {
     assert!(stderr.contains("error:"), "stderr: {stderr}");
     assert_empty_source_diagnostic(&stderr, &config_dir);
     assert!(
+        stderr.contains("disable `--fail-on-empty`"),
+        "stderr: {stderr}"
+    );
+    assert!(
         stale_path.exists(),
         "compile --fail-on-empty should stop before cleaning stale generated files"
     );
