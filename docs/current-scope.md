@@ -28,6 +28,9 @@ where near-term work should point. The original MVP remains documented in
   `source.exclude`; `check --fail-on-empty` and `compile --fail-on-empty` exit
   with code 1 and a failing diagnostic before generated files are written or
   cleaned.
+- `compile --clean` skips stale generated file cleanup when no SQL files match by
+  default; `compile --clean --allow-empty-clean` is required to intentionally clean
+  stale generated files for an empty source set.
 - SELECT value binding with paired inline `Param` markers as defined by
   [ADR 0008](./adr/0008-define-select-param-support.md).
 - Initial SELECT `Slot`/`Fragment` composition as defined by

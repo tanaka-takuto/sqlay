@@ -103,6 +103,100 @@ fn compile_warns_when_source_include_matches_no_sql_files() {
 }
 
 #[test]
+fn compile_clean_skips_stale_cleanup_when_source_include_matches_no_sql_files() {
+    let config_dir = unique_temp_dir("sqlay-cli-empty-source-clean-skip");
+    let stale_path = config_dir.join("src/generated/sqlay/sql/stale.ts");
+    std::fs::create_dir_all(
+        stale_path
+            .parent()
+            .expect("stale file should have a parent"),
+    )
+    .expect("temp output dir should be created");
+    std::fs::write(config_dir.join("sqlay.config.json"), VALID_CONFIG)
+        .expect("temp config should be written");
+    write_managed_generated_file(&stale_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .args(["compile", "--clean"])
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
+        .output()
+        .expect("sqlay compile --clean should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("warning:"), "stderr: {stderr}");
+    assert_empty_source_diagnostic(&stderr, &config_dir);
+    assert!(
+        stderr.contains("skipped stale generated file cleanup because no SQL files matched"),
+        "stderr: {stderr}"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Matched 0 SQL files."), "stdout: {stdout}");
+    assert!(
+        !stdout.contains("Removed 1 stale generated file."),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stale_path.exists(),
+        "compile --clean should skip stale cleanup when no SQL files matched"
+    );
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
+fn compile_clean_allow_empty_clean_removes_stale_files_for_empty_source_matches() {
+    let config_dir = unique_temp_dir("sqlay-cli-empty-source-clean-allow");
+    let stale_path = config_dir.join("src/generated/sqlay/sql/stale.ts");
+    std::fs::create_dir_all(
+        stale_path
+            .parent()
+            .expect("stale file should have a parent"),
+    )
+    .expect("temp output dir should be created");
+    std::fs::write(config_dir.join("sqlay.config.json"), VALID_CONFIG)
+        .expect("temp config should be written");
+    write_managed_generated_file(&stale_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .args(["compile", "--clean", "--allow-empty-clean"])
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
+        .output()
+        .expect("sqlay compile --clean should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("warning:"), "stderr: {stderr}");
+    assert_empty_source_diagnostic(&stderr, &config_dir);
+    assert!(
+        !stderr.contains("skipped stale generated file cleanup"),
+        "stderr: {stderr}"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Matched 0 SQL files."), "stdout: {stdout}");
+    assert!(
+        stdout.contains("Removed 1 stale generated file."),
+        "stdout: {stdout}"
+    );
+    assert!(
+        !stale_path.exists(),
+        "compile --clean --allow-empty-clean should clean stale generated files"
+    );
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
 fn compile_fail_on_empty_rejects_empty_source_matches_before_cleaning() {
     let config_dir = unique_temp_dir("sqlay-cli-empty-source-compile-fail");
     let stale_path = config_dir.join("src/generated/sqlay/sql/stale.ts");
@@ -297,7 +391,7 @@ fn compile_clean_prints_removed_stale_generated_file_count() {
     .expect("stale generated file should be written");
 
     let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
-        .args(["compile", "--clean"])
+        .args(["compile", "--clean", "--allow-empty-clean"])
         .current_dir(&config_dir)
         .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
         .output()

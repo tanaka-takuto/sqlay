@@ -33,6 +33,15 @@ pub enum EmptySourceSetPolicy {
     Fail,
 }
 
+/// Behavior for `compile --clean` when `source.include` resolves to no SQL files.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EmptySourceSetCleanPolicy {
+    /// Skip stale generated file cleanup when the source set is empty.
+    Skip,
+    /// Allow stale generated file cleanup even when the source set is empty.
+    Allow,
+}
+
 /// Application service for compile-like CLI commands.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DefaultCompileUseCase;
@@ -176,9 +185,44 @@ impl DefaultCompileUseCase {
         T: TargetGenerator,
         W: GeneratedFileWriter + GeneratedFileCleaner,
     {
+        Self::compile_with_empty_source_and_clean_policies(
+            config,
+            pipeline,
+            clean,
+            empty_source_policy,
+            EmptySourceSetCleanPolicy::Skip,
+        )
+    }
+
+    /// Run the `compile` command with explicit empty source-set and cleanup
+    /// handling.
+    ///
+    /// Returns a success outcome with non-fatal diagnostics and write counts.
+    ///
+    /// # Errors
+    ///
+    /// Returns diagnostics when planning, source intake, analysis, metadata
+    /// lookup, generation, empty source-set policy enforcement, file writing, or
+    /// stale file cleaning fails.
+    pub fn compile_with_empty_source_and_clean_policies<P, S, D, M, Q, T, W>(
+        config: &core::ProjectConfig,
+        pipeline: &CompilePipeline<'_, P, S, D, M, Q, T, W>,
+        clean: bool,
+        empty_source_policy: EmptySourceSetPolicy,
+        empty_clean_policy: EmptySourceSetCleanPolicy,
+    ) -> core::DiagnosticResult<CompileOutcome>
+    where
+        P: CompilationPlanner,
+        S: SourceReader,
+        D: DialectAnalyzer + MutationAnalyzer,
+        M: MetadataProvider + MutationMetadataProvider,
+        Q: QueryCompiler + MutationCompiler,
+        T: TargetGenerator,
+        W: GeneratedFileWriter + GeneratedFileCleaner,
+    {
         let plan = pipeline.planner.plan(config)?;
 
-        let output = generate_files(&plan, pipeline)?;
+        let mut output = generate_files(&plan, pipeline)?;
         enforce_empty_source_policy(&plan, &output, empty_source_policy)?;
         let generated_file_paths = output
             .generated_files
@@ -190,15 +234,16 @@ impl DefaultCompileUseCase {
             .generated_file_writer
             .write(&output.generated_files)?;
 
-        let stale_file_removal_count = if clean {
-            Some(
-                pipeline
-                    .generated_file_writer
-                    .clean_stale(plan.output_dir(), &output.generated_files)?,
-            )
-        } else {
-            None
-        };
+        let stale_file_removal_count =
+            if should_clean_stale_generated_files(clean, &mut output, empty_clean_policy) {
+                Some(
+                    pipeline
+                        .generated_file_writer
+                        .clean_stale(plan.output_dir(), &output.generated_files)?,
+                )
+            } else {
+                None
+            };
 
         Ok(CompileOutcome::new(
             output.diagnostics,
@@ -211,6 +256,25 @@ impl DefaultCompileUseCase {
         )
         .with_stale_file_removal_count(stale_file_removal_count))
     }
+}
+
+fn should_clean_stale_generated_files(
+    clean: bool,
+    output: &mut generation::GeneratedPipelineOutput,
+    empty_clean_policy: EmptySourceSetCleanPolicy,
+) -> bool {
+    if !clean {
+        return false;
+    }
+
+    if output.source_file_count != 0 || empty_clean_policy == EmptySourceSetCleanPolicy::Allow {
+        return true;
+    }
+
+    output.diagnostics.push(core::Diagnostic::warning(
+        "skipped stale generated file cleanup because no SQL files matched; pass `--allow-empty-clean` with `--clean` to clean anyway",
+    ));
+    false
 }
 
 fn enforce_empty_source_policy(

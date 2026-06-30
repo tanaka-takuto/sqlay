@@ -59,10 +59,12 @@ fn run_with_args(args: impl IntoIterator<Item = OsString>) -> ExitCode {
             config,
             clean,
             fail_on_empty,
+            allow_empty_clean,
         }) => run_configured_command(
             ConfiguredCommand::Compile {
                 clean,
                 fail_on_empty,
+                allow_empty_clean,
             },
             config,
         ),
@@ -124,12 +126,14 @@ fn run_configured_use_case(
         ConfiguredCommand::Compile {
             clean,
             fail_on_empty,
+            allow_empty_clean,
         } => {
-            let outcome = DefaultCompileUseCase::compile_with_empty_source_policy(
+            let outcome = DefaultCompileUseCase::compile_with_empty_source_and_clean_policies(
                 config,
                 &pipeline,
                 clean,
                 empty_source_policy(fail_on_empty),
+                empty_source_clean_policy(allow_empty_clean),
             )?;
 
             Ok(ConfiguredCommandOutcome::Compile(outcome))
@@ -179,6 +183,14 @@ const fn empty_source_policy(fail_on_empty: bool) -> app::EmptySourceSetPolicy {
         app::EmptySourceSetPolicy::Fail
     } else {
         app::EmptySourceSetPolicy::Warn
+    }
+}
+
+const fn empty_source_clean_policy(allow_empty_clean: bool) -> app::EmptySourceSetCleanPolicy {
+    if allow_empty_clean {
+        app::EmptySourceSetCleanPolicy::Allow
+    } else {
+        app::EmptySourceSetCleanPolicy::Skip
     }
 }
 
