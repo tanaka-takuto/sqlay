@@ -227,12 +227,17 @@ fn compile_help_describes_output_writing_and_clean() {
     assert!(stdout.contains("sqlay compile"), "stdout: {stdout}");
     assert!(stdout.contains("--config <path>"), "stdout: {stdout}");
     assert!(stdout.contains("--fail-on-empty"), "stdout: {stdout}");
+    assert!(stdout.contains("--allow-empty-clean"), "stdout: {stdout}");
     assert!(
         stdout.contains("generated TypeScript files"),
         "stdout: {stdout}"
     );
     assert!(stdout.contains("--clean"), "stdout: {stdout}");
     assert!(stdout.contains("stale generated files"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("skips stale generated file cleanup when no SQL files match"),
+        "stdout: {stdout}"
+    );
     assert!(
         stdout.contains("preserves each input SQL path"),
         "stdout: {stdout}"

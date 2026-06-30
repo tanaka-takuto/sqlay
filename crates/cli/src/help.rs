@@ -14,6 +14,8 @@ Options:
   --config <path>    Use an explicit config path for check or compile.
   --clean            Remove stale generated files during compile.
   --fail-on-empty    Exit with an error when source.include matches no SQL files after source.exclude.
+  --allow-empty-clean
+                     Allow compile --clean to remove stale generated files when no SQL files match.
 
 Minimal query annotation:
   /* @sqlay
@@ -165,6 +167,7 @@ Behavior:
   Place sqlay.config.json at the project root when SQL lives in sibling directories.
   The success summary reports matched SQL files, compiled builders with query and mutation counts, Fragment, Slot, Repeat, validation case counts, generated file paths, stale-file cleanup, and per-query/per-mutation Param, Slot, Repeat, and validation case counts.
   Empty source matches are reported as warnings unless --fail-on-empty is provided.
+  compile --clean skips stale generated file cleanup when no SQL files match unless --allow-empty-clean is also provided.
   TypeScript type mapping is conservative: BIGINT, DECIMAL, date/time, and enum values map conservatively to string; bytes map to Uint8Array; JSON and unknown types map to unknown; nullable metadata adds | null.
 
 Param marker example:
@@ -205,10 +208,13 @@ Options:
   --config <path>    Use an explicit config path.
   --clean            Remove stale generated files that no longer correspond to input SQL files.
   --fail-on-empty    Exit with an error when source.include matches no SQL files after source.exclude.
+  --allow-empty-clean
+                     Allow --clean to remove stale generated files when source.include matches no SQL files.
 
 Examples:
   DATABASE_URL=... sqlay compile
   sqlay compile --config ./sqlay.config.json --clean
+  sqlay compile --clean --allow-empty-clean
 ";
 
 pub const INIT_NEXT_STEPS: &str = r"

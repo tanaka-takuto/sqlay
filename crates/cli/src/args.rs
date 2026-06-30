@@ -18,13 +18,20 @@ pub enum Command {
         config: Option<PathBuf>,
         clean: bool,
         fail_on_empty: bool,
+        allow_empty_clean: bool,
     },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfiguredCommand {
-    Check { fail_on_empty: bool },
-    Compile { clean: bool, fail_on_empty: bool },
+    Check {
+        fail_on_empty: bool,
+    },
+    Compile {
+        clean: bool,
+        fail_on_empty: bool,
+        allow_empty_clean: bool,
+    },
 }
 
 pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticResult<Command> {
@@ -43,7 +50,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticR
         "init" if config.is_some() => Err(config_before_unsupported_command()),
         "init" => parse_init_args(args),
         "check" => parse_options(args, CleanOption::Reject, config).map(|options| {
-            if options.help {
+            if options.help == HelpRequested::Yes {
                 Command::Help(HelpTopic::Check)
             } else {
                 Command::Check {
@@ -53,13 +60,14 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticR
             }
         }),
         "compile" => parse_options(args, CleanOption::Allow, config).map(|options| {
-            if options.help {
+            if options.help == HelpRequested::Yes {
                 Command::Help(HelpTopic::Compile)
             } else {
                 Command::Compile {
                     config: options.config,
                     clean: options.clean,
                     fail_on_empty: options.fail_on_empty,
+                    allow_empty_clean: options.allow_empty_clean,
                 }
             }
         }),
@@ -107,7 +115,15 @@ struct CommandOptions {
     config: Option<PathBuf>,
     clean: bool,
     fail_on_empty: bool,
-    help: bool,
+    allow_empty_clean: bool,
+    help: HelpRequested,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum HelpRequested {
+    #[default]
+    No,
+    Yes,
 }
 
 fn parse_init_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticResult<Command> {
@@ -170,8 +186,20 @@ fn parse_options(
             }
 
             options.fail_on_empty = true;
+        } else if arg == "--allow-empty-clean" {
+            if clean == CleanOption::Reject {
+                return Err(unexpected_argument(&arg));
+            }
+
+            if options.allow_empty_clean {
+                return Err(single_cli_error(
+                    "`--allow-empty-clean` may only be provided once",
+                ));
+            }
+
+            options.allow_empty_clean = true;
         } else if is_help_arg(&arg) {
-            options.help = true;
+            options.help = HelpRequested::Yes;
         } else if let Some(path) = config_equals_path(&arg) {
             if options.config.replace(path).is_some() {
                 return Err(single_cli_error("`--config` may only be provided once"));
@@ -179,6 +207,16 @@ fn parse_options(
         } else {
             return Err(unexpected_argument(&arg));
         }
+    }
+
+    if options.allow_empty_clean && !options.clean {
+        return Err(single_cli_error("`--allow-empty-clean` requires `--clean`"));
+    }
+
+    if options.allow_empty_clean && options.fail_on_empty {
+        return Err(single_cli_error(
+            "`--allow-empty-clean` cannot be combined with `--fail-on-empty`",
+        ));
     }
 
     Ok(options)
@@ -270,6 +308,7 @@ mod tests {
                 config: Some(PathBuf::from("custom/sqlay.config.json")),
                 clean: false,
                 fail_on_empty: false,
+                allow_empty_clean: false,
             }
         );
     }
@@ -305,6 +344,7 @@ mod tests {
                 config: Some(PathBuf::from("custom/sqlay.config.json")),
                 clean: true,
                 fail_on_empty: false,
+                allow_empty_clean: false,
             }
         );
     }
@@ -318,6 +358,21 @@ mod tests {
                 config: None,
                 clean: true,
                 fail_on_empty: false,
+                allow_empty_clean: false,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_compile_clean_allow_empty_clean() {
+        assert_eq!(
+            parse_args(["sqlay", "compile", "--clean", "--allow-empty-clean"].map(OsString::from))
+                .expect("args should parse"),
+            Command::Compile {
+                config: None,
+                clean: true,
+                fail_on_empty: false,
+                allow_empty_clean: true,
             }
         );
     }
@@ -343,7 +398,39 @@ mod tests {
                 config: None,
                 clean: true,
                 fail_on_empty: true,
+                allow_empty_clean: false,
             }
+        );
+    }
+
+    #[test]
+    fn rejects_allow_empty_clean_without_clean() {
+        let report = parse_args(["sqlay", "compile", "--allow-empty-clean"].map(OsString::from))
+            .expect_err("allow empty clean without clean should fail");
+
+        assert_eq!(
+            report.diagnostics()[0].message(),
+            "`--allow-empty-clean` requires `--clean`"
+        );
+    }
+
+    #[test]
+    fn rejects_allow_empty_clean_with_fail_on_empty() {
+        let report = parse_args(
+            [
+                "sqlay",
+                "compile",
+                "--clean",
+                "--fail-on-empty",
+                "--allow-empty-clean",
+            ]
+            .map(OsString::from),
+        )
+        .expect_err("conflicting empty-source options should fail");
+
+        assert_eq!(
+            report.diagnostics()[0].message(),
+            "`--allow-empty-clean` cannot be combined with `--fail-on-empty`"
         );
     }
 

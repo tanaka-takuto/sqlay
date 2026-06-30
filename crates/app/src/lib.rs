@@ -15,7 +15,8 @@ mod tests;
 
 pub use compile::{
     BuilderSummaryCounts, CheckOutcome, CompileOutcome, CompilePipeline, CompileUseCasePorts,
-    DefaultCompileUseCase, EmptySourceSetPolicy, MutationSummary, QuerySummary,
+    DefaultCompileUseCase, EmptySourceSetCleanPolicy, EmptySourceSetPolicy, MutationSummary,
+    QuerySummary,
 };
 pub use constants::{CONFIG_FILE_NAME, STARTER_CONFIG_TEMPLATE};
 pub use init::DefaultProjectInitializer;
