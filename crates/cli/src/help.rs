@@ -12,6 +12,8 @@ Commands:
 Options:
   -h, --help         Print this help.
   --config <path>    Use an explicit config path for check or compile.
+  --format <human|json>
+                     Select human or JSON output for check or compile.
   --clean            Remove stale generated files during compile.
   --fail-on-empty    Exit with an error when source.include matches no SQL files after source.exclude.
   --allow-empty-clean
@@ -173,6 +175,8 @@ Param metadata:
 Options:
   -h, --help         Print this help.
   --config <path>    Use an explicit config path.
+  --format <human|json>
+                     Select human or JSON output. The default is human.
   --fail-on-empty    Exit with an error when source.include matches no SQL files after source.exclude.
 
 Examples:
@@ -248,6 +252,8 @@ Param metadata:
 Options:
   -h, --help         Print this help.
   --config <path>    Use an explicit config path.
+  --format <human|json>
+                     Select human or JSON output. The default is human.
   --clean            Remove stale generated files that no longer correspond to input SQL files.
   --fail-on-empty    Exit with an error when source.include matches no SQL files after source.exclude.
   --allow-empty-clean

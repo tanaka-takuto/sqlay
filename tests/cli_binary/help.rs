@@ -174,6 +174,7 @@ fn check_help_describes_config_discovery_and_database_url() {
     assert!(stdout.contains("Usage:"), "stdout: {stdout}");
     assert!(stdout.contains("sqlay check"), "stdout: {stdout}");
     assert!(stdout.contains("--config <path>"), "stdout: {stdout}");
+    assert!(stdout.contains("--format <human|json>"), "stdout: {stdout}");
     assert!(stdout.contains("--fail-on-empty"), "stdout: {stdout}");
     assert!(
         stdout.contains("searches from the current working directory upward"),
@@ -226,6 +227,7 @@ fn compile_help_describes_output_writing_and_clean() {
     assert!(stdout.contains("Usage:"), "stdout: {stdout}");
     assert!(stdout.contains("sqlay compile"), "stdout: {stdout}");
     assert!(stdout.contains("--config <path>"), "stdout: {stdout}");
+    assert!(stdout.contains("--format <human|json>"), "stdout: {stdout}");
     assert!(stdout.contains("--fail-on-empty"), "stdout: {stdout}");
     assert!(stdout.contains("--allow-empty-clean"), "stdout: {stdout}");
     assert!(
