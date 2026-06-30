@@ -127,12 +127,12 @@ fn validate_target(
     };
 
     let language = required_field(raw.language, "target.language", location, diagnostics)
-        .and_then(|value| validate_target_language(&value, location, diagnostics));
-    let typescript = validate_typescript_target(raw.typescript, location, diagnostics);
+        .and_then(|value| validate_target_language(&value, location, diagnostics))?;
+    let typescript = validate_typescript_target(raw.typescript, location, diagnostics)?;
 
     Some(
-        core::TargetConfig::new(language?)
-            .with_typescript_type_mapping(typescript?.type_mapping().clone()),
+        core::TargetConfig::new(language)
+            .with_typescript_type_mapping(typescript.type_mapping().clone()),
     )
 }
 
