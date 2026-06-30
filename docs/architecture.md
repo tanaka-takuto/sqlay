@@ -111,6 +111,11 @@ The CLI remains responsible for converting diagnostic reports into stderr output
 and process exit codes. Application services and adapters should return structured
 diagnostics to the CLI boundary.
 
+When a command supports multiple output formats, the CLI remains responsible for
+choosing the final representation. `--format human` renders diagnostics as human
+text on stderr. `--format json` renders diagnostics inside the stdout JSON result
+envelope and does not duplicate them on stderr.
+
 ## CLI Driver
 
 The CLI Driver owns command selection, configuration discovery, process environment
@@ -129,6 +134,17 @@ The supported command surface is:
 
 `check` and `compile` use the same analysis and generation pipeline so CI and local
 generation validate the same behavior.
+
+`check` and `compile` accept `--format <human|json>` and
+`--format=<human|json>`. `human` is the default. `json` is a machine-readable
+result envelope for successful and failed runs. `init` and help output remain
+human-oriented in the initial design.
+
+The JSON envelope is a CLI boundary representation. It includes the `sqlay` product
+version, normalized command name and options, command status, process exit code,
+either a success summary or `null`, and structured diagnostics. The product version
+is the compatibility reference for this JSON contract; sqlay does not maintain a
+separate JSON schema version in the initial design.
 
 ## Config Loader
 
@@ -364,6 +380,13 @@ validation case is the product of Slot selection variants and Repeat representat
 cases. Initial Repeat validation uses one representative case, a two-item expansion
 that exercises the separator. The validation case limit remains 256.
 
+Successful `check` and `compile` outcomes should continue exposing structured
+summary data for the CLI. Summary data includes matched source file counts, builder
+counts, query and mutation details, Fragment, Slot, Repeat, validation case counts,
+the resolved output directory, generated file paths for `compile`, and stale
+generated file cleanup counts when `compile --clean` runs. Failed outcomes expose
+diagnostics rather than partial summaries in the initial JSON output design.
+
 ## Compilation Core
 
 Compilation Core is the innermost crate. It owns shared domain vocabulary and
@@ -587,6 +610,10 @@ example and fixture type-checking, and documented check-script exit behavior. Te
 may use fakes, mocks, and temporary projects to make those contracts deterministic,
 but assertions should stay focused on the contract under test.
 
+Machine-readable CLI output is product behavior. Tests for `--format json` should
+assert valid JSON, stdout-only JSON output, empty stderr in JSON mode, stable
+success summaries, structured diagnostics, and unchanged human output behavior.
+
 Generated TypeScript should be type-checked in CI with `tsc --noEmit`. This
 verifies that generated builders are usable in ordinary TypeScript projects without
 adding runtime dependencies.
@@ -598,3 +625,4 @@ See also:
 - [ADR 0005: Do not automatically transform generated names](./adr/0005-do-not-transform-generated-names.md)
 - [ADR 0007: Use examples and fixtures as generated E2E artifacts](./adr/0007-use-examples-and-fixtures-as-generated-e2e-artifacts.md)
 - [ADR 0010: Define Initial MySQL Mutation Builder Support](./adr/0010-define-initial-mysql-mutation-builder-support.md)
+- [ADR 0013: Define Machine-Readable CLI Format Output](./adr/0013-define-machine-readable-cli-format-output.md)
