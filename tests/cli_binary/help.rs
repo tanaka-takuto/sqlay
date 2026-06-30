@@ -1,5 +1,58 @@
 use std::process::Command;
 
+fn assert_param_marker_guidance(stdout: &str) {
+    assert!(
+        stdout.contains("type: param id: emailFilter valueType: string nullable: true"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("id: listCustomersByFilter"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("type: param id: createdBefore valueType: datetime nullable: true"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("createdBefore: string | null;"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "Use nullable: true for T | null inputs; optional input properties are not supported"
+        ),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "Repeat the same Param id for optional filters; params follow marker occurrence order"
+        ),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("Repeated Param ids share one generated input field"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("Each marker occurrence appends one params entry in source order"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "All occurrences of a repeated Param id must use the same valueType and nullability"
+        ),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("For bool Params, use TRUE or FALSE as the sample expression"),
+        "stdout: {stdout}"
+    );
+}
+
 #[test]
 fn no_args_prints_top_level_help() {
     let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
@@ -45,38 +98,7 @@ fn no_args_prints_top_level_help() {
         stdout.contains("use paired @sqlay Param markers around a sample expression"),
         "stdout: {stdout}"
     );
-    assert!(
-        stdout.contains("type: param id: emailFilter valueType: string nullable: true"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("id: listCustomersByFilter"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("type: param id: createdBefore valueType: datetime nullable: true"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("createdBefore: string | null;"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "Use nullable: true for T | null inputs; optional input properties are not supported"
-        ),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "Repeat the same Param id for optional filters; params follow marker occurrence order"
-        ),
-        "stdout: {stdout}"
-    );
+    assert_param_marker_guidance(&stdout);
     assert!(
         !stdout.contains("MVP query metadata"),
         "stdout should not describe current help as MVP-only: {stdout}"
@@ -176,38 +198,7 @@ fn check_help_describes_config_discovery_and_database_url() {
         stdout.contains("per-query/per-mutation Param, Slot, Repeat, and validation case counts"),
         "stdout: {stdout}"
     );
-    assert!(
-        stdout.contains("type: param id: emailFilter valueType: string nullable: true"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("id: listCustomersByFilter"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("type: param id: createdBefore valueType: datetime nullable: true"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("createdBefore: string | null;"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "Use nullable: true for T | null inputs; optional input properties are not supported"
-        ),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "Repeat the same Param id for optional filters; params follow marker occurrence order"
-        ),
-        "stdout: {stdout}"
-    );
+    assert_param_marker_guidance(&stdout);
 }
 
 #[test]
@@ -264,38 +255,7 @@ fn compile_help_describes_output_writing_and_clean() {
         stdout.contains("per-query/per-mutation Param, Slot, Repeat, and validation case counts"),
         "stdout: {stdout}"
     );
-    assert!(
-        stdout.contains("type: param id: emailFilter valueType: string nullable: true"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("id: listCustomersByFilter"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("type: param id: createdBefore valueType: datetime nullable: true"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("createdBefore: string | null;"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "Use nullable: true for T | null inputs; optional input properties are not supported"
-        ),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "Repeat the same Param id for optional filters; params follow marker occurrence order"
-        ),
-        "stdout: {stdout}"
-    );
+    assert_param_marker_guidance(&stdout);
     assert!(
         stdout.contains("BIGINT, DECIMAL, date/time, and enum values map conservatively"),
         "stdout: {stdout}"

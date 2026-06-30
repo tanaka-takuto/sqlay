@@ -53,29 +53,43 @@ Param marker example:
   */
   SELECT customers.id, customers.email
   FROM customers
-  WHERE (customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
+  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
     'ada@example.test'
     /* @sqlay { type: paramEnd } */
-    OR /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
-    NULL
-    /* @sqlay { type: paramEnd } */ IS NULL)
-    AND (customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
+    IS NULL
+    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
+    'ada@example.test'
+    /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
       '2026-01-01 00:00:00'
       /* @sqlay { type: paramEnd } */
-      OR /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
-      NULL
-      /* @sqlay { type: paramEnd } */ IS NULL);
+      IS NULL
+      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
+      '2026-01-01 00:00:00'
+      /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */
+      TRUE
+      /* @sqlay { type: paramEnd } */
+      IS NULL
+      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */
+      TRUE
+      /* @sqlay { type: paramEnd } */);
 
 Generated TypeScript input:
   export type listCustomersByFilter_Input = {
     emailFilter: string | null;
     createdBefore: string | null;
+    active: boolean | null;
   };
 
 Param metadata:
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
   Use nullable: true for T | null inputs; optional input properties are not supported.
   Repeat the same Param id for optional filters; params follow marker occurrence order.
+  Repeated Param ids share one generated input field.
+  Each marker occurrence appends one params entry in source order.
+  All occurrences of a repeated Param id must use the same valueType and nullability.
+  For bool Params, use TRUE or FALSE as the sample expression.
 ";
 
 pub const INIT_HELP: &str = "\
@@ -118,29 +132,43 @@ Param marker example:
   */
   SELECT customers.id, customers.email
   FROM customers
-  WHERE (customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
+  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
     'ada@example.test'
     /* @sqlay { type: paramEnd } */
-    OR /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
-    NULL
-    /* @sqlay { type: paramEnd } */ IS NULL)
-    AND (customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
+    IS NULL
+    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
+    'ada@example.test'
+    /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
       '2026-01-01 00:00:00'
       /* @sqlay { type: paramEnd } */
-      OR /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
-      NULL
-      /* @sqlay { type: paramEnd } */ IS NULL);
+      IS NULL
+      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
+      '2026-01-01 00:00:00'
+      /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */
+      TRUE
+      /* @sqlay { type: paramEnd } */
+      IS NULL
+      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */
+      TRUE
+      /* @sqlay { type: paramEnd } */);
 
 Generated TypeScript input:
   export type listCustomersByFilter_Input = {
     emailFilter: string | null;
     createdBefore: string | null;
+    active: boolean | null;
   };
 
 Param metadata:
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
   Use nullable: true for T | null inputs; optional input properties are not supported.
   Repeat the same Param id for optional filters; params follow marker occurrence order.
+  Repeated Param ids share one generated input field.
+  Each marker occurrence appends one params entry in source order.
+  All occurrences of a repeated Param id must use the same valueType and nullability.
+  For bool Params, use TRUE or FALSE as the sample expression.
 
 Options:
   -h, --help         Print this help.
@@ -179,29 +207,43 @@ Param marker example:
   */
   SELECT customers.id, customers.email
   FROM customers
-  WHERE (customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
+  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
     'ada@example.test'
     /* @sqlay { type: paramEnd } */
-    OR /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
-    NULL
-    /* @sqlay { type: paramEnd } */ IS NULL)
-    AND (customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
+    IS NULL
+    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
+    'ada@example.test'
+    /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
       '2026-01-01 00:00:00'
       /* @sqlay { type: paramEnd } */
-      OR /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
-      NULL
-      /* @sqlay { type: paramEnd } */ IS NULL);
+      IS NULL
+      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
+      '2026-01-01 00:00:00'
+      /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */
+      TRUE
+      /* @sqlay { type: paramEnd } */
+      IS NULL
+      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */
+      TRUE
+      /* @sqlay { type: paramEnd } */);
 
 Generated TypeScript input:
   export type listCustomersByFilter_Input = {
     emailFilter: string | null;
     createdBefore: string | null;
+    active: boolean | null;
   };
 
 Param metadata:
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
   Use nullable: true for T | null inputs; optional input properties are not supported.
   Repeat the same Param id for optional filters; params follow marker occurrence order.
+  Repeated Param ids share one generated input field.
+  Each marker occurrence appends one params entry in source order.
+  All occurrences of a repeated Param id must use the same valueType and nullability.
+  For bool Params, use TRUE or FALSE as the sample expression.
 
 Options:
   -h, --help         Print this help.
