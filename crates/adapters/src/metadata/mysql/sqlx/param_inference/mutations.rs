@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 
 use sqlay_core as core;
 use sqlparser::ast::{
@@ -10,11 +10,10 @@ use sqlparser::parser::Parser;
 
 use super::super::diagnostics::{mutation_error, mutation_param_usage_error};
 use super::super::schema_columns::MysqlSchemaColumn;
+use super::super::schema_columns::MysqlSchemaTableRef;
 use super::contexts::{ColumnRef, is_placeholder, join_constraint};
-use super::mutation_contexts::{
-    collect_mutation_expr_param_contexts, resolve_current_database_column_type,
-};
-use super::tables::{TableResolution, object_name_parts};
+use super::mutation_contexts::{collect_mutation_expr_param_contexts, resolve_schema_column_type};
+use super::tables::{TableResolution, object_name_parts, schema_table_ref_from_parts};
 use super::unsupported_contexts::{
     collect_unsupported_expr_param_contexts, collect_unsupported_query_param_contexts,
 };
@@ -23,32 +22,49 @@ use super::{SchemaColumnTypes, param_value_type_required_message};
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct MutationTableSources {
     by_qualifier: BTreeMap<String, TableResolution>,
-    current_database_table_names: BTreeSet<String>,
+    schema_table_refs: BTreeSet<MysqlSchemaTableRef>,
 }
 
 impl MutationTableSources {
-    fn insert_current_database_table(&mut self, table_name: String, alias: Option<String>) {
-        self.current_database_table_names.insert(table_name.clone());
-        self.by_qualifier.insert(
-            table_name.clone(),
-            TableResolution::CurrentDatabase {
-                table_name: table_name.clone(),
+    fn insert_resolution(&mut self, key: String, resolution: TableResolution) {
+        match self.by_qualifier.entry(key) {
+            Entry::Vacant(entry) => {
+                entry.insert(resolution);
+            }
+            Entry::Occupied(mut entry) if entry.get() != &resolution => {
+                entry.insert(TableResolution::Unsupported);
+            }
+            Entry::Occupied(_) => {}
+        }
+    }
+
+    fn insert_schema_table(&mut self, table_ref: MysqlSchemaTableRef, alias: Option<String>) {
+        self.schema_table_refs.insert(table_ref.clone());
+        self.insert_resolution(
+            table_ref.table_name().to_owned(),
+            TableResolution::SchemaBacked {
+                table_ref: table_ref.clone(),
             },
         );
+        if let Some(qualifier_key) = table_ref.qualifier_key() {
+            self.insert_resolution(
+                qualifier_key,
+                TableResolution::SchemaBacked {
+                    table_ref: table_ref.clone(),
+                },
+            );
+        }
         if let Some(alias) = alias {
-            self.by_qualifier
-                .insert(alias, TableResolution::CurrentDatabase { table_name });
+            self.insert_resolution(alias, TableResolution::SchemaBacked { table_ref });
         }
     }
 
     fn insert_unsupported_table(&mut self, table_name: Option<String>, alias: Option<String>) {
         if let Some(table_name) = table_name {
-            self.by_qualifier
-                .insert(table_name, TableResolution::Unsupported);
+            self.insert_resolution(table_name, TableResolution::Unsupported);
         }
         if let Some(alias) = alias {
-            self.by_qualifier
-                .insert(alias, TableResolution::Unsupported);
+            self.insert_resolution(alias, TableResolution::Unsupported);
         }
     }
 
@@ -120,14 +136,8 @@ fn resolve_inferred_mutation_param_type(
         ));
     };
 
-    if let Some(table_name) = column.resolved_table_name.as_deref() {
-        return resolve_current_database_column_type(
-            mutation,
-            usage,
-            table_name,
-            &column.column,
-            schema,
-        );
+    if let Some(table_ref) = column.resolved_table_ref.as_ref() {
+        return resolve_schema_column_type(mutation, usage, table_ref, &column.column, schema);
     }
 
     let Some(table) = table_sources.resolve(&column.qualifier) else {
@@ -142,39 +152,39 @@ fn resolve_inferred_mutation_param_type(
         ));
     };
 
-    let TableResolution::CurrentDatabase { table_name } = table else {
+    let TableResolution::SchemaBacked { table_ref } = table else {
         return Err(mutation_param_usage_error(
             mutation,
             usage,
             param_value_type_required_message(
                 usage.id(),
                 format!(
-                    "table alias `{}` does not resolve to a current-database table",
+                    "table alias `{}` does not resolve to a supported schema-backed table",
                     column.qualifier
                 ),
             ),
         ));
     };
 
-    resolve_current_database_column_type(mutation, usage, table_name, &column.column, schema)
+    resolve_schema_column_type(mutation, usage, table_ref, &column.column, schema)
 }
 
-pub(in crate::metadata::mysql::sqlx) fn current_database_mutation_table_names(
+pub(in crate::metadata::mysql::sqlx) fn mutation_schema_table_refs(
     mutation: &core::RawMutation,
-) -> core::DiagnosticResult<Vec<String>> {
+) -> core::DiagnosticResult<Vec<MysqlSchemaTableRef>> {
     let statements = parse_mutation(mutation)?;
     let statement = single_mutation_statement(mutation, &statements)?;
-    let mut table_names = mutation_table_sources(statement).current_database_table_names;
+    let mut table_refs = mutation_table_sources(statement).schema_table_refs;
     for context in collect_mutation_param_contexts(statement)
         .into_iter()
         .flatten()
     {
-        if let Some(table_name) = context.resolved_table_name {
-            table_names.insert(table_name);
+        if let Some(table_ref) = context.resolved_table_ref {
+            table_refs.insert(table_ref);
         }
     }
 
-    Ok(table_names.into_iter().collect())
+    Ok(table_refs.into_iter().collect())
 }
 
 fn collect_mutation_param_contexts(statement: &Statement) -> Vec<Option<ColumnRef>> {
@@ -413,12 +423,16 @@ fn insert_column_context(
 ) -> Option<ColumnRef> {
     let column = column?;
     let qualifier = target_qualifier?;
-    let column_name = object_name_parts(column).last().cloned()?;
+    let parts = object_name_parts(column);
+    if parts.iter().any(|part| part.contains('.')) {
+        return None;
+    }
+    let column_name = parts.last().cloned()?;
 
     Some(ColumnRef {
         qualifier: qualifier.to_owned(),
         column: column_name,
-        resolved_table_name: None,
+        resolved_table_ref: None,
     })
 }
 
@@ -438,11 +452,16 @@ fn column_ref_from_object_name(
 ) -> Option<ColumnRef> {
     let parts = object_name_parts(name);
     match parts.as_slice() {
-        [column] => Some(ColumnRef::qualified(
+        [column] if !column.contains('.') => Some(ColumnRef::qualified(
             default_qualifier?.to_owned(),
             column.clone(),
         )),
-        [qualifier, column] => Some(ColumnRef::qualified(qualifier.clone(), column.clone())),
+        [qualifier, column] if !parts.iter().any(|part| part.contains('.')) => {
+            Some(ColumnRef::qualified(qualifier.clone(), column.clone()))
+        }
+        [database, table, column] if !parts.iter().any(|part| part.contains('.')) => Some(
+            ColumnRef::qualified(format!("{database}.{table}"), column.clone()),
+        ),
         _ => None,
     }
 }
@@ -530,8 +549,8 @@ fn collect_object_name_source(
     sources: &mut MutationTableSources,
 ) {
     let parts = object_name_parts(name);
-    if parts.len() == 1 {
-        sources.insert_current_database_table(parts[0].clone(), alias);
+    if let Some(table_ref) = schema_table_ref_from_parts(&parts) {
+        sources.insert_schema_table(table_ref, alias);
     } else {
         sources.insert_unsupported_table(parts.last().cloned(), alias);
     }

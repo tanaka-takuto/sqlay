@@ -3,11 +3,12 @@ use sqlay_core as core;
 use super::super::result_mapping::map_mysql_result_column_metadata;
 use super::super::schema_columns::MysqlSchemaColumn;
 use super::{
-    current_database_mutation_table_names, param_value_type_required_message,
-    resolve_mutation_param_usage_metadata, resolve_param_usage_metadata,
+    param_value_type_required_message, resolve_mutation_param_usage_metadata,
+    resolve_param_usage_metadata,
 };
 
 mod context_traversal;
+mod schema_sources;
 
 #[test]
 fn maps_representative_mysql_type_names_to_core_types() {
@@ -388,30 +389,6 @@ fn rejects_unqualified_column_inference_without_value_type() {
 }
 
 #[test]
-fn rejects_schema_qualified_table_inference_without_value_type() {
-    let query = raw_param_query(
-        "SELECT u.id FROM app.users AS u WHERE u.email = ?;",
-        [core::ParamUsage::new(
-            "email".to_owned(),
-            None,
-            false,
-            core::SourceLocation::unknown(),
-        )],
-    );
-
-    let report = resolve_param_usage_metadata(&query, &[])
-        .expect_err("schema-qualified tables should require valueType");
-
-    assert_eq!(
-        report.diagnostics()[0].message(),
-        param_value_type_required_message(
-            "email",
-            "table alias `u` does not resolve to a current-database table"
-        )
-    );
-}
-
-#[test]
 fn rejects_cte_source_shadowing_real_table_without_value_type() {
     let query = raw_param_query(
         "WITH u AS (SELECT id FROM users) SELECT u.id FROM u WHERE u.id = ?;",
@@ -431,7 +408,7 @@ fn rejects_cte_source_shadowing_real_table_without_value_type() {
         report.diagnostics()[0].message(),
         param_value_type_required_message(
             "userId",
-            "table alias `u` does not resolve to a current-database table"
+            "table alias `u` does not resolve to a supported schema-backed table"
         )
     );
 }
@@ -652,23 +629,6 @@ fn resolves_mutation_subquery_param_types_from_select_direct_column_contexts() {
 }
 
 #[test]
-fn mutation_table_names_include_subquery_tables_used_by_params() {
-    let mutation = raw_param_mutation(
-        "UPDATE users AS u SET u.name = ? WHERE EXISTS (SELECT 1 FROM accounts AS a WHERE a.user_id = u.id AND a.status = ?) AND u.email = ?;",
-        [
-            param_usage("name", None),
-            param_usage("accountStatus", None),
-            param_usage("email", None),
-        ],
-    );
-
-    let table_names = current_database_mutation_table_names(&mutation)
-        .expect("mutation schema lookup should include subquery tables used by Params");
-
-    assert_eq!(table_names, ["accounts".to_owned(), "users".to_owned()]);
-}
-
-#[test]
 fn resolves_insert_set_replace_set_and_delete_mutation_param_types() {
     let cases = [
         (
@@ -757,23 +717,7 @@ fn value_type_override_in_mutation_subquery_preserves_later_inference_order() {
 }
 
 #[test]
-fn rejects_schema_qualified_and_unknown_mutation_columns_without_value_type() {
-    let schema_qualified = raw_param_mutation(
-        "UPDATE app.users AS u SET u.name = ? WHERE u.id = ?;",
-        [param_usage("name", None), param_usage("userId", None)],
-    );
-
-    let report = resolve_mutation_param_usage_metadata(&schema_qualified, &[])
-        .expect_err("schema-qualified mutation targets should require valueType");
-
-    assert_eq!(
-        report.diagnostics()[0].message(),
-        param_value_type_required_message(
-            "name",
-            "table alias `u` does not resolve to a current-database table"
-        )
-    );
-
+fn rejects_unknown_mutation_columns_without_value_type() {
     let unknown_column = raw_param_mutation(
         "UPDATE users AS u SET u.missing_name = ? WHERE u.id = ?;",
         [param_usage("name", None), param_usage("userId", None)],
@@ -875,7 +819,27 @@ fn raw_param_mutation(
 }
 
 fn schema_column(table_name: &str, column_name: &str, ty: core::CoreType) -> MysqlSchemaColumn {
-    MysqlSchemaColumn::new(table_name.to_owned(), column_name.to_owned(), ty)
+    MysqlSchemaColumn::new_current_database(
+        table_name.to_owned(),
+        column_name.to_owned(),
+        format!("{ty:?}"),
+        ty,
+    )
+}
+
+fn schema_column_in_database(
+    database_name: &str,
+    table_name: &str,
+    column_name: &str,
+    ty: core::CoreType,
+) -> MysqlSchemaColumn {
+    MysqlSchemaColumn::new_explicit_database(
+        database_name.to_owned(),
+        table_name.to_owned(),
+        column_name.to_owned(),
+        format!("{ty:?}"),
+        ty,
+    )
 }
 
 fn param_usage(id: &str, value_type: Option<core::CoreType>) -> core::ParamUsage {

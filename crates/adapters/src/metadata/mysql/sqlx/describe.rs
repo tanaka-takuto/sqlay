@@ -5,9 +5,7 @@ use sqlay_core as core;
 use super::diagnostics::{mutation_error, query_error};
 use super::param_inference::{resolve_mutation_param_usage_metadata, resolve_param_usage_metadata};
 use super::result_mapping::map_mysql_result_column_metadata;
-use super::schema_columns::{
-    fetch_current_database_mutation_schema_columns, fetch_current_database_schema_columns,
-};
+use super::schema_columns::{fetch_mutation_schema_columns, fetch_schema_columns};
 
 /// sqlx-backed `MySQL` metadata provider.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -192,7 +190,7 @@ async fn describe_param_usages(
         return Ok(Vec::new());
     }
 
-    let schema_columns = fetch_current_database_schema_columns(connection, query).await?;
+    let schema_columns = fetch_schema_columns(connection, query).await?;
     resolve_param_usage_metadata(query, &schema_columns)
 }
 
@@ -204,7 +202,6 @@ async fn describe_mutation_param_usages(
         return Ok(Vec::new());
     }
 
-    let schema_columns =
-        fetch_current_database_mutation_schema_columns(connection, mutation).await?;
+    let schema_columns = fetch_mutation_schema_columns(connection, mutation).await?;
     resolve_mutation_param_usage_metadata(mutation, &schema_columns)
 }
