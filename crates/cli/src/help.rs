@@ -13,7 +13,7 @@ Options:
   -h, --help         Print this help.
   --config <path>    Use an explicit config path for check or compile.
   --format <human|json>
-                     Select human or JSON output for check or compile.
+                     Select output format for check or compile. JSON rendering is not yet available in this slice.
   --clean            Remove stale generated files during compile.
   --fail-on-empty    Exit with an error when source.include matches no SQL files after source.exclude.
   --allow-empty-clean
@@ -176,7 +176,7 @@ Options:
   -h, --help         Print this help.
   --config <path>    Use an explicit config path.
   --format <human|json>
-                     Select human or JSON output. The default is human.
+                     Select output format. The default is human. JSON rendering is not yet available in this slice.
   --fail-on-empty    Exit with an error when source.include matches no SQL files after source.exclude.
 
 Examples:
@@ -253,7 +253,7 @@ Options:
   -h, --help         Print this help.
   --config <path>    Use an explicit config path.
   --format <human|json>
-                     Select human or JSON output. The default is human.
+                     Select output format. The default is human. JSON rendering is not yet available in this slice.
   --clean            Remove stale generated files that no longer correspond to input SQL files.
   --fail-on-empty    Exit with an error when source.include matches no SQL files after source.exclude.
   --allow-empty-clean

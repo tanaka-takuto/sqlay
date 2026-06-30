@@ -1,5 +1,4 @@
-use std::ffi::OsString;
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
 use sqlay_core as core;
 
@@ -263,6 +262,7 @@ fn format_equals_value(arg: &OsString) -> core::DiagnosticResult<Option<OutputFo
 
 fn parse_format_value(value: &OsString) -> core::DiagnosticResult<OutputFormat> {
     match value.to_string_lossy().as_ref() {
+        "" => Err(single_cli_error("missing value for `--format`")),
         "human" => Ok(OutputFormat::Human),
         "json" => Ok(OutputFormat::Json),
         value => Err(single_cli_error(format!(
@@ -289,8 +289,7 @@ fn unexpected_argument(arg: &OsString) -> core::DiagnosticReport {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::OsString;
-    use std::path::PathBuf;
+    use std::{ffi::OsString, path::PathBuf};
 
     use crate::args::{Command, OutputFormat, parse_args};
     use crate::help::HelpTopic;
@@ -564,32 +563,38 @@ mod tests {
 
     #[test]
     fn rejects_invalid_format_options() {
-        for (args, message) in [
+        let cases: &[(&[&str], &str)] = &[
             (
-                vec!["sqlay", "check", "--format"],
+                &["sqlay", "check", "--format"],
                 "missing value for `--format`",
             ),
             (
-                vec!["sqlay", "compile", "--format", "yaml"],
+                &["sqlay", "check", "--format="],
+                "missing value for `--format`",
+            ),
+            (
+                &["sqlay", "compile", "--format", "yaml"],
                 "unsupported `--format` value `yaml`; expected `human` or `json`",
             ),
             (
-                vec!["sqlay", "check", "--format", "human", "--format=json"],
+                &["sqlay", "check", "--format", "human", "--format=json"],
                 "`--format` may only be provided once",
             ),
             (
-                vec!["sqlay", "check", "--json"],
+                &["sqlay", "check", "--json"],
                 "unexpected argument `--json`",
             ),
             (
-                vec!["sqlay", "init", "--format", "json"],
+                &["sqlay", "init", "--format", "json"],
                 "unexpected argument `--format`",
             ),
-        ] {
-            let report = parse_args(args.into_iter().map(OsString::from))
+        ];
+
+        for (args, message) in cases {
+            let report = parse_args(args.iter().copied().map(OsString::from))
                 .expect_err("format args should fail");
 
-            assert_eq!(report.diagnostics()[0].message(), message);
+            assert_eq!(report.diagnostics()[0].message(), *message);
         }
     }
 }
