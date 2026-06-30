@@ -194,10 +194,31 @@ explicit `database.table.column` references. SQL table-source resolution for thi
 feature should therefore support current-database tables and explicit MySQL
 `database.table` references as schema-backed sources.
 
+## Accepted Machine-Readable CLI Output Direction
+
+[ADR 0013](./adr/0013-define-machine-readable-cli-format-output.md) defines the
+accepted direction for `--format` output on `check` and `compile`.
+
+The accepted option surface is `--format <human|json>` and
+`--format=<human|json>` for `check` and `compile` only. The default is `human`;
+there is no `--json` alias in the initial design. Unknown format values are CLI
+usage errors.
+
+`--format human` preserves the current stream contract: success summaries are
+printed to stdout and diagnostics are printed to stderr. `--format json` prints a
+single JSON result envelope to stdout for both successful and failed runs, and
+stderr stays empty. The JSON envelope includes the `sqlay` product version,
+normalized command data, status, exit code, success summary or `null`, and
+structured diagnostics.
+
+JSON success summaries include aggregate counts, query and mutation builder
+summaries, and compile-specific generated file and stale cleanup details. Failed
+JSON runs use `summary: null`; diagnostics are the stable failure contract.
+
 ## Near-Term Direction
 
 The near-term direction is to stabilize the current SELECT builder workflow while
-implementing ADR 0010, ADR 0011, and ADR 0012 in focused slices:
+implementing ADR 0010, ADR 0011, ADR 0012, and ADR 0013 in focused slices:
 
 - keep contributor and user documentation aligned with the supported and accepted
   post-MVP scope.
@@ -207,6 +228,8 @@ implementing ADR 0010, ADR 0011, and ADR 0012 in focused slices:
   `mysql2/promise` execution patterns for mutation builders.
 - preserve the annotation-only boundary for TypeScript type mapping overrides:
   runtime conversion and driver configuration remain user responsibilities.
+- keep machine-readable CLI output focused on `check` and `compile` result
+  reporting without changing generated TypeScript or database behavior.
 - maintain examples, fixtures, and generated TypeScript artifacts as executable
   coverage for the supported workflow.
 
@@ -233,6 +256,7 @@ The current scope is defined by these accepted ADRs:
 - [ADR 0010: Define Initial MySQL Mutation Builder Support](./adr/0010-define-initial-mysql-mutation-builder-support.md)
 - [ADR 0011: Define Repeat for Variable-Length SQL Repetition](./adr/0011-define-repeat-for-variable-length-sql-repetition.md)
 - [ADR 0012: Define Configurable TypeScript Type Mapping Overrides](./adr/0012-define-configurable-typescript-type-mapping-overrides.md)
+- [ADR 0013: Define Machine-Readable CLI Format Output](./adr/0013-define-machine-readable-cli-format-output.md)
 
 ## Out Of Scope
 
@@ -251,6 +275,10 @@ The following remain intentionally unsupported:
   config, relative custom type import paths, generated import aliases, generated
   enum type aliases, SET string unions, expression-result enum value inference, and
   separate input-versus-result mapping policies.
+- Machine-readable CLI output behavior outside ADR 0013, including JSON output for
+  `init` or help, a `--json` alias, YAML output, partial success summaries for
+  failed runs, duplicate human diagnostics on stderr during JSON output, and a
+  schema version separate from the `sqlay` product version.
 - mutation forms outside ADR 0010, including multi-table `UPDATE` and `DELETE`,
   `INSERT ... SELECT`, `REPLACE ... SELECT`, top-level CTE mutations, `CALL`,
   `LOAD DATA`, `TRUNCATE`, DDL, transaction control, and administrative

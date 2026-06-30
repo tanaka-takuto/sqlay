@@ -58,6 +58,16 @@ execute statements or require a database driver in generated TypeScript code.
 
 Driver usage belongs in user code and examples, not in generated builders.
 
+### Automation-Friendly CLI Output
+
+Human-readable CLI output should stay useful in terminals, while CI and other
+automation should be able to consume structured command results without grepping
+human text.
+
+Machine-readable output is a CLI reporting surface. It should describe command
+status, summaries, and diagnostics without changing SQL analysis, generated
+TypeScript, database execution behavior, or configuration semantics.
+
 ### Flat Result Mapping
 
 SELECT rows are mapped directly to language-level object types. `sqlay` does not
@@ -86,6 +96,10 @@ builder output only.
 defines the accepted direction for configurable TypeScript type annotation
 overrides, including schema-backed MySQL enum literal unions and explicit project
 type mappings.
+
+[ADR 0013](./adr/0013-define-machine-readable-cli-format-output.md) defines the
+accepted direction for machine-readable `check` and `compile` result output through
+`--format json`.
 
 Additional SQL dialects and additional target generators require separate design
 decisions before implementation.
