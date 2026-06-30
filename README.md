@@ -134,6 +134,28 @@ Optional direct Param input properties are not currently supported because they
 imply SQL structure changes. Use a nullable sentinel pattern, separate queries for
 distinct SQL shapes, or Slot/Fragment composition for supported dynamic SQL.
 
+For optional filters, repeat the same nullable Param ID where the SQL needs the
+value. Repeated Param IDs share one generated input field, while generated `params`
+includes one value per marker occurrence in source order:
+
+```sql
+WHERE (
+  /* @sqlay { type: param id: status valueType: string nullable: true } */
+  'paid'
+  /* @sqlay { type: paramEnd } */
+  IS NULL
+  OR o.status =
+  /* @sqlay { type: param id: status valueType: string nullable: true } */
+  'paid'
+  /* @sqlay { type: paramEnd } */
+)
+```
+
+All occurrences of a repeated Param ID must agree on `valueType` and nullability.
+Use a real sample expression in every marker range so the source SQL stays
+executable without making the input property optional. For `valueType: bool`, use a
+SQL boolean sample such as `TRUE` or `FALSE`.
+
 ## Mutation Builders
 
 Use `type: mutation` for MySQL `INSERT`, `UPDATE`, `DELETE`, and `REPLACE` builders.

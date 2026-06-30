@@ -88,6 +88,29 @@ should either use a nullable sentinel pattern such as `param IS NULL OR column =
 param`, write separate builders for distinct shapes, or use Slot/Fragment
 selection for supported dynamic SQL composition slices.
 
+The nullable sentinel pattern repeats the same nullable Param ID at each SQL value
+site:
+
+```sql
+WHERE (
+  /* @sqlay { type: param id: status valueType: string nullable: true } */
+  'paid'
+  /* @sqlay { type: paramEnd } */
+  IS NULL
+  OR o.status =
+  /* @sqlay { type: param id: status valueType: string nullable: true } */
+  'paid'
+  /* @sqlay { type: paramEnd } */
+)
+```
+
+Repeated Param IDs share one generated input field. Generated `params` includes one
+value per marker occurrence in source order, so this example emits the `status`
+value twice. All occurrences must agree on `valueType` and nullability. Use a real
+sample expression in every marker range so the source SQL remains executable
+without making the input property optional. For boolean Params, use a SQL boolean
+sample such as `TRUE` or `FALSE`.
+
 ## Accepted Mutation Direction
 
 [ADR 0010](./adr/0010-define-initial-mysql-mutation-builder-support.md) defines the
