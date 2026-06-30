@@ -2,6 +2,7 @@ use sqlay_core as core;
 use sqlparser::ast::{Expr, Query as SqlQuery};
 
 use super::super::diagnostics::mutation_param_usage_error;
+use super::super::schema_columns::MysqlSchemaTableRef;
 use super::SchemaColumnTypes;
 use super::contexts::{
     ColumnRef, collect_expr_param_contexts_with_query_handler, collect_query_param_contexts,
@@ -20,24 +21,25 @@ pub(super) fn collect_mutation_expr_param_contexts(
     );
 }
 
-pub(super) fn resolve_current_database_column_type(
+pub(super) fn resolve_schema_column_type(
     mutation: &core::RawMutation,
     usage: &core::ParamUsage,
-    table_name: &str,
+    table_ref: &MysqlSchemaTableRef,
     column_name: &str,
     schema: &SchemaColumnTypes,
 ) -> core::DiagnosticResult<core::CoreType> {
-    if let Some(ty) = schema.get(table_name, column_name) {
+    if let Some(ty) = schema.get(table_ref, column_name) {
         return Ok(ty);
     }
 
-    if !schema.has_table(table_name) {
+    if !schema.has_table(table_ref) {
         return Err(mutation_param_usage_error(
             mutation,
             usage,
             format!(
-                "Param `{}` references unknown current-database table `{table_name}`",
-                usage.id()
+                "Param `{}` references unknown {}",
+                usage.id(),
+                table_ref.table_description()
             ),
         ));
     }
@@ -45,10 +47,7 @@ pub(super) fn resolve_current_database_column_type(
     Err(mutation_param_usage_error(
         mutation,
         usage,
-        format!(
-            "Param `{}` references unknown current-database column `{table_name}.{column_name}`",
-            usage.id(),
-        ),
+        table_ref.unknown_column_message(usage.id(), column_name),
     ))
 }
 
@@ -73,13 +72,9 @@ fn resolve_select_subquery_column_context(
 ) -> Option<ColumnRef> {
     let column = context?;
     match table_sources.resolve(&column.qualifier) {
-        Some(TableResolution::CurrentDatabase { table_name }) => {
-            Some(ColumnRef::resolved_current_database(
-                column.qualifier,
-                table_name.clone(),
-                column.column,
-            ))
-        }
+        Some(TableResolution::SchemaBacked { table_ref }) => Some(
+            ColumnRef::resolved_schema_table(column.qualifier, table_ref.clone(), column.column),
+        ),
         Some(TableResolution::Unsupported) | None => None,
     }
 }

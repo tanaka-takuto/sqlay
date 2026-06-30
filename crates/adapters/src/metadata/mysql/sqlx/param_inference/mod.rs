@@ -15,28 +15,26 @@ use sqlparser::dialect::MySqlDialect;
 use sqlparser::parser::Parser;
 
 use super::diagnostics::{param_usage_error, query_error};
-use super::schema_columns::MysqlSchemaColumn;
+use super::schema_columns::{MysqlSchemaColumn, MysqlSchemaTableRef};
 use contexts::{ColumnRef, collect_query_param_contexts};
-pub(super) use mutations::{
-    current_database_mutation_table_names, resolve_mutation_param_usage_metadata,
-};
+pub(super) use mutations::{mutation_schema_table_refs, resolve_mutation_param_usage_metadata};
 use tables::{SelectTableSources, TableResolution, select_from_query, select_table_sources};
 
 const SUPPORTED_PARAM_VALUE_TYPES_MESSAGE: &str = "`bool`, `int32`, `int64`, `float64`, `decimal`, `string`, `bytes`, `date`, `time`, `datetime`, and `json`";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct SchemaColumnTypes {
-    columns: BTreeMap<(String, String), core::CoreType>,
-    tables: BTreeSet<String>,
+    columns: BTreeMap<(MysqlSchemaTableRef, String), core::CoreType>,
+    tables: BTreeSet<MysqlSchemaTableRef>,
 }
 
 impl SchemaColumnTypes {
     fn from_columns(columns: &[MysqlSchemaColumn]) -> Self {
         let mut schema = Self::default();
         for column in columns {
-            schema.tables.insert(column.table_name.clone());
+            schema.tables.insert(column.table_ref.clone());
             schema.columns.insert(
-                (column.table_name.clone(), column.column_name.clone()),
+                (column.table_ref.clone(), column.column_name.clone()),
                 column.ty,
             );
         }
@@ -44,14 +42,14 @@ impl SchemaColumnTypes {
         schema
     }
 
-    fn get(&self, table_name: &str, column_name: &str) -> Option<core::CoreType> {
+    fn get(&self, table_ref: &MysqlSchemaTableRef, column_name: &str) -> Option<core::CoreType> {
         self.columns
-            .get(&(table_name.to_owned(), column_name.to_owned()))
+            .get(&(table_ref.clone(), column_name.to_owned()))
             .copied()
     }
 
-    fn has_table(&self, table_name: &str) -> bool {
-        self.tables.contains(table_name)
+    fn has_table(&self, table_ref: &MysqlSchemaTableRef) -> bool {
+        self.tables.contains(table_ref)
     }
 }
 
@@ -126,31 +124,32 @@ fn resolve_inferred_param_type(
         ));
     };
 
-    let TableResolution::CurrentDatabase { table_name } = table else {
+    let TableResolution::SchemaBacked { table_ref } = table else {
         return Err(param_usage_error(
             query,
             usage,
             param_value_type_required_message(
                 usage.id(),
                 format!(
-                    "table alias `{}` does not resolve to a current-database table",
+                    "table alias `{}` does not resolve to a supported schema-backed table",
                     column.qualifier
                 ),
             ),
         ));
     };
 
-    if let Some(ty) = schema.get(table_name, &column.column) {
+    if let Some(ty) = schema.get(table_ref, &column.column) {
         return Ok(ty);
     }
 
-    if !schema.has_table(table_name) {
+    if !schema.has_table(table_ref) {
         return Err(param_usage_error(
             query,
             usage,
             format!(
-                "Param `{}` references unknown current-database table `{table_name}`",
-                usage.id()
+                "Param `{}` references unknown {}",
+                usage.id(),
+                table_ref.table_description()
             ),
         ));
     }
@@ -158,11 +157,7 @@ fn resolve_inferred_param_type(
     Err(param_usage_error(
         query,
         usage,
-        format!(
-            "Param `{}` references unknown current-database column `{table_name}.{}`",
-            usage.id(),
-            column.column
-        ),
+        table_ref.unknown_column_message(usage.id(), &column.column),
     ))
 }
 
@@ -173,15 +168,15 @@ fn param_value_type_required_message(id: &str, reason: impl AsRef<str>) -> Strin
     )
 }
 
-pub(super) fn current_database_table_names(
+pub(super) fn schema_table_refs(
     query: &core::RawQuery,
-) -> core::DiagnosticResult<Vec<String>> {
+) -> core::DiagnosticResult<Vec<MysqlSchemaTableRef>> {
     let statements = parse_query(query)?;
     let parsed_query = single_select_query(query, &statements)?;
     let select = select_from_query(parsed_query)
         .expect("single_select_query verifies this is a top-level SELECT query");
     Ok(select_table_sources(parsed_query, select)
-        .current_database_table_names
+        .schema_table_refs
         .into_iter()
         .collect())
 }

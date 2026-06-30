@@ -4,6 +4,7 @@ use sqlparser::ast::{
     SelectItem, TableFactor, TableWithJoins, Value,
 };
 
+use super::super::schema_columns::MysqlSchemaTableRef;
 use super::unsupported_contexts::{
     collect_unsupported_expr_param_contexts, collect_unsupported_function_arg_expr_param_contexts,
     collect_unsupported_query_param_contexts,
@@ -13,7 +14,7 @@ use super::unsupported_contexts::{
 pub(super) struct ColumnRef {
     pub(super) qualifier: String,
     pub(super) column: String,
-    pub(super) resolved_table_name: Option<String>,
+    pub(super) resolved_table_ref: Option<MysqlSchemaTableRef>,
 }
 
 impl ColumnRef {
@@ -21,19 +22,19 @@ impl ColumnRef {
         Self {
             qualifier: qualifier.into(),
             column: column.into(),
-            resolved_table_name: None,
+            resolved_table_ref: None,
         }
     }
 
-    pub(super) fn resolved_current_database(
+    pub(super) fn resolved_schema_table(
         qualifier: impl Into<String>,
-        table_name: impl Into<String>,
+        table_ref: MysqlSchemaTableRef,
         column: impl Into<String>,
     ) -> Self {
         Self {
             qualifier: qualifier.into(),
             column: column.into(),
-            resolved_table_name: Some(table_name.into()),
+            resolved_table_ref: Some(table_ref),
         }
     }
 }
@@ -559,14 +560,22 @@ fn qualified_column_ref(expr: &Expr) -> Option<ColumnRef> {
     let Expr::CompoundIdentifier(parts) = expr else {
         return None;
     };
-    let [qualifier, column] = parts.as_slice() else {
+    let parts = parts
+        .iter()
+        .map(|part| part.value.clone())
+        .collect::<Vec<_>>();
+    if parts.iter().any(|part| part.contains('.')) {
         return None;
-    };
+    }
 
-    Some(ColumnRef::qualified(
-        qualifier.value.clone(),
-        column.value.clone(),
-    ))
+    match parts.as_slice() {
+        [qualifier, column] => Some(ColumnRef::qualified(qualifier.clone(), column.clone())),
+        [database, table, column] => Some(ColumnRef::qualified(
+            format!("{database}.{table}"),
+            column.clone(),
+        )),
+        _ => None,
+    }
 }
 
 pub(super) fn is_placeholder(expr: &Expr) -> bool {
