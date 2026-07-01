@@ -1,5 +1,4 @@
-use std::ffi::OsString;
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
 use sqlay_core as core;
 
@@ -12,10 +11,12 @@ pub enum Command {
     Init,
     Check {
         config: Option<PathBuf>,
+        format: OutputFormat,
         fail_on_empty: bool,
     },
     Compile {
         config: Option<PathBuf>,
+        format: OutputFormat,
         clean: bool,
         fail_on_empty: bool,
         allow_empty_clean: bool,
@@ -25,13 +26,22 @@ pub enum Command {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfiguredCommand {
     Check {
+        format: OutputFormat,
         fail_on_empty: bool,
     },
     Compile {
+        format: OutputFormat,
         clean: bool,
         fail_on_empty: bool,
         allow_empty_clean: bool,
     },
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum OutputFormat {
+    #[default]
+    Human,
+    Json,
 }
 
 pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticResult<Command> {
@@ -55,6 +65,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticR
             } else {
                 Command::Check {
                     config: options.config,
+                    format: options.format.unwrap_or_default(),
                     fail_on_empty: options.fail_on_empty,
                 }
             }
@@ -65,6 +76,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> core::DiagnosticR
             } else {
                 Command::Compile {
                     config: options.config,
+                    format: options.format.unwrap_or_default(),
                     clean: options.clean,
                     fail_on_empty: options.fail_on_empty,
                     allow_empty_clean: options.allow_empty_clean,
@@ -113,6 +125,7 @@ enum CleanOption {
 #[derive(Debug, Default, Eq, PartialEq)]
 struct CommandOptions {
     config: Option<PathBuf>,
+    format: Option<OutputFormat>,
     clean: bool,
     fail_on_empty: bool,
     allow_empty_clean: bool,
@@ -168,6 +181,12 @@ fn parse_options(
             if options.config.replace(PathBuf::from(path)).is_some() {
                 return Err(single_cli_error("`--config` may only be provided once"));
             }
+        } else if arg == "--format" {
+            let Some(value) = args.next() else {
+                return Err(single_cli_error("missing value for `--format`"));
+            };
+
+            set_format(&mut options, parse_format_value(&value)?)?;
         } else if arg == "--clean" {
             if clean == CleanOption::Reject {
                 return Err(unexpected_argument(&arg));
@@ -204,6 +223,8 @@ fn parse_options(
             if options.config.replace(path).is_some() {
                 return Err(single_cli_error("`--config` may only be provided once"));
             }
+        } else if let Some(value) = format_equals_value(&arg)? {
+            set_format(&mut options, value)?;
         } else {
             return Err(unexpected_argument(&arg));
         }
@@ -232,6 +253,32 @@ fn config_equals_path(arg: &OsString) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+fn format_equals_value(arg: &OsString) -> core::DiagnosticResult<Option<OutputFormat>> {
+    arg.to_str()
+        .and_then(|arg| arg.strip_prefix("--format="))
+        .map(|value| parse_format_value(&OsString::from(value)))
+        .transpose()
+}
+
+fn parse_format_value(value: &OsString) -> core::DiagnosticResult<OutputFormat> {
+    match value.to_string_lossy().as_ref() {
+        "" => Err(single_cli_error("missing value for `--format`")),
+        "human" => Ok(OutputFormat::Human),
+        "json" => Ok(OutputFormat::Json),
+        value => Err(single_cli_error(format!(
+            "unsupported `--format` value `{value}`; expected `human` or `json`"
+        ))),
+    }
+}
+
+fn set_format(options: &mut CommandOptions, value: OutputFormat) -> core::DiagnosticResult<()> {
+    if options.format.replace(value).is_some() {
+        return Err(single_cli_error("`--format` may only be provided once"));
+    }
+
+    Ok(())
+}
+
 fn config_before_unsupported_command() -> core::DiagnosticReport {
     single_cli_error("`--config` may only be used with `check` or `compile`")
 }
@@ -242,10 +289,9 @@ fn unexpected_argument(arg: &OsString) -> core::DiagnosticReport {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::OsString;
-    use std::path::PathBuf;
+    use std::{ffi::OsString, path::PathBuf};
 
-    use crate::args::{Command, parse_args};
+    use crate::args::{Command, OutputFormat, parse_args};
     use crate::help::HelpTopic;
 
     #[test]
@@ -254,6 +300,7 @@ mod tests {
             parse_args(["sqlay", "check"].map(OsString::from)).expect("args should parse"),
             Command::Check {
                 config: None,
+                format: OutputFormat::Human,
                 fail_on_empty: false,
             }
         );
@@ -306,6 +353,7 @@ mod tests {
             .expect("args should parse"),
             Command::Compile {
                 config: Some(PathBuf::from("custom/sqlay.config.json")),
+                format: OutputFormat::Human,
                 clean: false,
                 fail_on_empty: false,
                 allow_empty_clean: false,
@@ -322,6 +370,7 @@ mod tests {
             .expect("args should parse"),
             Command::Check {
                 config: Some(PathBuf::from("custom/sqlay.config.json")),
+                format: OutputFormat::Human,
                 fail_on_empty: false,
             }
         );
@@ -342,6 +391,7 @@ mod tests {
             .expect("args should parse"),
             Command::Compile {
                 config: Some(PathBuf::from("custom/sqlay.config.json")),
+                format: OutputFormat::Human,
                 clean: true,
                 fail_on_empty: false,
                 allow_empty_clean: false,
@@ -356,6 +406,7 @@ mod tests {
                 .expect("args should parse"),
             Command::Compile {
                 config: None,
+                format: OutputFormat::Human,
                 clean: true,
                 fail_on_empty: false,
                 allow_empty_clean: false,
@@ -370,6 +421,7 @@ mod tests {
                 .expect("args should parse"),
             Command::Compile {
                 config: None,
+                format: OutputFormat::Human,
                 clean: true,
                 fail_on_empty: false,
                 allow_empty_clean: true,
@@ -384,6 +436,7 @@ mod tests {
                 .expect("args should parse"),
             Command::Check {
                 config: None,
+                format: OutputFormat::Human,
                 fail_on_empty: true,
             }
         );
@@ -396,6 +449,7 @@ mod tests {
                 .expect("args should parse"),
             Command::Compile {
                 config: None,
+                format: OutputFormat::Human,
                 clean: true,
                 fail_on_empty: true,
                 allow_empty_clean: false,
@@ -443,6 +497,7 @@ mod tests {
             .expect("args should parse"),
             Command::Check {
                 config: Some(PathBuf::from("custom/sqlay.config.json")),
+                format: OutputFormat::Human,
                 fail_on_empty: false,
             }
         );
@@ -457,5 +512,89 @@ mod tests {
             report.diagnostics()[0].message(),
             "missing value for `--config`"
         );
+    }
+
+    #[test]
+    fn parses_format_options() {
+        for (args, expected) in [
+            (
+                vec!["sqlay", "check", "--format", "json"],
+                Command::Check {
+                    config: None,
+                    format: OutputFormat::Json,
+                    fail_on_empty: false,
+                },
+            ),
+            (
+                vec!["sqlay", "check", "--format=human"],
+                Command::Check {
+                    config: None,
+                    format: OutputFormat::Human,
+                    fail_on_empty: false,
+                },
+            ),
+            (
+                vec!["sqlay", "compile", "--format", "json"],
+                Command::Compile {
+                    config: None,
+                    format: OutputFormat::Json,
+                    clean: false,
+                    fail_on_empty: false,
+                    allow_empty_clean: false,
+                },
+            ),
+            (
+                vec!["sqlay", "compile", "--format=json"],
+                Command::Compile {
+                    config: None,
+                    format: OutputFormat::Json,
+                    clean: false,
+                    fail_on_empty: false,
+                    allow_empty_clean: false,
+                },
+            ),
+        ] {
+            assert_eq!(
+                parse_args(args.into_iter().map(OsString::from)).expect("args should parse"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_format_options() {
+        let cases: &[(&[&str], &str)] = &[
+            (
+                &["sqlay", "check", "--format"],
+                "missing value for `--format`",
+            ),
+            (
+                &["sqlay", "check", "--format="],
+                "missing value for `--format`",
+            ),
+            (
+                &["sqlay", "compile", "--format", "yaml"],
+                "unsupported `--format` value `yaml`; expected `human` or `json`",
+            ),
+            (
+                &["sqlay", "check", "--format", "human", "--format=json"],
+                "`--format` may only be provided once",
+            ),
+            (
+                &["sqlay", "check", "--json"],
+                "unexpected argument `--json`",
+            ),
+            (
+                &["sqlay", "init", "--format", "json"],
+                "unexpected argument `--format`",
+            ),
+        ];
+
+        for (args, message) in cases {
+            let report = parse_args(args.iter().copied().map(OsString::from))
+                .expect_err("format args should fail");
+
+            assert_eq!(report.diagnostics()[0].message(), *message);
+        }
     }
 }

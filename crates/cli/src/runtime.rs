@@ -55,15 +55,24 @@ fn run_with_args(args: impl IntoIterator<Item = OsString>) -> ExitCode {
         Ok(Command::Init) => run_init_command(),
         Ok(Command::Check {
             config,
+            format,
             fail_on_empty,
-        }) => run_configured_command(ConfiguredCommand::Check { fail_on_empty }, config),
+        }) => run_configured_command(
+            ConfiguredCommand::Check {
+                format,
+                fail_on_empty,
+            },
+            config,
+        ),
         Ok(Command::Compile {
             config,
+            format,
             clean,
             fail_on_empty,
             allow_empty_clean,
         }) => run_configured_command(
             ConfiguredCommand::Compile {
+                format,
                 clean,
                 fail_on_empty,
                 allow_empty_clean,
@@ -118,7 +127,7 @@ fn run_configured_use_case(
     };
 
     match command {
-        ConfiguredCommand::Check { fail_on_empty } => {
+        ConfiguredCommand::Check { fail_on_empty, .. } => {
             DefaultCompileUseCase::check_with_empty_source_policy(
                 config,
                 &pipeline,
@@ -130,6 +139,7 @@ fn run_configured_use_case(
             clean,
             fail_on_empty,
             allow_empty_clean,
+            ..
         } => {
             let outcome = DefaultCompileUseCase::compile_with_empty_source_and_clean_policies(
                 config,
@@ -239,7 +249,9 @@ fn add_empty_source_cli_remediation(
 impl ConfiguredCommand {
     const fn fail_on_empty(self) -> bool {
         match self {
-            Self::Check { fail_on_empty } | Self::Compile { fail_on_empty, .. } => fail_on_empty,
+            Self::Check { fail_on_empty, .. } | Self::Compile { fail_on_empty, .. } => {
+                fail_on_empty
+            }
         }
     }
 
