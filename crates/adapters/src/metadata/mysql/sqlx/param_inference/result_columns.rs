@@ -2,7 +2,9 @@ use sqlay_core as core;
 use sqlparser::ast::{Expr, SelectItem};
 
 use super::super::schema_columns::MysqlSchemaColumn;
-use super::tables::{SelectTableSources, TableResolution, select_from_query, select_table_sources};
+use super::tables::{
+    SelectTableSources, resolve_query_schema_table_ref, select_from_query, select_table_sources,
+};
 use super::{SchemaColumnTypes, parse_query, single_select_query};
 
 pub(in crate::metadata::mysql::sqlx) fn resolve_result_column_type_refs(
@@ -42,12 +44,9 @@ fn resolve_projection_expr_type_ref(
     schema: &SchemaColumnTypes,
 ) -> Option<core::CoreTypeRef> {
     let (qualifier, column_name) = direct_projection_column_ref(expr)?;
-    let Some(TableResolution::SchemaBacked { table_ref }) = table_sources.resolve(&qualifier)
-    else {
-        return None;
-    };
+    let table_ref = resolve_query_schema_table_ref(table_sources, schema, &qualifier)?;
 
-    schema.get(table_ref, &column_name)
+    schema.get(&table_ref, &column_name)
 }
 
 fn direct_projection_column_ref(expr: &Expr) -> Option<(String, String)> {

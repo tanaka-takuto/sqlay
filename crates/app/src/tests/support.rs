@@ -207,6 +207,11 @@ pub(super) fn test_param_usage(id: &str, placeholder_index: usize) -> core::Para
         .with_placeholder_index(placeholder_index)
 }
 
+pub(super) fn enum_type_ref(values: impl IntoIterator<Item = &'static str>) -> core::CoreTypeRef {
+    core::CoreTypeRef::from_enum_values(values.into_iter().map(str::to_owned).collect())
+        .expect("test enum values should build a Core type reference")
+}
+
 #[test]
 fn fake_dialect_analyzer_matches_limit_one_case_insensitively_and_exactly() {
     let analyzer = FakeDialectAnalyzer::new(CallLog::default()).with_limit_one_inference();

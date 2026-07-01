@@ -249,11 +249,6 @@ fn query_compiler_rejects_repeated_param_ids_with_conflicting_nullability() {
     );
 }
 
-fn enum_type_ref(values: impl IntoIterator<Item = &'static str>) -> core::CoreTypeRef {
-    core::CoreTypeRef::from_enum_values(values.into_iter().map(str::to_owned).collect())
-        .expect("test enum values should build a Core type reference")
-}
-
 #[test]
 fn query_compiler_uses_inferred_cardinality_when_metadata_has_no_override() {
     let compiled = compile_query(None, core::Cardinality::Many);

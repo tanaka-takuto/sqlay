@@ -69,7 +69,7 @@ pub(super) fn validate_variant_row_shape(
         }
         if variant_column.type_ref() != base_column.type_ref() {
             let difference = format!(
-                "result column {column_number} CoreType `{:?}` does not match base CoreType `{:?}`",
+                "result column {column_number} type reference `{:?}` does not match base type reference `{:?}`",
                 variant_column.type_ref(),
                 base_column.type_ref(),
             );

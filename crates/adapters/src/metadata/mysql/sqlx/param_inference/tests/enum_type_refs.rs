@@ -66,25 +66,71 @@ fn resolves_result_type_refs_from_schema_backed_direct_projection_columns() {
     );
 }
 
+#[test]
+fn resolves_result_type_refs_from_current_database_three_part_projection_columns() {
+    let query = raw_param_query(
+        "SELECT sqlay.orders.status AS orderStatus FROM orders;",
+        Vec::<core::ParamUsage>::new(),
+    );
+    let schema_columns = [
+        schema_enum_column("orders", "status", ["draft", "paid"]),
+        schema_enum_column_in_database("sqlay", "orders", "status", ["draft", "paid"]),
+    ];
+
+    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns)
+        .expect("current-database three-part projection columns should resolve");
+
+    assert_eq!(result_type_refs.len(), 1);
+    assert_eq!(
+        result_type_refs[0]
+            .as_ref()
+            .and_then(core::CoreTypeRef::enum_values),
+        Some(["draft".to_owned(), "paid".to_owned()].as_slice())
+    );
+}
+
 fn schema_enum_column(
     table_name: &str,
     column_name: &str,
     values: impl IntoIterator<Item = &'static str>,
 ) -> MysqlSchemaColumn {
     let values = values.into_iter().collect::<Vec<_>>();
-    let column_type = format!(
+    MysqlSchemaColumn::new_current_database(
+        table_name.to_owned(),
+        column_name.to_owned(),
+        enum_column_type(&values),
+        enum_type_ref(values),
+    )
+}
+
+fn schema_enum_column_in_database(
+    database_name: &str,
+    table_name: &str,
+    column_name: &str,
+    values: impl IntoIterator<Item = &'static str>,
+) -> MysqlSchemaColumn {
+    let values = values.into_iter().collect::<Vec<_>>();
+    MysqlSchemaColumn::new_explicit_database(
+        database_name.to_owned(),
+        table_name.to_owned(),
+        column_name.to_owned(),
+        enum_column_type(&values),
+        enum_type_ref(values),
+    )
+}
+
+fn enum_column_type(values: &[&str]) -> String {
+    format!(
         "enum({})",
         values
             .iter()
             .map(|value| format!("'{value}'"))
             .collect::<Vec<_>>()
             .join(",")
-    );
-    MysqlSchemaColumn::new_current_database(
-        table_name.to_owned(),
-        column_name.to_owned(),
-        column_type,
-        core::CoreTypeRef::from_enum_values(values.into_iter().map(str::to_owned).collect())
-            .expect("test enum values should build a Core type reference"),
     )
+}
+
+fn enum_type_ref(values: impl IntoIterator<Item = &'static str>) -> core::CoreTypeRef {
+    core::CoreTypeRef::from_enum_values(values.into_iter().map(str::to_owned).collect())
+        .expect("test enum values should build a Core type reference")
 }

@@ -69,7 +69,7 @@ async fn fetch_current_database_schema_columns(
         .collect::<Vec<_>>()
         .join(", ");
     let sql = format!(
-        "SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name, COLUMN_TYPE AS column_type \
+        "SELECT TABLE_SCHEMA AS database_name, TABLE_NAME AS table_name, COLUMN_NAME AS column_name, COLUMN_TYPE AS column_type \
          FROM information_schema.columns \
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ({placeholders})"
     );
@@ -82,12 +82,18 @@ async fn fetch_current_database_schema_columns(
 
     Ok(rows
         .into_iter()
-        .map(|row| {
+        .flat_map(|row| {
+            let database_name: String = row.get("database_name");
             let table_name: String = row.get("table_name");
             let column_name: String = row.get("column_name");
             let column_type: String = row.get("column_type");
 
-            current_database_schema_column(table_name, column_name, column_type)
+            current_database_schema_column_aliases(
+                database_name,
+                table_name,
+                column_name,
+                column_type,
+            )
         })
         .collect())
 }
@@ -147,6 +153,22 @@ fn current_database_schema_column(
 ) -> MysqlSchemaColumn {
     let type_ref = mysql_type_name_to_core_type_ref(&column_type);
     MysqlSchemaColumn::new_current_database(table_name, column_name, column_type, type_ref)
+}
+
+fn current_database_schema_column_aliases(
+    database_name: String,
+    table_name: String,
+    column_name: String,
+    column_type: String,
+) -> [MysqlSchemaColumn; 2] {
+    [
+        current_database_schema_column(
+            table_name.clone(),
+            column_name.clone(),
+            column_type.clone(),
+        ),
+        explicit_database_schema_column(database_name, table_name, column_name, column_type),
+    ]
 }
 
 fn explicit_database_schema_column(
@@ -310,6 +332,31 @@ mod tests {
         assert_eq!(column.column_name, "quantity");
         assert_eq!(column.column_type, "int unsigned");
         assert_eq!(column.ty, core::CoreType::Int64);
+    }
+
+    #[test]
+    fn current_database_schema_column_aliases_include_explicit_current_database_ref() {
+        let columns = current_database_schema_column_aliases(
+            "sqlay".to_owned(),
+            "orders".to_owned(),
+            "status".to_owned(),
+            "enum('draft','paid')".to_owned(),
+        );
+
+        assert_eq!(
+            columns[0].table_ref,
+            MysqlSchemaTableRef::current_database("orders")
+        );
+        assert_eq!(
+            columns[1].table_ref,
+            MysqlSchemaTableRef::explicit_database("sqlay", "orders")
+        );
+        assert_eq!(columns[0].column_name, "status");
+        assert_eq!(columns[1].column_name, "status");
+        assert_eq!(
+            columns[1].type_ref.enum_values(),
+            Some(["draft".to_owned(), "paid".to_owned()].as_slice())
+        );
     }
 
     #[test]

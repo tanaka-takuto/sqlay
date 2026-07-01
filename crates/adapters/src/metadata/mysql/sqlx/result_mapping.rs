@@ -97,6 +97,8 @@ fn parse_mysql_quoted_string_list(body: &str) -> Option<Vec<String>> {
         match chars.peek() {
             Some(',') => {
                 chars.next();
+                skip_ascii_whitespace(&mut chars);
+                chars.peek()?;
             }
             Some(_) => return None,
             None => break,
@@ -166,6 +168,11 @@ mod tests {
     #[test]
     fn malformed_mysql_enum_column_type_falls_back_to_scalar_string() {
         let type_ref = mysql_type_name_to_core_type_ref("enum('draft',paid)");
+
+        assert_eq!(type_ref, core::CoreTypeRef::from(core::CoreType::String));
+        assert_eq!(type_ref.enum_values(), None);
+
+        let type_ref = mysql_type_name_to_core_type_ref("enum('draft',)");
 
         assert_eq!(type_ref, core::CoreTypeRef::from(core::CoreType::String));
         assert_eq!(type_ref.enum_values(), None);

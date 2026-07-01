@@ -20,7 +20,10 @@ use super::schema_columns::{MysqlSchemaColumn, MysqlSchemaTableRef};
 use contexts::{ColumnRef, collect_query_param_contexts};
 pub(super) use mutations::{mutation_schema_table_refs, resolve_mutation_param_usage_metadata};
 pub(super) use result_columns::resolve_result_column_type_refs;
-use tables::{SelectTableSources, TableResolution, select_from_query, select_table_sources};
+use tables::{
+    SelectTableSources, TableResolution, resolve_current_database_qualified_table_ref,
+    select_from_query, select_table_sources,
+};
 
 const SUPPORTED_PARAM_VALUE_TYPES_MESSAGE: &str = "`bool`, `int32`, `int64`, `float64`, `decimal`, `string`, `bytes`, `date`, `time`, `datetime`, and `json`";
 
@@ -117,37 +120,46 @@ fn resolve_inferred_param_type(
         ));
     };
 
-    let Some(table) = table_sources.resolve(&column.qualifier) else {
-        return Err(param_usage_error(
-            query,
-            usage,
-            format!(
-                "Param `{}` references unknown table alias `{}`",
-                usage.id(),
-                column.qualifier
-            ),
-        ));
-    };
-
-    let TableResolution::SchemaBacked { table_ref } = table else {
-        return Err(param_usage_error(
-            query,
-            usage,
-            param_value_type_required_message(
-                usage.id(),
-                format!(
-                    "table alias `{}` does not resolve to a supported schema-backed table",
-                    column.qualifier
+    let table_ref = match table_sources.resolve(&column.qualifier) {
+        Some(TableResolution::SchemaBacked { table_ref }) => table_ref.clone(),
+        Some(TableResolution::Unsupported) => {
+            return Err(param_usage_error(
+                query,
+                usage,
+                param_value_type_required_message(
+                    usage.id(),
+                    format!(
+                        "table alias `{}` does not resolve to a supported schema-backed table",
+                        column.qualifier
+                    ),
                 ),
-            ),
-        ));
+            ));
+        }
+        None => {
+            let Some(table_ref) = resolve_current_database_qualified_table_ref(
+                table_sources,
+                schema,
+                &column.qualifier,
+            ) else {
+                return Err(param_usage_error(
+                    query,
+                    usage,
+                    format!(
+                        "Param `{}` references unknown table alias `{}`",
+                        usage.id(),
+                        column.qualifier
+                    ),
+                ));
+            };
+            table_ref
+        }
     };
 
-    if let Some(type_ref) = schema.get(table_ref, &column.column) {
+    if let Some(type_ref) = schema.get(&table_ref, &column.column) {
         return Ok(type_ref);
     }
 
-    if !schema.has_table(table_ref) {
+    if !schema.has_table(&table_ref) {
         return Err(param_usage_error(
             query,
             usage,

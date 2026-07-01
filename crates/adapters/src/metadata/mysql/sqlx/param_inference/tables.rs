@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use sqlparser::ast::{ObjectName, Query as SqlQuery, Select, SetExpr, TableFactor, TableWithJoins};
 
 use super::super::schema_columns::MysqlSchemaTableRef;
+use super::SchemaColumnTypes;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum TableResolution {
@@ -86,6 +87,39 @@ pub(super) fn select_from_query(query: &SqlQuery) -> Option<&Select> {
         | SetExpr::Merge(_)
         | SetExpr::Table(_) => None,
     }
+}
+
+pub(super) fn resolve_query_schema_table_ref(
+    table_sources: &SelectTableSources,
+    schema: &SchemaColumnTypes,
+    qualifier: &str,
+) -> Option<MysqlSchemaTableRef> {
+    match table_sources.resolve(qualifier) {
+        Some(TableResolution::SchemaBacked { table_ref }) => return Some(table_ref.clone()),
+        Some(TableResolution::Unsupported) => return None,
+        None => {}
+    }
+
+    resolve_current_database_qualified_table_ref(table_sources, schema, qualifier)
+}
+
+pub(super) fn resolve_current_database_qualified_table_ref(
+    table_sources: &SelectTableSources,
+    schema: &SchemaColumnTypes,
+    qualifier: &str,
+) -> Option<MysqlSchemaTableRef> {
+    let (database_name, table_name) = qualifier.split_once('.')?;
+    let Some(TableResolution::SchemaBacked { table_ref }) = table_sources.resolve(table_name)
+    else {
+        return None;
+    };
+    if table_ref.table_name() != table_name {
+        return None;
+    }
+
+    let qualified_ref =
+        MysqlSchemaTableRef::explicit_database(database_name.to_owned(), table_name.to_owned());
+    schema.has_table(&qualified_ref).then_some(qualified_ref)
 }
 
 fn cte_names(query: &SqlQuery) -> BTreeSet<String> {
