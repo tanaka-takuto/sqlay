@@ -20,7 +20,7 @@ use contexts::{ColumnRef, collect_query_param_contexts};
 pub(super) use mutations::{mutation_schema_table_refs, resolve_mutation_param_usage_metadata};
 pub(super) use result_columns::resolve_result_column_type_refs;
 use tables::{
-    SelectTableSources, TableResolution, resolve_current_database_qualified_table_ref,
+    QuerySchemaTableRefResolution, SelectTableSources, resolve_query_schema_table_ref_status,
     select_from_query, select_table_sources,
 };
 
@@ -119,27 +119,23 @@ fn resolve_inferred_param_type(
         ));
     };
 
-    let table_ref = match table_sources.resolve(&column.qualifier) {
-        Some(TableResolution::SchemaBacked { table_ref }) => table_ref.clone(),
-        Some(TableResolution::Unsupported) => {
-            return Err(param_usage_error(
-                query,
-                usage,
-                param_value_type_required_message(
-                    usage.id(),
-                    format!(
-                        "table alias `{}` does not resolve to a supported schema-backed table",
-                        column.qualifier
+    let table_ref =
+        match resolve_query_schema_table_ref_status(table_sources, schema, &column.qualifier) {
+            QuerySchemaTableRefResolution::Resolved(table_ref) => table_ref,
+            QuerySchemaTableRefResolution::Unsupported => {
+                return Err(param_usage_error(
+                    query,
+                    usage,
+                    param_value_type_required_message(
+                        usage.id(),
+                        format!(
+                            "table alias `{}` does not resolve to a supported schema-backed table",
+                            column.qualifier
+                        ),
                     ),
-                ),
-            ));
-        }
-        None => {
-            let Some(table_ref) = resolve_current_database_qualified_table_ref(
-                table_sources,
-                schema,
-                &column.qualifier,
-            ) else {
+                ));
+            }
+            QuerySchemaTableRefResolution::Unknown => {
                 return Err(param_usage_error(
                     query,
                     usage,
@@ -149,10 +145,8 @@ fn resolve_inferred_param_type(
                         column.qualifier
                     ),
                 ));
-            };
-            table_ref
-        }
-    };
+            }
+        };
 
     if let Some(type_ref) = schema.get(&table_ref, &column.column) {
         return Ok(type_ref);

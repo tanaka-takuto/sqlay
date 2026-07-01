@@ -120,6 +120,23 @@ fn resolves_current_database_three_part_result_type_refs_when_table_name_is_ambi
     );
 }
 
+#[test]
+fn does_not_resolve_current_database_three_part_result_type_refs_from_unrelated_explicit_sources() {
+    let query = raw_param_query(
+        "SELECT sqlay.orders.status AS orderStatus FROM archive.orders;",
+        Vec::<core::ParamUsage>::new(),
+    );
+    let schema_columns = [
+        schema_enum_column_in_database("sqlay", "orders", "status", ["draft", "paid"]),
+        schema_enum_column_in_database("archive", "orders", "status", ["archived"]),
+    ];
+
+    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns)
+        .expect("unrelated explicit table source should not fail result type-ref resolution");
+
+    assert_eq!(result_type_refs, [None]);
+}
+
 fn schema_enum_column(
     table_name: &str,
     column_name: &str,

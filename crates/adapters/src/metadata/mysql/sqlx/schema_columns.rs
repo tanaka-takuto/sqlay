@@ -223,6 +223,10 @@ impl MysqlSchemaTableRef {
         }
     }
 
+    pub(super) const fn is_current_database(&self) -> bool {
+        matches!(self, Self::CurrentDatabase { .. })
+    }
+
     pub(super) fn qualifier_key(&self) -> Option<String> {
         match self {
             Self::CurrentDatabase { .. } => None,

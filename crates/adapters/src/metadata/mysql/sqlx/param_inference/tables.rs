@@ -11,6 +11,12 @@ pub(super) enum TableResolution {
     Unsupported,
 }
 
+pub(super) enum QuerySchemaTableRefResolution {
+    Resolved(MysqlSchemaTableRef),
+    Unsupported,
+    Unknown,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct SelectTableSources {
     by_qualifier: BTreeMap<String, TableResolution>,
@@ -94,13 +100,29 @@ pub(super) fn resolve_query_schema_table_ref(
     schema: &SchemaColumnTypes,
     qualifier: &str,
 ) -> Option<MysqlSchemaTableRef> {
+    match resolve_query_schema_table_ref_status(table_sources, schema, qualifier) {
+        QuerySchemaTableRefResolution::Resolved(table_ref) => Some(table_ref),
+        QuerySchemaTableRefResolution::Unsupported | QuerySchemaTableRefResolution::Unknown => None,
+    }
+}
+
+pub(super) fn resolve_query_schema_table_ref_status(
+    table_sources: &SelectTableSources,
+    schema: &SchemaColumnTypes,
+    qualifier: &str,
+) -> QuerySchemaTableRefResolution {
     match table_sources.resolve(qualifier) {
-        Some(TableResolution::SchemaBacked { table_ref }) => return Some(table_ref.clone()),
-        Some(TableResolution::Unsupported) => return None,
+        Some(TableResolution::SchemaBacked { table_ref }) => {
+            return QuerySchemaTableRefResolution::Resolved(table_ref.clone());
+        }
+        Some(TableResolution::Unsupported) => return QuerySchemaTableRefResolution::Unsupported,
         None => {}
     }
 
-    resolve_current_database_qualified_table_ref(table_sources, schema, qualifier)
+    resolve_current_database_qualified_table_ref(table_sources, schema, qualifier).map_or(
+        QuerySchemaTableRefResolution::Unknown,
+        QuerySchemaTableRefResolution::Resolved,
+    )
 }
 
 pub(super) fn resolve_current_database_qualified_table_ref(
@@ -124,7 +146,7 @@ pub(super) fn resolve_current_database_qualified_table_ref(
     else {
         return None;
     };
-    if table_ref.table_name() != table_name {
+    if !table_ref.is_current_database() {
         return None;
     }
 
