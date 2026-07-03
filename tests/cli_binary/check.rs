@@ -274,6 +274,128 @@ fn check_prints_success_summary_without_implying_writes() {
 }
 
 #[test]
+fn check_format_json_reports_success_summary_to_stdout_only() {
+    let config_dir = unique_temp_dir("sqlay-cli-check-json-success-summary");
+    let sql_dir = config_dir.join("sql");
+    std::fs::create_dir_all(&sql_dir).expect("temp SQL dir should be created");
+    std::fs::write(config_dir.join("sqlay.config.json"), VALID_CONFIG)
+        .expect("temp config should be written");
+    std::fs::write(sql_dir.join("notes.sql"), "-- comment only\n")
+        .expect("comment-only SQL should be written");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .args(["check", "--format=json"])
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
+        .output()
+        .expect("sqlay check should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json = json_stdout(&output);
+    assert_eq!(json["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(json["command"]["name"], "check");
+    assert_eq!(
+        json["command"]["options"]["config"],
+        serde_json::Value::Null
+    );
+    assert_eq!(json["command"]["options"]["format"], "json");
+    assert_eq!(json["command"]["options"]["failOnEmpty"], false);
+    assert_eq!(json["status"], "success");
+    assert_eq!(json["exitCode"], 0);
+    assert_eq!(
+        json["diagnostics"]
+            .as_array()
+            .expect("diagnostics should be an array")
+            .len(),
+        0
+    );
+
+    let summary = &json["summary"];
+    assert_eq!(summary["sourceFileCount"], 1);
+    assert_eq!(summary["builderCount"], 0);
+    assert_eq!(summary["queryCount"], 0);
+    assert_eq!(summary["mutationCount"], 0);
+    assert_eq!(summary["fragmentCount"], 0);
+    assert_eq!(summary["uniqueSlotCount"], 0);
+    assert_eq!(summary["uniqueRepeatCount"], 0);
+    assert_eq!(summary["validationCaseCount"], 0);
+    assert_eq!(
+        summary["outputDir"],
+        std::fs::canonicalize(&config_dir)
+            .expect("config dir should canonicalize")
+            .join("src/generated/sqlay")
+            .display()
+            .to_string()
+    );
+    assert_eq!(
+        summary["queries"]
+            .as_array()
+            .expect("queries should be an array")
+            .len(),
+        0
+    );
+    assert_eq!(
+        summary["mutations"]
+            .as_array()
+            .expect("mutations should be an array")
+            .len(),
+        0
+    );
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
+fn check_format_json_reports_warning_success_to_stdout_only() {
+    let config_dir = unique_temp_dir("sqlay-cli-check-json-warning-success");
+    std::fs::create_dir_all(&config_dir).expect("temp config dir should be created");
+    std::fs::write(config_dir.join("sqlay.config.json"), VALID_CONFIG)
+        .expect("temp config should be written");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .args(["check", "--format=json"])
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
+        .output()
+        .expect("sqlay check should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json = json_stdout(&output);
+    assert_eq!(json["status"], "success");
+    assert_eq!(json["exitCode"], 0);
+    assert_eq!(json["summary"]["sourceFileCount"], 0);
+    assert_eq!(json["summary"]["builderCount"], 0);
+    assert_eq!(json["diagnostics"][0]["severity"], "warning");
+    assert!(
+        json["diagnostics"][0]["message"]
+            .as_str()
+            .expect("diagnostic message should be a string")
+            .contains("source.include matched no SQL files after applying source.exclude"),
+        "json: {json}"
+    );
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
 fn check_reports_unsupported_config_before_pipeline_skeleton() {
     let config_dir = unique_temp_dir("sqlay-cli-unsupported-config");
     std::fs::create_dir_all(&config_dir).expect("temp config dir should be created");
