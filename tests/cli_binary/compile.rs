@@ -103,6 +103,64 @@ fn compile_warns_when_source_include_matches_no_sql_files() {
 }
 
 #[test]
+fn compile_format_human_preserves_human_stdout_and_stderr_streams() {
+    let config_dir = unique_temp_dir("sqlay-cli-compile-human-empty-source");
+    std::fs::create_dir_all(&config_dir).expect("temp config dir should be created");
+    std::fs::write(config_dir.join("sqlay.config.json"), VALID_CONFIG)
+        .expect("temp config should be written");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .args(["compile", "--format=human"])
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
+        .output()
+        .expect("sqlay compile should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Compile succeeded."), "stdout: {stdout}");
+    assert!(stdout.contains("Matched 0 SQL files."), "stdout: {stdout}");
+    assert!(
+        stdout.contains("Generated or updated 0 files."),
+        "stdout: {stdout}"
+    );
+    assert!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).is_err(),
+        "stdout should remain human text: {stdout}"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("warning:"), "stderr: {stderr}");
+    assert_empty_source_diagnostic(&stderr, &config_dir);
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
+fn compile_rejects_unsupported_format_with_human_diagnostic() {
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .args(["compile", "--format=yaml"])
+        .output()
+        .expect("sqlay compile should run");
+
+    assert_eq!(output.status.code(), Some(1), "status: {:?}", output.status);
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error:"), "stderr: {stderr}");
+    assert!(
+        stderr.contains("unsupported `--format` value `yaml`; expected `human` or `json`"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
 fn compile_clean_skips_stale_cleanup_when_source_include_matches_no_sql_files() {
     let config_dir = unique_temp_dir("sqlay-cli-empty-source-clean-skip");
     let stale_path = config_dir.join("src/generated/sqlay/sql/stale.ts");

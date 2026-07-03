@@ -181,6 +181,7 @@ Options:
 
 Examples:
   DATABASE_URL=... sqlay check
+  sqlay check --format json
   sqlay check --config ./sqlay.config.json
 ";
 
@@ -261,6 +262,7 @@ Options:
 
 Examples:
   DATABASE_URL=... sqlay compile
+  sqlay compile --format json
   sqlay compile --config ./sqlay.config.json --clean
   sqlay compile --clean --allow-empty-clean
 ";
