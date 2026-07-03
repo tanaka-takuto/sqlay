@@ -23,6 +23,7 @@ use generation::generate_files;
 pub use outcomes::{
     BuilderSummaryCounts, CheckOutcome, CompileOutcome, MutationSummary, QuerySummary,
 };
+pub use param_validation::format_schema_column_reference;
 
 /// Behavior for runs where `source.include` resolves to no SQL files.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

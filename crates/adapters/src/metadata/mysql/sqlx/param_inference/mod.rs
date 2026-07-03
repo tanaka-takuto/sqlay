@@ -90,14 +90,11 @@ pub(super) fn resolve_param_usage_metadata(
 
     for (usage, context) in query.param_usages().iter().zip(contexts) {
         let resolved = if let Some(value_type) = usage.value_type_override() {
-            ResolvedSchemaTypeRef {
-                type_ref: core::CoreTypeRef::from(value_type),
-                schema_column_reference: resolve_param_schema_column_reference(
-                    context.as_ref(),
-                    &table_sources,
-                    &schema,
-                ),
-            }
+            let schema_column_reference = context.as_ref().and_then(|column| {
+                resolve_param_schema_type_ref(column, &table_sources, &schema)?
+                    .schema_column_reference
+            });
+            ResolvedSchemaTypeRef::new(core::CoreTypeRef::from(value_type), schema_column_reference)
         } else {
             resolve_inferred_param_type(query, usage, context.as_ref(), &table_sources, &schema)?
         };
@@ -111,19 +108,22 @@ pub(super) fn resolve_param_usage_metadata(
     Ok(params)
 }
 
-fn resolve_param_schema_column_reference(
-    context: Option<&ColumnRef>,
+fn resolve_param_schema_type_ref(
+    column: &ColumnRef,
     table_sources: &SelectTableSources,
     schema: &SchemaColumnTypes,
-) -> Option<core::ColumnTypeReference> {
-    let column = context?;
+) -> Option<ResolvedSchemaTypeRef> {
     let QuerySchemaTableRefResolution::Resolved(table_ref) =
         resolve_query_schema_table_ref_status(table_sources, schema, &column.qualifier)
     else {
         return None;
     };
-    schema.get(&table_ref, &column.column)?;
-    Some(table_ref.column_type_reference(&column.column))
+    let type_ref = schema.get(&table_ref, &column.column)?;
+    Some(ResolvedSchemaTypeRef::schema_column(
+        type_ref,
+        &table_ref,
+        &column.column,
+    ))
 }
 
 fn resolve_inferred_param_type(
@@ -143,6 +143,10 @@ fn resolve_inferred_param_type(
             ),
         ));
     };
+
+    if let Some(resolved) = resolve_param_schema_type_ref(column, table_sources, schema) {
+        return Ok(resolved);
+    }
 
     let table_ref =
         match resolve_query_schema_table_ref_status(table_sources, schema, &column.qualifier) {
@@ -172,13 +176,6 @@ fn resolve_inferred_param_type(
                 ));
             }
         };
-
-    if let Some(type_ref) = schema.get(&table_ref, &column.column) {
-        return Ok(ResolvedSchemaTypeRef {
-            type_ref,
-            schema_column_reference: Some(table_ref.column_type_reference(&column.column)),
-        });
-    }
 
     if !schema.has_table(&table_ref) {
         return Err(param_usage_error(

@@ -1,5 +1,6 @@
 use sqlay_core as core;
 
+use crate::compile::format_schema_column_reference;
 use crate::{MutationCompiler, QueryCompiler};
 
 /// Default application-owned query compiler.
@@ -180,18 +181,6 @@ fn source_error(
     }
 
     core::DiagnosticReport::new(diagnostic)
-}
-
-fn format_schema_column_reference(reference: Option<&core::ColumnTypeReference>) -> String {
-    reference.map_or_else(
-        || "no schema column reference".to_owned(),
-        |reference| {
-            reference.database().map_or_else(
-                || format!("{}.{}", reference.table(), reference.column()),
-                |database| format!("{}.{}.{}", database, reference.table(), reference.column()),
-            )
-        },
-    )
 }
 
 fn param_usage_error(

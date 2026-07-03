@@ -1,7 +1,7 @@
 use sqlay_core as core;
 
 use crate::compile::diagnostics::{mutation_param_usage_error, param_usage_error};
-use crate::compile::param_validation::ScopedParamBinding;
+use crate::compile::param_validation::{ScopedParamBinding, format_schema_column_reference};
 use crate::compile::slot_variants::ExpandedParamOccurrence;
 
 pub(in crate::compile::param_validation) fn param_schema_column_reference_conflict_error(
@@ -163,17 +163,5 @@ pub(in crate::compile::param_validation) fn mutation_param_schema_column_referen
             first_reference,
             later_reference,
         ),
-    )
-}
-
-fn format_schema_column_reference(reference: Option<&core::ColumnTypeReference>) -> String {
-    reference.map_or_else(
-        || "no schema column reference".to_owned(),
-        |reference| {
-            reference.database().map_or_else(
-                || format!("{}.{}", reference.table(), reference.column()),
-                |database| format!("{}.{}.{}", database, reference.table(), reference.column()),
-            )
-        },
     )
 }

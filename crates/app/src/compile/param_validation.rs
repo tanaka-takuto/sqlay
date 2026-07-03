@@ -16,6 +16,18 @@ use conflicts::{
     param_type_conflict_error,
 };
 
+pub fn format_schema_column_reference(reference: Option<&core::ColumnTypeReference>) -> String {
+    reference.map_or_else(
+        || "no schema column reference".to_owned(),
+        |reference| {
+            reference.database().map_or_else(
+                || format!("{}.{}", reference.table(), reference.column()),
+                |database| format!("{}.{}.{}", database, reference.table(), reference.column()),
+            )
+        },
+    )
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ScopedParamBinding {
     pub(super) scope: ExpandedParamScope,

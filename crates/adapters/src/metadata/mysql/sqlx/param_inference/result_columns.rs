@@ -47,10 +47,11 @@ fn resolve_projection_expr_type_ref(
     let table_ref = resolve_query_schema_table_ref(table_sources, schema, &qualifier)?;
     let type_ref = schema.get(&table_ref, &column_name)?;
 
-    Some(ResolvedSchemaTypeRef {
+    Some(ResolvedSchemaTypeRef::schema_column(
         type_ref,
-        schema_column_reference: Some(table_ref.column_type_reference(&column_name)),
-    })
+        &table_ref,
+        &column_name,
+    ))
 }
 
 fn direct_projection_column_ref(expr: &Expr) -> Option<(String, String)> {
