@@ -5,9 +5,9 @@ export type listCustomerOrders_Input = Record<string, never>;
 export type listCustomerOrders_Row = {
   customerId: string;
   customerName: string;
-  loyaltyTier: string;
+  loyaltyTier: "standard" | "silver" | "gold";
   orderNumber: string;
-  orderStatus: string;
+  orderStatus: "draft" | "paid" | "shipped" | "delivered" | "cancelled";
   currency: string;
   placedAt: string;
   shippedAt: string | null;
@@ -33,7 +33,7 @@ export type findLatestOrderForCustomer_Input = Record<string, never>;
 export type findLatestOrderForCustomer_Row = {
   orderId: string;
   orderNumber: string;
-  orderStatus: string;
+  orderStatus: "draft" | "paid" | "shipped" | "delivered" | "cancelled";
   placedAt: string;
   paidAt: string | null;
   shippedAt: string | null;

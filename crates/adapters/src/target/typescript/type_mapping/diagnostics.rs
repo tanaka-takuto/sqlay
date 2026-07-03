@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use sqlay_core as core;
 
-use super::model::{BuilderTypeMappingResolution, ResolvedTypeScriptType};
+use super::model::BuilderTypeMappingResolution;
 use super::{column_reference_key, core_type_key};
 
 pub(super) fn push_unused_override_diagnostics(
@@ -155,33 +155,6 @@ impl TypeMappingUsage {
 
     fn is_used(&self, path: &str) -> bool {
         self.paths.iter().any(|used| used == path)
-    }
-}
-
-impl BuilderTypeMappingResolution {
-    fn resolved_types(&self) -> Vec<&ResolvedTypeScriptType> {
-        self.fields
-            .iter()
-            .map(|field| &field.ty)
-            .chain(self.inputs.iter().map(|input| &input.ty))
-            .chain(self.fixed_params.iter())
-            .chain(
-                self.repeats
-                    .iter()
-                    .flat_map(|repeat| repeat.fields.iter().map(|field| &field.ty)),
-            )
-            .chain(
-                self.slot_branches
-                    .iter()
-                    .flat_map(|branch| branch.params.iter().map(|param| &param.ty)),
-            )
-            .chain(self.slot_branches.iter().flat_map(|branch| {
-                branch
-                    .repeats
-                    .iter()
-                    .flat_map(|repeat| repeat.fields.iter().map(|field| &field.ty))
-            }))
-            .collect()
     }
 }
 

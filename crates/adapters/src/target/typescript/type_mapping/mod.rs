@@ -10,7 +10,11 @@ use builder::resolve_builder_type_mapping;
 use diagnostics::{
     TypeMappingUsage, push_import_conflict_diagnostics, push_unused_override_diagnostics,
 };
-use model::{ResolvedTypeScriptType, TypeMappingResolution};
+use model::ResolvedTypeScriptType;
+
+pub(in crate::target::typescript) use model::{
+    BuilderTypeMappingResolution, TypeMappingResolution,
+};
 
 use super::literals::typescript_string_literal;
 use super::types::typescript_core_type;

@@ -10,7 +10,6 @@ impl TypeMappingResolution {
         Self { builders }
     }
 
-    #[cfg(test)]
     pub(in crate::target::typescript) fn builder(
         &self,
         id: &str,
@@ -45,7 +44,6 @@ impl BuilderTypeMappingResolution {
         }
     }
 
-    #[cfg(test)]
     pub(in crate::target::typescript) fn field(&self, name: &str) -> Option<&str> {
         self.fields
             .iter()
@@ -53,7 +51,6 @@ impl BuilderTypeMappingResolution {
             .map(|field| field.ty.annotation.as_str())
     }
 
-    #[cfg(test)]
     pub(in crate::target::typescript) fn input(&self, name: &str) -> Option<&str> {
         self.inputs
             .iter()
@@ -61,14 +58,12 @@ impl BuilderTypeMappingResolution {
             .map(|input| input.ty.annotation.as_str())
     }
 
-    #[cfg(test)]
     pub(in crate::target::typescript) fn fixed_param(&self, index: usize) -> Option<&str> {
         self.fixed_params
             .get(index)
             .map(|param| param.annotation.as_str())
     }
 
-    #[cfg(test)]
     pub(in crate::target::typescript) fn repeat_field(
         &self,
         repeat_id: &str,
@@ -86,12 +81,10 @@ impl BuilderTypeMappingResolution {
             })
     }
 
-    #[cfg(test)]
     pub(in crate::target::typescript) fn dynamic_params_annotation(&self) -> Option<&str> {
         self.dynamic_params_annotation.as_deref()
     }
 
-    #[cfg(test)]
     pub(in crate::target::typescript) fn slot_branch_param(
         &self,
         slot_id: &str,
@@ -108,6 +101,65 @@ impl BuilderTypeMappingResolution {
                     .find(|param| param.name == param_name)
                     .map(|param| param.ty.annotation.as_str())
             })
+    }
+
+    pub(in crate::target::typescript) fn slot_branch_repeat_field(
+        &self,
+        slot_id: &str,
+        target_id: &str,
+        repeat_id: &str,
+        field_name: &str,
+    ) -> Option<&str> {
+        self.slot_branches
+            .iter()
+            .find(|branch| branch.slot_id == slot_id && branch.target_id == target_id)
+            .and_then(|branch| {
+                branch
+                    .repeats
+                    .iter()
+                    .find(|repeat| repeat.id == repeat_id)
+                    .and_then(|repeat| {
+                        repeat
+                            .fields
+                            .iter()
+                            .find(|field| field.name == field_name)
+                            .map(|field| field.ty.annotation.as_str())
+                    })
+            })
+    }
+
+    pub(in crate::target::typescript) fn imports(&self) -> Vec<&core::TypeScriptTypeImport> {
+        self.resolved_types()
+            .into_iter()
+            .filter_map(|resolved_type| resolved_type.import.as_ref())
+            .collect()
+    }
+
+    pub(in crate::target::typescript::type_mapping) fn resolved_types(
+        &self,
+    ) -> Vec<&ResolvedTypeScriptType> {
+        self.fields
+            .iter()
+            .map(|field| &field.ty)
+            .chain(self.inputs.iter().map(|input| &input.ty))
+            .chain(self.fixed_params.iter())
+            .chain(
+                self.repeats
+                    .iter()
+                    .flat_map(|repeat| repeat.fields.iter().map(|field| &field.ty)),
+            )
+            .chain(
+                self.slot_branches
+                    .iter()
+                    .flat_map(|branch| branch.params.iter().map(|param| &param.ty)),
+            )
+            .chain(self.slot_branches.iter().flat_map(|branch| {
+                branch
+                    .repeats
+                    .iter()
+                    .flat_map(|repeat| repeat.fields.iter().map(|field| &field.ty))
+            }))
+            .collect()
     }
 }
 
