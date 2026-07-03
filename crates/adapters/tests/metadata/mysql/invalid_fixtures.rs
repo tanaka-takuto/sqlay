@@ -17,7 +17,8 @@ use super::fixture_support::{
     PARAM_UNSUPPORTED_INFERENCE_CONTEXT, REPEAT_PARAM_INFERENCE_FAILURE,
     REPEATED_REPEAT_ITEM_INFERRED_TYPE_CONFLICT, REPEATED_SLOT_FRAGMENT_PARAM_TYPE_CONFLICT,
     SLOT_VARIANT_ROW_SHAPE_MISMATCH, TYPE_MAPPING_INVALID_USAGE_CONFIG, TYPE_MAPPING_OVERRIDES,
-    assert_mysql_invalid_fixture_error_contains, execute_fixture_statements, unique_temp_dir,
+    assert_mysql_invalid_fixture_error_contains, diagnostic_messages, execute_fixture_statements,
+    unique_temp_dir,
 };
 
 #[test]
@@ -217,12 +218,7 @@ fn mysql_type_mapping_invalid_usage_fixture_reports_expected_diagnostics()
     };
     let report = DefaultCompileUseCase::check(&config, &pipeline)
         .expect_err("invalid type mapping usage fixture should fail generation");
-    let messages = report
-        .diagnostics()
-        .iter()
-        .map(sqlay_core::Diagnostic::message)
-        .collect::<Vec<_>>()
-        .join("\n");
+    let messages = diagnostic_messages(&report);
 
     for expected in [
         "unknown TypeScript type mapping builder override `builders.missingBuilder`; no generated builder with that id exists",

@@ -143,7 +143,7 @@ pub(super) fn assert_mysql_invalid_fixture_error_contains(
     Ok(())
 }
 
-fn diagnostic_messages(report: &core::DiagnosticReport) -> String {
+pub(super) fn diagnostic_messages(report: &core::DiagnosticReport) -> String {
     report
         .diagnostics()
         .iter()

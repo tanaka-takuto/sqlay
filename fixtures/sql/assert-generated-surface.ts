@@ -555,7 +555,7 @@ const repeatFragmentSlotSearchParams: readonly unknown[] =
 const repeatFragmentSlotSearchOutput: repeatFragmentSlotSearch_Output = [];
 
 const typeMappingOverridesInput: typeMappingOverrides_Input = {
-  minimumAmount: 10.5,
+  minimumAmount: 10.5 as import("@fixtures/domain-types").FixtureAmount,
   parentId: 1,
 };
 const typeMappingOverridesQuery = typeMappingOverrides(typeMappingOverridesInput);
@@ -570,8 +570,9 @@ const typeMappingOverrideRowsInput: typeMappingOverrideRows_Input = {
     {
       childId: 700,
       parentId: 1,
-      childLabel: "child-type-mapping",
-      childAmount: 12.34,
+      childLabel:
+        "child-type-mapping" as import("@fixtures/domain-types").QualifiedChildLabel,
+      childAmount: 12.34 as import("@fixtures/domain-types").FixtureAmount,
     },
   ],
 };
@@ -584,7 +585,8 @@ const typeMappingOverrideRowsParams: readonly unknown[] =
 const typeMappingOverrideSlotSearchInput: typeMappingOverrideSlotSearch_Input = {
   labelFilter: {
     $fragment: "typeMappingFixtureLabel",
-    fixtureLabel: "varchar-255-nn-a",
+    fixtureLabel:
+      "varchar-255-nn-a" as import("@fixtures/domain-types").FixtureLabel,
   },
 };
 const typeMappingOverrideSlotSearchQuery = typeMappingOverrideSlotSearch(
