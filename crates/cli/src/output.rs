@@ -1,6 +1,8 @@
 mod json;
 
-pub use json::{print_json_check_success_result, print_json_failure_result};
+pub use json::{
+    print_json_check_success_result, print_json_compile_success_result, print_json_failure_result,
+};
 
 use sqlay_app as app;
 use sqlay_core as core;

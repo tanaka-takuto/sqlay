@@ -93,7 +93,7 @@ fn no_args_prints_top_level_help() {
     assert!(stdout.contains("raw `?` placeholders"), "stdout: {stdout}");
     assert!(stdout.contains("--format <human|json>"), "stdout: {stdout}");
     assert!(
-        stdout.contains("check JSON prints a stdout result envelope"),
+        stdout.contains("JSON prints a stdout result envelope"),
         "stdout: {stdout}"
     );
     assert!(
@@ -244,7 +244,13 @@ fn compile_help_describes_output_writing_and_clean() {
     assert!(stdout.contains("--config <path>"), "stdout: {stdout}");
     assert!(stdout.contains("--format <human|json>"), "stdout: {stdout}");
     assert!(
-        stdout.contains("compile success JSON is not yet available"),
+        stdout.contains(
+            "JSON prints a stdout result envelope with diagnostics and the compile summary"
+        ),
+        "stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("compile success JSON is not yet available"),
         "stdout: {stdout}"
     );
     assert!(

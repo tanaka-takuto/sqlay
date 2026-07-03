@@ -28,6 +28,18 @@ pub fn print_json_check_success_result(
     );
 }
 
+pub fn print_json_compile_success_result(
+    command: ConfiguredCommand,
+    config_path: Option<&Path>,
+    outcome: &app::CompileOutcome,
+    report: &core::DiagnosticReport,
+) {
+    println!(
+        "{}",
+        format_json_compile_success_result(command, config_path, outcome, report)
+    );
+}
+
 fn format_json_failure_result(
     command: ConfiguredCommand,
     config_path: Option<&Path>,
@@ -67,6 +79,26 @@ fn format_json_check_success_result(
     .expect("JSON check success envelope should serialize")
 }
 
+fn format_json_compile_success_result(
+    command: ConfiguredCommand,
+    config_path: Option<&Path>,
+    outcome: &app::CompileOutcome,
+    report: &core::DiagnosticReport,
+) -> String {
+    serde_json::to_string(&json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "command": {
+            "name": command_name(command),
+            "options": command_options_json(command, config_path),
+        },
+        "status": "success",
+        "exitCode": 0,
+        "summary": compile_summary_json(outcome),
+        "diagnostics": diagnostics_json(report),
+    }))
+    .expect("JSON compile success envelope should serialize")
+}
+
 fn check_summary_json(outcome: &app::CheckOutcome) -> Value {
     json!({
         "sourceFileCount": outcome.source_file_count(),
@@ -84,6 +116,41 @@ fn check_summary_json(outcome: &app::CheckOutcome) -> Value {
             .iter()
             .map(mutation_summary_json)
             .collect::<Vec<_>>(),
+    })
+}
+
+fn compile_summary_json(outcome: &app::CompileOutcome) -> Value {
+    json!({
+        "sourceFileCount": outcome.source_file_count(),
+        "builderCount": outcome.builder_count(),
+        "queryCount": outcome.query_count(),
+        "mutationCount": outcome.mutation_count(),
+        "fragmentCount": outcome.fragment_count(),
+        "uniqueSlotCount": outcome.unique_slot_count(),
+        "uniqueRepeatCount": outcome.unique_repeat_count(),
+        "validationCaseCount": outcome.validation_case_count(),
+        "outputDir": outcome.output_dir().display().to_string(),
+        "queries": outcome.query_summaries().iter().map(query_summary_json).collect::<Vec<_>>(),
+        "mutations": outcome
+            .mutation_summaries()
+            .iter()
+            .map(mutation_summary_json)
+            .collect::<Vec<_>>(),
+        "generatedFileCount": outcome.generated_file_count(),
+        "generatedFiles": outcome
+            .generated_file_paths()
+            .iter()
+            .map(|path| generated_file_json(path))
+            .collect::<Vec<_>>(),
+        "staleGeneratedFileRemovalCount": outcome
+            .stale_file_removal_count()
+            .map_or(Value::Null, |count| json!(count)),
+    })
+}
+
+fn generated_file_json(path: &Path) -> Value {
+    json!({
+        "path": path.display().to_string(),
     })
 }
 
@@ -289,6 +356,139 @@ mod tests {
         assert_eq!(
             json["diagnostics"][0]["message"],
             "unused fragment `activeOnly`"
+        );
+    }
+
+    #[test]
+    fn formats_compile_success_json_with_generated_files_and_clean_summary() {
+        let diagnostics =
+            core::DiagnosticReport::new(core::Diagnostic::warning("unused fragment `activeOnly`"));
+        let outcome = app::CompileOutcome::new(
+            diagnostics.clone(),
+            2,
+            PathBuf::from("/tmp/project/src/generated/sqlay"),
+            vec![app::QuerySummary::new(
+                "filterUsers".to_owned(),
+                Some(PathBuf::from("sql/users.sql")),
+                app::BuilderSummaryCounts::new(3, 2, 1, 1, 2),
+            )],
+            vec![app::MutationSummary::new(
+                "bulkCreateUsers".to_owned(),
+                Some(PathBuf::from("sql/users.sql")),
+                core::MutationKind::Insert,
+                app::BuilderSummaryCounts::new(2, 1, 0, 1, 1),
+            )],
+            vec![
+                PathBuf::from("/tmp/project/src/generated/sqlay/sql/users.ts"),
+                PathBuf::from("/tmp/project/src/generated/sqlay/sql/orders.ts"),
+            ],
+            1,
+        )
+        .with_stale_file_removal_count(Some(2));
+
+        let json: Value = serde_json::from_str(&format_json_compile_success_result(
+            ConfiguredCommand::Compile {
+                format: OutputFormat::Json,
+                clean: true,
+                fail_on_empty: false,
+                allow_empty_clean: true,
+            },
+            Some(Path::new("sqlay.config.json")),
+            &outcome,
+            &diagnostics,
+        ))
+        .expect("compile success JSON should parse");
+
+        assert_eq!(json["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(json["command"]["name"], "compile");
+        assert_eq!(json["command"]["options"]["config"], "sqlay.config.json");
+        assert_eq!(json["command"]["options"]["format"], "json");
+        assert_eq!(json["command"]["options"]["failOnEmpty"], false);
+        assert_eq!(json["command"]["options"]["clean"], true);
+        assert_eq!(json["command"]["options"]["allowEmptyClean"], true);
+        assert_eq!(json["status"], "success");
+        assert_eq!(json["exitCode"], 0);
+        assert_eq!(json["summary"]["sourceFileCount"], 2);
+        assert_eq!(json["summary"]["builderCount"], 2);
+        assert_eq!(json["summary"]["queryCount"], 1);
+        assert_eq!(json["summary"]["mutationCount"], 1);
+        assert_eq!(json["summary"]["fragmentCount"], 1);
+        assert_eq!(json["summary"]["uniqueSlotCount"], 1);
+        assert_eq!(json["summary"]["uniqueRepeatCount"], 2);
+        assert_eq!(json["summary"]["validationCaseCount"], 3);
+        assert_eq!(
+            json["summary"]["outputDir"],
+            "/tmp/project/src/generated/sqlay"
+        );
+        assert_eq!(json["summary"]["generatedFileCount"], 2);
+        assert_eq!(
+            json["summary"]["generatedFiles"][0]["path"],
+            "/tmp/project/src/generated/sqlay/sql/users.ts"
+        );
+        assert_eq!(
+            json["summary"]["generatedFiles"][1]["path"],
+            "/tmp/project/src/generated/sqlay/sql/orders.ts"
+        );
+        assert_eq!(json["summary"]["staleGeneratedFileRemovalCount"], 2);
+        assert_eq!(json["summary"]["queries"][0]["id"], "filterUsers");
+        assert_eq!(json["summary"]["queries"][0]["sourcePath"], "sql/users.sql");
+        assert_eq!(json["summary"]["queries"][0]["paramCount"], 3);
+        assert_eq!(json["summary"]["queries"][0]["inputFieldCount"], 2);
+        assert_eq!(json["summary"]["queries"][0]["slotCount"], 1);
+        assert_eq!(json["summary"]["queries"][0]["repeatCount"], 1);
+        assert_eq!(json["summary"]["queries"][0]["validationCaseCount"], 2);
+        assert_eq!(json["summary"]["mutations"][0]["id"], "bulkCreateUsers");
+        assert_eq!(
+            json["summary"]["mutations"][0]["sourcePath"],
+            "sql/users.sql"
+        );
+        assert_eq!(json["summary"]["mutations"][0]["kind"], "insert");
+        assert_eq!(json["summary"]["mutations"][0]["paramCount"], 2);
+        assert_eq!(json["summary"]["mutations"][0]["inputFieldCount"], 1);
+        assert_eq!(json["summary"]["mutations"][0]["slotCount"], 0);
+        assert_eq!(json["summary"]["mutations"][0]["repeatCount"], 1);
+        assert_eq!(json["summary"]["mutations"][0]["validationCaseCount"], 1);
+        assert_eq!(json["diagnostics"][0]["severity"], "warning");
+        assert_eq!(
+            json["diagnostics"][0]["message"],
+            "unused fragment `activeOnly`"
+        );
+    }
+
+    #[test]
+    fn formats_compile_success_json_with_null_stale_cleanup_when_clean_did_not_run() {
+        let outcome = app::CompileOutcome::new(
+            core::DiagnosticReport::default(),
+            1,
+            PathBuf::from("/tmp/project/src/generated/sqlay"),
+            Vec::new(),
+            Vec::new(),
+            vec![PathBuf::from(
+                "/tmp/project/src/generated/sqlay/sql/users.ts",
+            )],
+            0,
+        );
+
+        let json: Value = serde_json::from_str(&format_json_compile_success_result(
+            ConfiguredCommand::Compile {
+                format: OutputFormat::Json,
+                clean: false,
+                fail_on_empty: false,
+                allow_empty_clean: false,
+            },
+            None,
+            &outcome,
+            outcome.diagnostics(),
+        ))
+        .expect("compile success JSON should parse");
+
+        assert_eq!(json["command"]["name"], "compile");
+        assert_eq!(json["command"]["options"]["config"], Value::Null);
+        assert_eq!(json["command"]["options"]["clean"], false);
+        assert_eq!(json["command"]["options"]["allowEmptyClean"], false);
+        assert_eq!(
+            json["summary"]["staleGeneratedFileRemovalCount"],
+            Value::Null
         );
     }
 }
