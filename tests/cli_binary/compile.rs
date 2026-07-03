@@ -425,6 +425,88 @@ fn compile_clean_prints_removed_stale_generated_file_count() {
 }
 
 #[test]
+fn compile_format_json_reports_clean_success_summary_to_stdout_only() {
+    let config_dir = unique_temp_dir("sqlay-cli-compile-json-clean-success-summary");
+    let output_dir = config_dir.join("src/generated/sqlay/sql");
+    std::fs::create_dir_all(&output_dir).expect("temp output dir should be created");
+    std::fs::write(config_dir.join("sqlay.config.json"), VALID_CONFIG)
+        .expect("temp config should be written");
+    let stale_path = output_dir.join("old_users.ts");
+    write_managed_generated_file(&stale_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .args(["compile", "--format=json", "--clean", "--allow-empty-clean"])
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL)
+        .output()
+        .expect("sqlay compile should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json = json_stdout(&output);
+    assert_eq!(json["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(json["command"]["name"], "compile");
+    assert_eq!(
+        json["command"]["options"]["config"],
+        serde_json::Value::Null
+    );
+    assert_eq!(json["command"]["options"]["format"], "json");
+    assert_eq!(json["command"]["options"]["failOnEmpty"], false);
+    assert_eq!(json["command"]["options"]["clean"], true);
+    assert_eq!(json["command"]["options"]["allowEmptyClean"], true);
+    assert_eq!(json["status"], "success");
+    assert_eq!(json["exitCode"], 0);
+    assert!(
+        json["diagnostics"][0]["message"]
+            .as_str()
+            .expect("diagnostic message should be a string")
+            .contains("source.include matched no SQL files after applying source.exclude"),
+        "json: {json}"
+    );
+
+    let summary = &json["summary"];
+    assert_eq!(summary["sourceFileCount"], 0);
+    assert_eq!(summary["builderCount"], 0);
+    assert_eq!(summary["queryCount"], 0);
+    assert_eq!(summary["mutationCount"], 0);
+    assert_eq!(summary["fragmentCount"], 0);
+    assert_eq!(summary["uniqueSlotCount"], 0);
+    assert_eq!(summary["uniqueRepeatCount"], 0);
+    assert_eq!(summary["validationCaseCount"], 0);
+    assert_eq!(
+        summary["outputDir"],
+        std::fs::canonicalize(&config_dir)
+            .expect("config dir should canonicalize")
+            .join("src/generated/sqlay")
+            .display()
+            .to_string()
+    );
+    assert_eq!(summary["generatedFileCount"], 0);
+    assert_eq!(
+        summary["generatedFiles"]
+            .as_array()
+            .expect("generatedFiles should be an array")
+            .len(),
+        0
+    );
+    assert_eq!(summary["staleGeneratedFileRemovalCount"], 1);
+    assert!(
+        !stale_path.exists(),
+        "compile --clean --allow-empty-clean should remove stale generated files"
+    );
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
 fn compile_clean_uses_compile_pipeline_database_configuration() {
     let config_dir = unique_temp_dir("sqlay-cli-compile-clean");
     write_simple_query_project(&config_dir);
