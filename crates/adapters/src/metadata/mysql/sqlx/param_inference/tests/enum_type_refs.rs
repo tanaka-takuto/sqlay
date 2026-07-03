@@ -69,6 +69,62 @@ fn resolves_result_type_refs_from_schema_backed_direct_projection_columns() {
 }
 
 #[test]
+fn resolves_result_type_refs_from_unqualified_projection_columns_when_unambiguous() {
+    let query = raw_param_query(
+        "SELECT status AS orderStatus FROM orders;",
+        Vec::<core::ParamUsage>::new(),
+    );
+    let schema_columns = [schema_enum_column("orders", "status", ["draft", "paid"])];
+
+    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns)
+        .expect("unqualified projection columns should resolve when unambiguous");
+
+    assert_eq!(result_type_refs.len(), 1);
+    let resolved = result_type_refs[0]
+        .as_ref()
+        .expect("unambiguous unqualified column should resolve");
+    assert_enum_values(Some(&resolved.type_ref), &["draft", "paid"]);
+    assert_eq!(
+        resolved.schema_column_reference.as_ref(),
+        Some(&column_ref(None, "orders", "status"))
+    );
+}
+
+#[test]
+fn does_not_resolve_unqualified_result_type_refs_when_column_is_ambiguous() {
+    let query = raw_param_query(
+        "SELECT status FROM orders JOIN archive.orders ON archive.orders.id = orders.id;",
+        Vec::<core::ParamUsage>::new(),
+    );
+    let schema_columns = [
+        schema_enum_column("orders", "status", ["draft", "paid"]),
+        schema_enum_column_in_database("archive", "orders", "status", ["archived"]),
+    ];
+
+    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns)
+        .expect("ambiguous unqualified projection columns should not fail resolution");
+
+    assert_eq!(result_type_refs, [None]);
+}
+
+#[test]
+fn does_not_resolve_unqualified_result_type_refs_when_unsupported_source_is_present() {
+    let query = raw_param_query(
+        "SELECT status FROM orders JOIN (SELECT status FROM archive.orders) AS archived ON archived.status = orders.status;",
+        Vec::<core::ParamUsage>::new(),
+    );
+    let schema_columns = [
+        schema_enum_column("orders", "status", ["draft", "paid"]),
+        schema_enum_column_in_database("archive", "orders", "status", ["archived"]),
+    ];
+
+    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns)
+        .expect("unsupported table sources should not fail result resolution");
+
+    assert_eq!(result_type_refs, [None]);
+}
+
+#[test]
 fn resolves_result_type_refs_from_current_database_three_part_projection_columns() {
     let query = raw_param_query(
         "SELECT sqlay.orders.status AS orderStatus FROM orders;",
@@ -166,6 +222,14 @@ fn schema_enum_column_in_database(
         column_name.to_owned(),
         enum_column_type(&values),
         enum_type_ref(values),
+    )
+}
+
+fn column_ref(database: Option<&str>, table: &str, column: &str) -> core::ColumnTypeReference {
+    core::ColumnTypeReference::new(
+        database.map(str::to_owned),
+        table.to_owned(),
+        column.to_owned(),
     )
 }
 

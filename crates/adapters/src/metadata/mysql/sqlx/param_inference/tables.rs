@@ -21,6 +21,7 @@ pub(super) enum QuerySchemaTableRefResolution {
 pub(super) struct SelectTableSources {
     by_qualifier: BTreeMap<String, TableResolution>,
     pub(super) schema_table_refs: BTreeSet<MysqlSchemaTableRef>,
+    has_unsupported_table_source: bool,
 }
 
 impl SelectTableSources {
@@ -58,6 +59,7 @@ impl SelectTableSources {
     }
 
     fn insert_unsupported_table(&mut self, table_name: Option<String>, alias: Option<String>) {
+        self.has_unsupported_table_source = true;
         if let Some(table_name) = table_name {
             self.insert_resolution(table_name, TableResolution::Unsupported);
         }
@@ -68,6 +70,10 @@ impl SelectTableSources {
 
     pub(super) fn resolve(&self, qualifier: &str) -> Option<&TableResolution> {
         self.by_qualifier.get(qualifier)
+    }
+
+    pub(super) const fn has_unsupported_table_source(&self) -> bool {
+        self.has_unsupported_table_source
     }
 }
 
