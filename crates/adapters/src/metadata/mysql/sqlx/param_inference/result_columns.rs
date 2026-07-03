@@ -1,5 +1,8 @@
 use sqlay_core as core;
-use sqlparser::ast::{Expr, Ident, SelectItem};
+use sqlparser::ast::{
+    Expr, Function, FunctionArg, FunctionArgExpr, FunctionArguments, Ident, ObjectNamePart,
+    SelectItem,
+};
 
 use super::super::schema_columns::MysqlSchemaColumn;
 use super::tables::{
@@ -38,6 +41,28 @@ pub(in crate::metadata::mysql::sqlx) fn resolve_result_column_type_refs(
     Ok(result_type_refs)
 }
 
+pub(in crate::metadata::mysql::sqlx) fn resolve_json_derived_result_columns(
+    query: &core::RawQuery,
+) -> core::DiagnosticResult<Vec<bool>> {
+    let statements = parse_query(query)?;
+    let parsed_query = single_select_query(query, &statements)?;
+    let select = select_from_query(parsed_query)
+        .expect("single_select_query verifies this is a top-level SELECT query");
+    let mut json_derived_columns = Vec::with_capacity(select.projection.len());
+
+    for item in &select.projection {
+        let is_json_derived = match item {
+            SelectItem::UnnamedExpr(expr)
+            | SelectItem::ExprWithAlias { expr, .. }
+            | SelectItem::ExprWithAliases { expr, .. } => is_json_derived_projection_expr(expr),
+            SelectItem::QualifiedWildcard(_, _) | SelectItem::Wildcard(_) => return Ok(Vec::new()),
+        };
+        json_derived_columns.push(is_json_derived);
+    }
+
+    Ok(json_derived_columns)
+}
+
 fn resolve_projection_expr_type_ref(
     expr: &Expr,
     table_sources: &SelectTableSources,
@@ -60,6 +85,41 @@ fn resolve_projection_expr_type_ref(
         }
         _ => None,
     }
+}
+
+fn is_json_derived_projection_expr(expr: &Expr) -> bool {
+    match expr {
+        Expr::Function(function) if function_name_eq(function, "JSON_EXTRACT") => true,
+        Expr::Function(function) if function_name_eq(function, "JSON_UNQUOTE") => function
+            .first_expr_arg()
+            .is_some_and(is_json_derived_projection_expr),
+        Expr::JsonAccess { .. } => true,
+        Expr::Nested(expr) => is_json_derived_projection_expr(expr),
+        _ => false,
+    }
+}
+
+trait FunctionJsonArgs {
+    fn first_expr_arg(&self) -> Option<&Expr>;
+}
+
+impl FunctionJsonArgs for Function {
+    fn first_expr_arg(&self) -> Option<&Expr> {
+        let FunctionArguments::List(args) = &self.args else {
+            return None;
+        };
+        let FunctionArg::Unnamed(FunctionArgExpr::Expr(expr)) = args.args.first()? else {
+            return None;
+        };
+        Some(expr)
+    }
+}
+
+fn function_name_eq(function: &Function, expected_name: &str) -> bool {
+    matches!(
+        function.name.0.as_slice(),
+        [ObjectNamePart::Identifier(ident)] if ident.value.eq_ignore_ascii_case(expected_name)
+    )
 }
 
 fn resolve_unqualified_projection_column_type_ref(

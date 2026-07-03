@@ -4,7 +4,8 @@ use sqlay_core as core;
 
 use super::diagnostics::{mutation_error, query_error};
 use super::param_inference::{
-    ResolvedSchemaTypeRef, resolve_mutation_param_usage_metadata, resolve_param_usage_metadata,
+    ResolvedSchemaTypeRef, resolve_json_derived_result_columns,
+    resolve_mutation_param_usage_metadata, resolve_param_usage_metadata,
     resolve_result_column_type_refs,
 };
 use super::result_mapping::map_mysql_result_column_metadata;
@@ -159,6 +160,12 @@ async fn describe_query_metadata(
     } else {
         Vec::new()
     };
+    let json_derived_columns = resolve_json_derived_result_columns(query)?;
+    let json_derived_columns = if json_derived_columns.len() == description.columns().len() {
+        json_derived_columns
+    } else {
+        Vec::new()
+    };
 
     Ok(core::DbQueryMetadata::new(
         description
@@ -171,6 +178,7 @@ async fn describe_query_metadata(
                     column.type_info().name(),
                     description.nullable(index),
                     result_type_refs.get(index).cloned().flatten(),
+                    json_derived_columns.get(index).copied().unwrap_or(false),
                 )
             })
             .collect(),
@@ -201,12 +209,15 @@ fn map_mysql_result_column_metadata_with_schema_type_ref(
     type_name: &str,
     nullable: Option<bool>,
     schema_type_ref: Option<ResolvedSchemaTypeRef>,
+    is_json_derived: bool,
 ) -> core::DbResultColumn {
     let (type_ref, schema_column_reference) = schema_type_ref.map_or((None, None), |resolved| {
         (Some(resolved.type_ref), resolved.schema_column_reference)
     });
 
-    let mut column = if let Some(type_ref) = type_ref
+    let mut column = if is_json_derived {
+        core::DbResultColumn::new(name.to_owned(), core::CoreType::Unknown, nullable)
+    } else if let Some(type_ref) = type_ref
         && type_ref.enum_values().is_some()
     {
         core::DbResultColumn::new_type_ref(name.to_owned(), type_ref, nullable)
@@ -264,6 +275,7 @@ mod tests {
                     "boolCol".to_owned(),
                 )),
             }),
+            false,
         );
 
         assert_eq!(column.ty(), core::CoreType::Bool);
@@ -279,5 +291,23 @@ mod tests {
                 "boolCol".to_owned(),
             ))
         );
+    }
+
+    #[test]
+    fn json_derived_result_hint_overrides_sqlx_binary_metadata() {
+        let column = map_mysql_result_column_metadata_with_schema_type_ref(
+            "shelf",
+            "LONGBLOB",
+            Some(true),
+            None,
+            true,
+        );
+
+        assert_eq!(column.ty(), core::CoreType::Unknown);
+        assert_eq!(
+            column.type_ref(),
+            &core::CoreTypeRef::from(core::CoreType::Unknown)
+        );
+        assert_eq!(column.nullable(), Some(true));
     }
 }

@@ -178,6 +178,7 @@ export type typeMetadataExpressions_Row = {
   doubleExpressionCol: number | null;
   timestampIsNullCol: string;
   jsonExtractCol: unknown | null;
+  jsonUnquoteExtractCol: unknown | null;
 };
 
 export type typeMetadataExpressions_Output = typeMetadataExpressions_Row[];
@@ -186,7 +187,7 @@ export function typeMetadataExpressions(
   _input: typeMetadataExpressions_Input = {},
 ): { sql: string; params: readonly [] } {
   return {
-    sql: "\nSELECT\n  p.bigint_nn_col + 1 AS nextBigintNnCol,\n  CONCAT(p.varchar_255_nn_col, ':', p.varchar_320_nn_col) AS concatVarcharCol,\n  COALESCE(p.varchar_255_col, p.varchar_255_nn_col) AS coalesceVarcharCol,\n  p.decimal_18_4_nn_col + c.decimal_12_2_nn_col AS decimalExpressionCol,\n  c.double_col * 2 AS doubleExpressionCol,\n  p.timestamp_col IS NULL AS timestampIsNullCol,\n  JSON_EXTRACT(p.json_col, '$.tier') AS jsonExtractCol\nFROM fixture_all_column_type AS p\nLEFT JOIN fixture_child AS c\n  ON c.parent_bigint_nn_col = p.bigint_nn_col;\n\n",
+    sql: "\nSELECT\n  p.bigint_nn_col + 1 AS nextBigintNnCol,\n  CONCAT(p.varchar_255_nn_col, ':', p.varchar_320_nn_col) AS concatVarcharCol,\n  COALESCE(p.varchar_255_col, p.varchar_255_nn_col) AS coalesceVarcharCol,\n  p.decimal_18_4_nn_col + c.decimal_12_2_nn_col AS decimalExpressionCol,\n  c.double_col * 2 AS doubleExpressionCol,\n  p.timestamp_col IS NULL AS timestampIsNullCol,\n  JSON_EXTRACT(p.json_col, '$.tier') AS jsonExtractCol,\n  JSON_UNQUOTE(JSON_EXTRACT(p.json_col, '$.tier')) AS jsonUnquoteExtractCol\nFROM fixture_all_column_type AS p\nLEFT JOIN fixture_child AS c\n  ON c.parent_bigint_nn_col = p.bigint_nn_col;\n\n",
     params: [] as const,
   };
 }

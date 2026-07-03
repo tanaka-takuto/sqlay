@@ -1,4 +1,7 @@
-use super::super::{resolve_param_usage_metadata, resolve_result_column_type_refs};
+use super::super::{
+    resolve_json_derived_result_columns, resolve_param_usage_metadata,
+    resolve_result_column_type_refs,
+};
 use super::*;
 
 #[test]
@@ -193,6 +196,19 @@ fn does_not_resolve_current_database_three_part_result_type_refs_from_unrelated_
         .expect("unrelated explicit table source should not fail result type-ref resolution");
 
     assert_eq!(result_type_refs, [None]);
+}
+
+#[test]
+fn identifies_json_derived_projection_expressions() {
+    let query = raw_param_query(
+        "SELECT JSON_EXTRACT(metadata, '$.tier') AS tierJson, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.tier')) AS tier, CAST(JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.tier')) AS CHAR(255)) AS tierText FROM orders;",
+        Vec::<core::ParamUsage>::new(),
+    );
+
+    let json_derived_columns = resolve_json_derived_result_columns(&query)
+        .expect("JSON projection expression detection should parse valid SELECT");
+
+    assert_eq!(json_derived_columns, [true, true, false]);
 }
 
 fn schema_enum_column(
