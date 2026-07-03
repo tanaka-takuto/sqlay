@@ -255,10 +255,10 @@ set -eu
 
 copy_generated() {
   expected_dir=$1
-  project_dir=$2
+  generated_dir=$2
 
-  mkdir -p "$project_dir/generated"
-  cp -R "$expected_dir/." "$project_dir/generated/"
+  mkdir -p "$generated_dir"
+  cp -R "$expected_dir/." "$generated_dir/"
 }
 
 case "$1" in
@@ -274,12 +274,16 @@ case "$1" in
 
     if [ -n "$config_path" ]; then
       project_dir=$(CDPATH= cd "$(dirname "$config_path")" && pwd)
-      copy_generated "$SQLAY_REPO_ROOT/examples/bookstore/generated" "$project_dir"
+      copy_generated "$SQLAY_REPO_ROOT/examples/bookstore/generated" "$project_dir/generated"
       exit 0
     fi
 
     project_dir=$(CDPATH= cd "../.." && pwd)
-    copy_generated "$SQLAY_REPO_ROOT/fixtures/sql/generated" "$project_dir"
+    if grep -q '"dir": "generated-type-mapping"' "$project_dir/sqlay.config.json"; then
+      copy_generated "$SQLAY_REPO_ROOT/fixtures/sql/generated-type-mapping" "$project_dir/generated-type-mapping"
+    else
+      copy_generated "$SQLAY_REPO_ROOT/fixtures/sql/generated" "$project_dir/generated"
+    fi
     ;;
   test)
     ;;
@@ -331,6 +335,7 @@ fi
 case "$6" in
   "$TMPDIR"/sqlay-examples.*/bookstore/tsconfig.json) ;;
   "$TMPDIR"/sqlay-mysql-fixtures.*/sql/tsconfig.json) ;;
+  "$TMPDIR"/sqlay-mysql-fixtures.*/sql-type-mapping/tsconfig.json) ;;
   *)
     echo "expected npm to typecheck a temporary generated project, got: $*" >&2
     exit 64

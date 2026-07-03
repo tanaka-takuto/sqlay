@@ -1,0 +1,91 @@
+{
+  "source": {
+    "include": ["valid/type_mapping_overrides.sql"],
+    "exclude": []
+  },
+  "output": {
+    "dir": "generated-type-mapping"
+  },
+  "database": {
+    "dialect": "mysql",
+    "urlEnv": "DATABASE_URL"
+  },
+  "target": {
+    "language": "typescript",
+    "typescript": {
+      "typeMapping": {
+        "core": {
+          "decimal": "number",
+          "int64": "number"
+        },
+        "columns": {
+          "fixture_all_column_type.varchar_255_nn_col": {
+            "type": "FixtureLabel",
+            "import": {
+              "from": "@fixtures/domain-types",
+              "name": "FixtureLabel"
+            }
+          },
+          "fixture_all_column_type.varchar_255_col": {
+            "type": "FixtureLabel",
+            "import": {
+              "from": "@fixtures/domain-types",
+              "name": "FixtureLabel"
+            }
+          },
+          "sqlay.fixture_child.varchar_32_nn_col": {
+            "type": "QualifiedChildLabel",
+            "import": {
+              "from": "@fixtures/domain-types",
+              "name": "QualifiedChildLabel"
+            }
+          }
+        },
+        "builders": {
+          "typeMappingOverrides": {
+            "fields": {
+              "builderLocalAmount": {
+                "type": "FixtureAmount",
+                "import": {
+                  "from": "@fixtures/domain-types",
+                  "name": "FixtureAmount"
+                }
+              }
+            },
+            "params": {
+              "minimumAmount": {
+                "type": "FixtureAmount",
+                "import": {
+                  "from": "@fixtures/domain-types",
+                  "name": "FixtureAmount"
+                }
+              }
+            }
+          },
+          "typeMappingOverrideRows": {
+            "repeats": {
+              "rows": {
+                "fields": {
+                  "childLabel": {
+                    "type": "QualifiedChildLabel",
+                    "import": {
+                      "from": "@fixtures/domain-types",
+                      "name": "QualifiedChildLabel"
+                    }
+                  },
+                  "childAmount": {
+                    "type": "FixtureAmount",
+                    "import": {
+                      "from": "@fixtures/domain-types",
+                      "name": "FixtureAmount"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

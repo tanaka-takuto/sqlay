@@ -1,5 +1,7 @@
 use super::fixture_support::{
-    INIT_FIXTURES, INVALID_CONFIG, QUERY_FIXTURES, VALID_CONFIG, extract_sqlay_queries, repo_path,
+    INIT_FIXTURES, INVALID_CONFIG, QUERY_FIXTURES, TYPE_MAPPING_CONFIG,
+    TYPE_MAPPING_INVALID_CONFIG, TYPE_MAPPING_INVALID_USAGE_CONFIG, VALID_CONFIG,
+    extract_sqlay_queries, repo_path,
 };
 use super::type_coverage::{FIXTURE_ALL_COLUMN_TYPE_COVERAGE, fixture_all_column_type_columns};
 
@@ -135,6 +137,27 @@ fn mysql_fixtures_use_sql_valid_invalid_layout() {
 
     assert!(VALID_CONFIG.contains(r#""include": ["valid/**/*.sql"]"#));
     assert!(INVALID_CONFIG.contains(r#""include": ["invalid/**/*.sql"]"#));
+}
+
+#[test]
+fn mysql_type_mapping_fixtures_use_expected_layout() {
+    for required_path in [
+        "fixtures/sql/sqlay.type-mapping.config.json",
+        "fixtures/sql/sqlay.type-mapping.invalid.config.json",
+        "fixtures/sql/sqlay.type-mapping.invalid-usage.config.json",
+        "fixtures/sql/valid/type_mapping_overrides.sql",
+        "fixtures/sql/types/domain-types.d.ts",
+        "fixtures/sql/generated-type-mapping/valid/type_mapping_overrides.ts",
+    ] {
+        assert!(
+            repo_path(required_path).exists(),
+            "fixture path should exist: {required_path}"
+        );
+    }
+
+    assert!(TYPE_MAPPING_CONFIG.contains(r#""include": ["valid/type_mapping_overrides.sql"]"#));
+    assert!(TYPE_MAPPING_INVALID_CONFIG.contains(r#""core": {"#));
+    assert!(TYPE_MAPPING_INVALID_USAGE_CONFIG.contains(r#""missingBuilder": {"#));
 }
 
 #[test]

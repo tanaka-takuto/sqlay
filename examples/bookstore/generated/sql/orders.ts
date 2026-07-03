@@ -12,8 +12,8 @@ export type listCustomerOrders_Row = {
   placedAt: string;
   shippedAt: string | null;
   lineCount: string;
-  totalQuantity: string | null;
-  orderTotal: string | null;
+  totalQuantity: number | null;
+  orderTotal: number | null;
   shippingState: string;
 };
 
@@ -38,7 +38,7 @@ export type findLatestOrderForCustomer_Row = {
   paidAt: string | null;
   shippedAt: string | null;
   giftMessage: string | null;
-  orderTotal: string | null;
+  orderTotal: number | null;
 };
 
 export type findLatestOrderForCustomer_Output = findLatestOrderForCustomer_Row | null;
@@ -80,9 +80,9 @@ export type listMonthlySales_Input = Record<string, never>;
 export type listMonthlySales_Row = {
   salesMonth: string | null;
   orderCount: string;
-  booksSold: string | null;
-  grossSales: string | null;
-  averageLineTotal: string | null;
+  booksSold: number | null;
+  grossSales: number | null;
+  averageLineTotal: number | null;
 };
 
 export type listMonthlySales_Output = listMonthlySales_Row[];

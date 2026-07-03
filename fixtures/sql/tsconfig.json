@@ -8,6 +8,8 @@
   },
   "include": [
     "assert-generated-surface.ts",
-    "generated/**/*.ts"
+    "generated/**/*.ts",
+    "generated-type-mapping/**/*.ts",
+    "types/**/*.d.ts"
   ]
 }

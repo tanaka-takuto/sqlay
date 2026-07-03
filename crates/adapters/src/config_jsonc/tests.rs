@@ -25,6 +25,8 @@ const VALID_CONFIG: &str = r#"
   }
 }
 "#;
+const TYPE_MAPPING_INVALID_CONFIG: &str =
+    include_str!("../../../../fixtures/sql/sqlay.type-mapping.invalid.config.json");
 
 mod parser {
     use super::*;
@@ -398,16 +400,40 @@ mod validation {
         .expect_err("invalid TypeScript type mapping config should be rejected");
         let messages = diagnostic_messages(&report);
 
-        assert!(messages.contains("unsupported config field `target.typescript.typeMapping.core.money`; supported core type keys are `bool`, `int32`, `int64`, `float64`, `decimal`, `string`, `bytes`, `date`, `time`, `datetime`, `json`, and `unknown`"));
-        assert!(messages.contains(
-            "config field `target.typescript.typeMapping.columns.orders` must use `table.column` or `database.table.column`"
-        ));
-        assert!(messages.contains("config field `target.typescript.typeMapping.builders.listOrders.fields.totalAmount.type` value `MoneyAmount | null` must be a supported TypeScript primitive or portable type identifier matching `^[A-Za-z_][A-Za-z0-9_]*$`"));
-        assert!(messages.contains("config field `target.typescript.typeMapping.builders.listOrders.params.minimumAmount.import.from` value `./money` must be a non-relative module specifier"));
-        assert!(messages.contains("config field `target.typescript.typeMapping.builders.listOrders.params.minimumAmount.import.name` value `Amount` must match `type` value `MoneyAmount`; import aliases are not supported"));
-        assert!(messages.contains("unknown config field `target.typescript.typeMapping.builders.listOrders.params.minimumAmount.import.alias`; supported fields are `from` and `name`"));
-        assert!(messages.contains("unknown config field `target.typescript.typeMapping.builders.listOrders.params.minimumAmount.nullable`; supported fields are `type` and `import`"));
-        assert!(messages.contains("unknown config field `target.typescript.typeMapping.builders.listOrders.repeats.lineItems.params`; supported fields are `fields`"));
+        assert_invalid_type_mapping_config_diagnostics(
+            &messages,
+            &InvalidTypeMappingDiagnosticCase {
+                builder_id: "listOrders",
+                field_id: "totalAmount",
+                field_type: "MoneyAmount | null",
+                param_id: "minimumAmount",
+                import_from: "./money",
+                import_type: "MoneyAmount",
+                import_name: "Amount",
+                repeat_id: "lineItems",
+            },
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_typescript_type_mapping_fixture_config() {
+        let report = JsoncConfigLoader::parse_str(TYPE_MAPPING_INVALID_CONFIG)
+            .expect_err("invalid TypeScript type mapping fixture config should be rejected");
+        let messages = diagnostic_messages(&report);
+
+        assert_invalid_type_mapping_config_diagnostics(
+            &messages,
+            &InvalidTypeMappingDiagnosticCase {
+                builder_id: "typeMappingOverrides",
+                field_id: "builderLocalAmount",
+                field_type: "FixtureAmount | null",
+                param_id: "minimumAmount",
+                import_from: "./types",
+                import_type: "FixtureAmount",
+                import_name: "Amount",
+                repeat_id: "rows",
+            },
+        );
     }
 }
 
@@ -583,6 +609,51 @@ fn diagnostic_messages(report: &core::DiagnosticReport) -> String {
         .map(core::Diagnostic::message)
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+struct InvalidTypeMappingDiagnosticCase<'a> {
+    builder_id: &'a str,
+    field_id: &'a str,
+    field_type: &'a str,
+    param_id: &'a str,
+    import_from: &'a str,
+    import_type: &'a str,
+    import_name: &'a str,
+    repeat_id: &'a str,
+}
+
+fn assert_invalid_type_mapping_config_diagnostics(
+    messages: &str,
+    case: &InvalidTypeMappingDiagnosticCase<'_>,
+) {
+    assert!(messages.contains("unsupported config field `target.typescript.typeMapping.core.money`; supported core type keys are `bool`, `int32`, `int64`, `float64`, `decimal`, `string`, `bytes`, `date`, `time`, `datetime`, `json`, and `unknown`"));
+    assert!(messages.contains(
+        "config field `target.typescript.typeMapping.columns.orders` must use `table.column` or `database.table.column`"
+    ));
+    assert!(messages.contains(&format!(
+        "config field `target.typescript.typeMapping.builders.{}.fields.{}.type` value `{}` must be a supported TypeScript primitive or portable type identifier matching `^[A-Za-z_][A-Za-z0-9_]*$`",
+        case.builder_id, case.field_id, case.field_type
+    )));
+    assert!(messages.contains(&format!(
+        "config field `target.typescript.typeMapping.builders.{}.params.{}.import.from` value `{}` must be a non-relative module specifier",
+        case.builder_id, case.param_id, case.import_from
+    )));
+    assert!(messages.contains(&format!(
+        "config field `target.typescript.typeMapping.builders.{}.params.{}.import.name` value `{}` must match `type` value `{}`; import aliases are not supported",
+        case.builder_id, case.param_id, case.import_name, case.import_type
+    )));
+    assert!(messages.contains(&format!(
+        "unknown config field `target.typescript.typeMapping.builders.{}.params.{}.import.alias`; supported fields are `from` and `name`",
+        case.builder_id, case.param_id
+    )));
+    assert!(messages.contains(&format!(
+        "unknown config field `target.typescript.typeMapping.builders.{}.params.{}.nullable`; supported fields are `type` and `import`",
+        case.builder_id, case.param_id
+    )));
+    assert!(messages.contains(&format!(
+        "unknown config field `target.typescript.typeMapping.builders.{}.repeats.{}.params`; supported fields are `fields`",
+        case.builder_id, case.repeat_id
+    )));
 }
 
 fn unique_temp_config_path() -> PathBuf {

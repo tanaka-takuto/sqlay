@@ -18,9 +18,9 @@ export type listAvailableBooks_Row = {
   title: string;
   authorName: string;
   format: "hardcover" | "paperback" | "ebook";
-  price: string;
+  price: number;
   stockQuantity: number;
-  averageRating: string;
+  averageRating: number;
   reviewCount: string;
   availability: string;
 };
@@ -81,12 +81,12 @@ export type findBookDetail_Row = {
   authorName: string;
   authorCountryCode: string | null;
   format: "hardcover" | "paperback" | "ebook" | null;
-  price: string | null;
+  price: number | null;
   publishedOn: string | null;
   seriesName: string | null;
   primaryCategory: string | null;
   approvedReviewCount: string | null;
-  averageRating: string | null;
+  averageRating: number | null;
 };
 
 export type findBookDetail_Output = findBookDetail_Row | null;
@@ -137,7 +137,7 @@ export type listTopRatedBooks_Row = {
   title: string;
   authorName: string;
   reviewCount: string;
-  averageRating: string | null;
+  averageRating: number | null;
 };
 
 export type listTopRatedBooks_Output = listTopRatedBooks_Row[];

@@ -126,15 +126,15 @@ const orderItemsInput: createOrderItems_Input = {
       orderId: "5004",
       bookId: "100",
       quantity: 1,
-      unitPrice: "16.99",
+      unitPrice: 16.99,
       discountAmount: null,
     },
     {
       orderId: "5004",
       bookId: "102",
       quantity: 1,
-      unitPrice: "18.00",
-      discountAmount: "2.00",
+      unitPrice: 18,
+      discountAmount: 2,
     },
   ],
 };
