@@ -54,10 +54,17 @@ fn resolves_result_type_refs_from_schema_backed_direct_projection_columns() {
         .expect("schema-backed direct projection columns should resolve");
 
     assert_eq!(result_type_refs.len(), 2);
-    assert_enum_values(result_type_refs[0].as_ref(), &["draft", "paid"]);
+    assert_enum_values(
+        result_type_refs[0]
+            .as_ref()
+            .map(|resolved| &resolved.type_ref),
+        &["draft", "paid"],
+    );
     assert_eq!(
-        result_type_refs[1],
-        Some(core::CoreTypeRef::from(core::CoreType::Decimal))
+        result_type_refs[1]
+            .as_ref()
+            .map(|resolved| &resolved.type_ref),
+        Some(&core::CoreTypeRef::from(core::CoreType::Decimal))
     );
 }
 
@@ -76,7 +83,12 @@ fn resolves_result_type_refs_from_current_database_three_part_projection_columns
         .expect("current-database three-part projection columns should resolve");
 
     assert_eq!(result_type_refs.len(), 1);
-    assert_enum_values(result_type_refs[0].as_ref(), &["draft", "paid"]);
+    assert_enum_values(
+        result_type_refs[0]
+            .as_ref()
+            .map(|resolved| &resolved.type_ref),
+        &["draft", "paid"],
+    );
 }
 
 #[test]
@@ -96,8 +108,18 @@ fn resolves_current_database_three_part_result_type_refs_when_table_name_is_ambi
     );
 
     assert_eq!(result_type_refs.len(), 2);
-    assert_enum_values(result_type_refs[0].as_ref(), &["draft", "paid"]);
-    assert_enum_values(result_type_refs[1].as_ref(), &["archived"]);
+    assert_enum_values(
+        result_type_refs[0]
+            .as_ref()
+            .map(|resolved| &resolved.type_ref),
+        &["draft", "paid"],
+    );
+    assert_enum_values(
+        result_type_refs[1]
+            .as_ref()
+            .map(|resolved| &resolved.type_ref),
+        &["archived"],
+    );
 }
 
 #[test]

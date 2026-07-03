@@ -44,8 +44,11 @@ pub(in crate::metadata::mysql::sqlx) fn resolve_mutation_param_usage_metadata(
     let mut params = Vec::with_capacity(mutation.param_usages().len());
 
     for (usage, context) in mutation.param_usages().iter().zip(contexts) {
-        let type_ref = if let Some(value_type) = usage.value_type_override() {
-            core::CoreTypeRef::from(value_type)
+        let resolved = if let Some(value_type) = usage.value_type_override() {
+            ResolvedMutationParamTypeRef {
+                type_ref: core::CoreTypeRef::from(value_type),
+                schema_column_reference: None,
+            }
         } else {
             resolve_inferred_mutation_param_type(
                 mutation,
@@ -55,13 +58,19 @@ pub(in crate::metadata::mysql::sqlx) fn resolve_mutation_param_usage_metadata(
                 &schema,
             )?
         };
-        params.push(core::DbParamUsage::new_type_ref(
-            usage.id().to_owned(),
-            type_ref,
-        ));
+        let mut param = core::DbParamUsage::new_type_ref(usage.id().to_owned(), resolved.type_ref);
+        if let Some(reference) = resolved.schema_column_reference {
+            param = param.with_schema_column_reference(reference);
+        }
+        params.push(param);
     }
 
     Ok(params)
+}
+
+struct ResolvedMutationParamTypeRef {
+    type_ref: core::CoreTypeRef,
+    schema_column_reference: Option<core::ColumnTypeReference>,
 }
 
 fn resolve_inferred_mutation_param_type(
@@ -70,7 +79,7 @@ fn resolve_inferred_mutation_param_type(
     context: Option<&ColumnRef>,
     table_sources: &MutationTableSources,
     schema: &SchemaColumnTypes,
-) -> core::DiagnosticResult<core::CoreTypeRef> {
+) -> core::DiagnosticResult<ResolvedMutationParamTypeRef> {
     let Some(column) = context else {
         return Err(mutation_param_usage_error(
             mutation,
@@ -83,7 +92,12 @@ fn resolve_inferred_mutation_param_type(
     };
 
     if let Some(table_ref) = column.resolved_table_ref.as_ref() {
-        return resolve_schema_column_type(mutation, usage, table_ref, &column.column, schema);
+        let type_ref =
+            resolve_schema_column_type(mutation, usage, table_ref, &column.column, schema)?;
+        return Ok(ResolvedMutationParamTypeRef {
+            type_ref,
+            schema_column_reference: Some(table_ref.column_type_reference(&column.column)),
+        });
     }
 
     let table_ref = match table_sources.resolve(&column.qualifier) {
@@ -121,7 +135,11 @@ fn resolve_inferred_mutation_param_type(
         }
     };
 
-    resolve_schema_column_type(mutation, usage, &table_ref, &column.column, schema)
+    let type_ref = resolve_schema_column_type(mutation, usage, &table_ref, &column.column, schema)?;
+    Ok(ResolvedMutationParamTypeRef {
+        type_ref,
+        schema_column_reference: Some(table_ref.column_type_reference(&column.column)),
+    })
 }
 
 fn resolve_current_database_qualified_mutation_table_ref(

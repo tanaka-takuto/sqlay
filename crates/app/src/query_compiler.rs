@@ -133,18 +133,26 @@ fn compile_param_bindings(
                 ));
             }
         } else {
-            input.push(core::InputField::new_type_ref(
+            let mut field = core::InputField::new_type_ref(
                 source_usage.id().to_owned(),
                 resolved_usage.type_ref().clone(),
                 nullable,
-            ));
+            );
+            if let Some(reference) = resolved_usage.schema_column_reference().cloned() {
+                field = field.with_schema_column_reference(reference);
+            }
+            input.push(field);
         }
 
-        params.push(core::ParamBinding::new_type_ref(
+        let mut param = core::ParamBinding::new_type_ref(
             source_usage.id().to_owned(),
             resolved_usage.type_ref().clone(),
             nullable,
-        ));
+        );
+        if let Some(reference) = resolved_usage.schema_column_reference().cloned() {
+            param = param.with_schema_column_reference(reference);
+        }
+        params.push(param);
     }
 
     Ok((input, params))

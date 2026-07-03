@@ -408,11 +408,16 @@ fn compiled_param_binding(
         ));
     };
 
-    Ok(core::ParamBinding::new_type_ref(
+    let mut param = core::ParamBinding::new_type_ref(
         usage.id().to_owned(),
         binding.type_ref.clone(),
         binding.nullable,
-    ))
+    );
+    if let Some(reference) = binding.schema_column_reference.clone() {
+        param = param.with_schema_column_reference(reference);
+    }
+
+    Ok(param)
 }
 
 fn compiled_mutation_param_binding(
@@ -434,9 +439,14 @@ fn compiled_mutation_param_binding(
         ));
     };
 
-    Ok(core::ParamBinding::new_type_ref(
+    let mut param = core::ParamBinding::new_type_ref(
         usage.id().to_owned(),
         binding.type_ref.clone(),
         binding.nullable,
-    ))
+    );
+    if let Some(reference) = binding.schema_column_reference.clone() {
+        param = param.with_schema_column_reference(reference);
+    }
+
+    Ok(param)
 }

@@ -763,6 +763,7 @@ fn repeat_item_binding(repeat_id: &str, param_id: &str) -> ScopedParamBinding {
         id: param_id.to_owned(),
         type_ref: core::CoreTypeRef::from(core::CoreType::String),
         nullable: false,
+        schema_column_reference: None,
         first_occurrence: ExpandedParamOccurrence::RepeatItem(ExpandedRepeatParamOccurrence {
             repeat_id: repeat_id.to_owned(),
             representative_item_index: 1,

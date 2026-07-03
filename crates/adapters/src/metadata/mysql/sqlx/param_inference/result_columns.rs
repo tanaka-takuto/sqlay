@@ -10,7 +10,7 @@ use super::{SchemaColumnTypes, parse_query, single_select_query};
 pub(in crate::metadata::mysql::sqlx) fn resolve_result_column_type_refs(
     query: &core::RawQuery,
     schema_columns: &[MysqlSchemaColumn],
-) -> core::DiagnosticResult<Vec<Option<core::CoreTypeRef>>> {
+) -> core::DiagnosticResult<Vec<Option<ResolvedResultColumnTypeRef>>> {
     if schema_columns.is_empty() {
         return Ok(Vec::new());
     }
@@ -38,15 +38,25 @@ pub(in crate::metadata::mysql::sqlx) fn resolve_result_column_type_refs(
     Ok(result_type_refs)
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::metadata::mysql::sqlx) struct ResolvedResultColumnTypeRef {
+    pub(in crate::metadata::mysql::sqlx) type_ref: core::CoreTypeRef,
+    pub(in crate::metadata::mysql::sqlx) schema_column_reference: core::ColumnTypeReference,
+}
+
 fn resolve_projection_expr_type_ref(
     expr: &Expr,
     table_sources: &SelectTableSources,
     schema: &SchemaColumnTypes,
-) -> Option<core::CoreTypeRef> {
+) -> Option<ResolvedResultColumnTypeRef> {
     let (qualifier, column_name) = direct_projection_column_ref(expr)?;
     let table_ref = resolve_query_schema_table_ref(table_sources, schema, &qualifier)?;
+    let type_ref = schema.get(&table_ref, &column_name)?;
 
-    schema.get(&table_ref, &column_name)
+    Some(ResolvedResultColumnTypeRef {
+        type_ref,
+        schema_column_reference: table_ref.column_type_reference(&column_name),
+    })
 }
 
 fn direct_projection_column_ref(expr: &Expr) -> Option<(String, String)> {

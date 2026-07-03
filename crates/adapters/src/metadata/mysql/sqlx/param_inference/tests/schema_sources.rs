@@ -26,6 +26,14 @@ fn resolves_param_types_from_schema_qualified_table_sources() {
             core::DbParamUsage::new("minimumAmount".to_owned(), core::CoreType::Decimal),
         ]
     );
+    assert_eq!(
+        params[0].schema_column_reference(),
+        Some(&column_ref(Some("billing"), "orders", "status"))
+    );
+    assert_eq!(
+        params[1].schema_column_reference(),
+        Some(&column_ref(Some("billing"), "orders", "total_amount"))
+    );
 }
 
 #[test]
@@ -86,6 +94,14 @@ fn mysql_schema_columns_preserve_source_identity_and_column_type() {
     assert_eq!(column.column_name, "status");
     assert_eq!(column.column_type, "enum('draft','paid')");
     assert_eq!(column.ty, core::CoreType::String);
+}
+
+fn column_ref(database: Option<&str>, table: &str, column: &str) -> core::ColumnTypeReference {
+    core::ColumnTypeReference::new(
+        database.map(str::to_owned),
+        table.to_owned(),
+        column.to_owned(),
+    )
 }
 
 #[test]

@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{Cardinality, MutationId, QueryId};
+use crate::{Cardinality, ColumnTypeReference, MutationId, QueryId};
 
 mod dynamic;
 
@@ -256,12 +256,23 @@ impl CompiledBuilder {
 }
 
 /// Query input field in Core IR.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct InputField {
     name: String,
     type_ref: CoreTypeRef,
     nullable: bool,
+    schema_column_reference: Option<ColumnTypeReference>,
 }
+
+impl PartialEq for InputField {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.type_ref == other.type_ref
+            && self.nullable == other.nullable
+    }
+}
+
+impl Eq for InputField {}
 
 impl InputField {
     /// Build a query input field.
@@ -277,7 +288,15 @@ impl InputField {
             name,
             type_ref,
             nullable,
+            schema_column_reference: None,
         }
+    }
+
+    /// Attach the schema column reference that supplied this input type, when available.
+    #[must_use]
+    pub fn with_schema_column_reference(mut self, reference: ColumnTypeReference) -> Self {
+        self.schema_column_reference = Some(reference);
+        self
     }
 
     /// Input field name.
@@ -303,15 +322,32 @@ impl InputField {
     pub const fn is_nullable(&self) -> bool {
         self.nullable
     }
+
+    /// Schema column reference that supplied this input type, when available.
+    #[must_use]
+    pub const fn schema_column_reference(&self) -> Option<&ColumnTypeReference> {
+        self.schema_column_reference.as_ref()
+    }
 }
 
 /// One generated parameter binding in source occurrence order.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ParamBinding {
     input_name: String,
     type_ref: CoreTypeRef,
     nullable: bool,
+    schema_column_reference: Option<ColumnTypeReference>,
 }
+
+impl PartialEq for ParamBinding {
+    fn eq(&self, other: &Self) -> bool {
+        self.input_name == other.input_name
+            && self.type_ref == other.type_ref
+            && self.nullable == other.nullable
+    }
+}
+
+impl Eq for ParamBinding {}
 
 impl ParamBinding {
     /// Build a query parameter binding.
@@ -327,7 +363,15 @@ impl ParamBinding {
             input_name,
             type_ref,
             nullable,
+            schema_column_reference: None,
         }
+    }
+
+    /// Attach the schema column reference that supplied this Param type, when available.
+    #[must_use]
+    pub fn with_schema_column_reference(mut self, reference: ColumnTypeReference) -> Self {
+        self.schema_column_reference = Some(reference);
+        self
     }
 
     /// Input field name used for this parameter occurrence.
@@ -353,15 +397,32 @@ impl ParamBinding {
     pub const fn is_nullable(&self) -> bool {
         self.nullable
     }
+
+    /// Schema column reference that supplied this Param type, when available.
+    #[must_use]
+    pub const fn schema_column_reference(&self) -> Option<&ColumnTypeReference> {
+        self.schema_column_reference.as_ref()
+    }
 }
 
 /// Result row column in Core IR.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ResultColumn {
     name: String,
     type_ref: CoreTypeRef,
     nullable: bool,
+    schema_column_reference: Option<ColumnTypeReference>,
 }
+
+impl PartialEq for ResultColumn {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.type_ref == other.type_ref
+            && self.nullable == other.nullable
+    }
+}
+
+impl Eq for ResultColumn {}
 
 impl ResultColumn {
     /// Build a result row column.
@@ -377,7 +438,15 @@ impl ResultColumn {
             name,
             type_ref,
             nullable,
+            schema_column_reference: None,
         }
+    }
+
+    /// Attach the schema column reference that supplied this result type, when available.
+    #[must_use]
+    pub fn with_schema_column_reference(mut self, reference: ColumnTypeReference) -> Self {
+        self.schema_column_reference = Some(reference);
+        self
     }
 
     /// Result column name exactly as reported by database metadata.
@@ -402,6 +471,12 @@ impl ResultColumn {
     #[must_use]
     pub const fn is_nullable(&self) -> bool {
         self.nullable
+    }
+
+    /// Schema column reference that supplied this result type, when available.
+    #[must_use]
+    pub const fn schema_column_reference(&self) -> Option<&ColumnTypeReference> {
+        self.schema_column_reference.as_ref()
     }
 }
 

@@ -10,7 +10,8 @@ fn query_compiler_builds_core_ir_with_empty_paramless_input_and_result_columns()
     .with_source_path("sql/users.sql");
     let analysis = core::AnalyzedQuery::new(core::Cardinality::Many);
     let metadata = core::DbQueryMetadata::new(vec![
-        core::DbResultColumn::new("id".to_owned(), core::CoreType::Int64, Some(false)),
+        core::DbResultColumn::new("id".to_owned(), core::CoreType::Int64, Some(false))
+            .with_schema_column_reference(column_ref(None, "users", "id")),
         core::DbResultColumn::new("name".to_owned(), core::CoreType::String, Some(true)),
     ]);
 
@@ -27,6 +28,10 @@ fn query_compiler_builds_core_ir_with_empty_paramless_input_and_result_columns()
     assert_eq!(compiled.row()[0].name(), "id");
     assert_eq!(compiled.row()[0].ty(), core::CoreType::Int64);
     assert!(!compiled.row()[0].is_nullable());
+    assert_eq!(
+        compiled.row()[0].schema_column_reference(),
+        Some(&column_ref(None, "users", "id"))
+    );
     assert_eq!(compiled.row()[1].name(), "name");
     assert_eq!(compiled.row()[1].ty(), core::CoreType::String);
     assert!(compiled.row()[1].is_nullable());
@@ -61,9 +66,11 @@ fn query_compiler_builds_input_fields_and_param_bindings_from_resolved_param_met
     ]);
     let analysis = core::AnalyzedQuery::new(core::Cardinality::Many);
     let metadata = core::DbQueryMetadata::new(Vec::new()).with_param_usages(vec![
-        core::DbParamUsage::new("email".to_owned(), core::CoreType::String),
+        core::DbParamUsage::new("email".to_owned(), core::CoreType::String)
+            .with_schema_column_reference(column_ref(None, "users", "email")),
         core::DbParamUsage::new("userId".to_owned(), core::CoreType::Int64),
-        core::DbParamUsage::new("email".to_owned(), core::CoreType::String),
+        core::DbParamUsage::new("email".to_owned(), core::CoreType::String)
+            .with_schema_column_reference(column_ref(None, "users", "email")),
     ]);
 
     let compiled = DefaultQueryCompiler
@@ -84,6 +91,14 @@ fn query_compiler_builds_input_fields_and_param_bindings_from_resolved_param_met
             core::ParamBinding::new("userId".to_owned(), core::CoreType::Int64, false),
             core::ParamBinding::new("email".to_owned(), core::CoreType::String, true),
         ]
+    );
+    assert_eq!(
+        compiled.input()[0].schema_column_reference(),
+        Some(&column_ref(None, "users", "email"))
+    );
+    assert_eq!(
+        compiled.params()[0].schema_column_reference(),
+        Some(&column_ref(None, "users", "email"))
     );
 }
 
@@ -320,4 +335,12 @@ fn query_compiler_maps_unknown_nullability_to_nullable_result_row() {
             core::ResultColumn::new("computed_name".to_owned(), core::CoreType::String, true),
         ]
     );
+}
+
+fn column_ref(database: Option<&str>, table: &str, column: &str) -> core::ColumnTypeReference {
+    core::ColumnTypeReference::new(
+        database.map(str::to_owned),
+        table.to_owned(),
+        column.to_owned(),
+    )
 }

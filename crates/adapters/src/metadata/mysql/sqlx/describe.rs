@@ -4,8 +4,8 @@ use sqlay_core as core;
 
 use super::diagnostics::{mutation_error, query_error};
 use super::param_inference::{
-    resolve_mutation_param_usage_metadata, resolve_param_usage_metadata,
-    resolve_result_column_type_refs,
+    ResolvedResultColumnTypeRef, resolve_mutation_param_usage_metadata,
+    resolve_param_usage_metadata, resolve_result_column_type_refs,
 };
 use super::result_mapping::map_mysql_result_column_metadata;
 use super::schema_columns::{
@@ -200,15 +200,28 @@ fn map_mysql_result_column_metadata_with_schema_type_ref(
     name: &str,
     type_name: &str,
     nullable: Option<bool>,
-    type_ref: Option<core::CoreTypeRef>,
+    schema_type_ref: Option<ResolvedResultColumnTypeRef>,
 ) -> core::DbResultColumn {
-    if let Some(type_ref) = type_ref
+    let (type_ref, schema_column_reference) = schema_type_ref.map_or((None, None), |resolved| {
+        (
+            Some(resolved.type_ref),
+            Some(resolved.schema_column_reference),
+        )
+    });
+
+    let mut column = if let Some(type_ref) = type_ref
         && type_ref.enum_values().is_some()
     {
-        return core::DbResultColumn::new_type_ref(name.to_owned(), type_ref, nullable);
+        core::DbResultColumn::new_type_ref(name.to_owned(), type_ref, nullable)
+    } else {
+        map_mysql_result_column_metadata(name, type_name, nullable)
+    };
+
+    if let Some(reference) = schema_column_reference {
+        column = column.with_schema_column_reference(reference);
     }
 
-    map_mysql_result_column_metadata(name, type_name, nullable)
+    column
 }
 
 fn describe_param_usages(
@@ -238,7 +251,9 @@ async fn describe_mutation_param_usages(
 mod tests {
     use sqlay_core as core;
 
-    use super::map_mysql_result_column_metadata_with_schema_type_ref;
+    use super::{
+        ResolvedResultColumnTypeRef, map_mysql_result_column_metadata_with_schema_type_ref,
+    };
 
     #[test]
     fn schema_scalar_type_ref_does_not_override_sqlx_result_type_metadata() {
@@ -246,7 +261,14 @@ mod tests {
             "boolCol",
             "BOOL",
             Some(false),
-            Some(core::CoreTypeRef::from(core::CoreType::Int32)),
+            Some(ResolvedResultColumnTypeRef {
+                type_ref: core::CoreTypeRef::from(core::CoreType::Int32),
+                schema_column_reference: core::ColumnTypeReference::new(
+                    None,
+                    "fixture".to_owned(),
+                    "boolCol".to_owned(),
+                ),
+            }),
         );
 
         assert_eq!(column.ty(), core::CoreType::Bool);

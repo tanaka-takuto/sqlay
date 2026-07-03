@@ -7,6 +7,7 @@ mod slots;
 mod symbols;
 #[cfg(test)]
 mod tests;
+mod type_mapping;
 mod types;
 
 pub use builders::{render_generated_file_contents, render_query, render_sql_property};

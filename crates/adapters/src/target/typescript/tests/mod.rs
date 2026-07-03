@@ -6,3 +6,4 @@ mod slots;
 mod static_rendering;
 mod support;
 mod symbols;
+mod type_mapping;

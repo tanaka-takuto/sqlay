@@ -20,6 +20,7 @@ pub(super) struct ScopedParamBinding {
     pub(super) id: String,
     pub(super) type_ref: core::CoreTypeRef,
     pub(super) nullable: bool,
+    pub(super) schema_column_reference: Option<core::ColumnTypeReference>,
     pub(super) first_occurrence: ExpandedParamOccurrence,
 }
 
@@ -108,6 +109,7 @@ pub(super) fn validate_expanded_variant_param_bindings(
                 id: source_usage.id().to_owned(),
                 type_ref: resolved_usage.type_ref().clone(),
                 nullable,
+                schema_column_reference: resolved_usage.schema_column_reference().cloned(),
                 first_occurrence: occurrence.clone(),
             });
         }
@@ -201,6 +203,7 @@ pub(super) fn validate_expanded_mutation_variant_param_bindings(
                 id: source_usage.id().to_owned(),
                 type_ref: resolved_usage.type_ref().clone(),
                 nullable,
+                schema_column_reference: resolved_usage.schema_column_reference().cloned(),
                 first_occurrence: occurrence.clone(),
             });
         }
