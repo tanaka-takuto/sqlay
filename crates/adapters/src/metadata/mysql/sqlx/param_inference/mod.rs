@@ -90,7 +90,11 @@ pub(super) fn resolve_param_usage_metadata(
         let resolved = if let Some(value_type) = usage.value_type_override() {
             ResolvedParamTypeRef {
                 type_ref: core::CoreTypeRef::from(value_type),
-                schema_column_reference: None,
+                schema_column_reference: resolve_param_schema_column_reference(
+                    context.as_ref(),
+                    &table_sources,
+                    &schema,
+                ),
             }
         } else {
             resolve_inferred_param_type(query, usage, context.as_ref(), &table_sources, &schema)?
@@ -108,6 +112,21 @@ pub(super) fn resolve_param_usage_metadata(
 struct ResolvedParamTypeRef {
     type_ref: core::CoreTypeRef,
     schema_column_reference: Option<core::ColumnTypeReference>,
+}
+
+fn resolve_param_schema_column_reference(
+    context: Option<&ColumnRef>,
+    table_sources: &SelectTableSources,
+    schema: &SchemaColumnTypes,
+) -> Option<core::ColumnTypeReference> {
+    let column = context?;
+    let QuerySchemaTableRefResolution::Resolved(table_ref) =
+        resolve_query_schema_table_ref_status(table_sources, schema, &column.qualifier)
+    else {
+        return None;
+    };
+    schema.get(&table_ref, &column.column)?;
+    Some(table_ref.column_type_reference(&column.column))
 }
 
 fn resolve_inferred_param_type(

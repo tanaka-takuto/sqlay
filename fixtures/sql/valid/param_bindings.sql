@@ -54,8 +54,8 @@ FROM fixture_all_column_type AS p
 WHERE p.varchar_255_nn_col = /* @sqlay { type: param id: searchText } */
   'varchar-255-nn-a'
   /* @sqlay { type: paramEnd } */
-  OR p.varchar_320_nn_col = /* @sqlay { type: param id: searchText } */
-  'varchar-320-a'
+  OR p.varchar_255_nn_col = /* @sqlay { type: param id: searchText } */
+  'varchar-255-nn-a'
   /* @sqlay { type: paramEnd } */;
 
 /* @sqlay

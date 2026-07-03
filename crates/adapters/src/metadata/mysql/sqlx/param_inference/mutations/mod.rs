@@ -47,7 +47,11 @@ pub(in crate::metadata::mysql::sqlx) fn resolve_mutation_param_usage_metadata(
         let resolved = if let Some(value_type) = usage.value_type_override() {
             ResolvedMutationParamTypeRef {
                 type_ref: core::CoreTypeRef::from(value_type),
-                schema_column_reference: None,
+                schema_column_reference: resolve_mutation_param_schema_column_reference(
+                    context.as_ref(),
+                    &table_sources,
+                    &schema,
+                ),
             }
         } else {
             resolve_inferred_mutation_param_type(
@@ -71,6 +75,31 @@ pub(in crate::metadata::mysql::sqlx) fn resolve_mutation_param_usage_metadata(
 struct ResolvedMutationParamTypeRef {
     type_ref: core::CoreTypeRef,
     schema_column_reference: Option<core::ColumnTypeReference>,
+}
+
+fn resolve_mutation_param_schema_column_reference(
+    context: Option<&ColumnRef>,
+    table_sources: &MutationTableSources,
+    schema: &SchemaColumnTypes,
+) -> Option<core::ColumnTypeReference> {
+    let column = context?;
+    let table_ref = if let Some(table_ref) = column.resolved_table_ref.as_ref() {
+        table_ref.clone()
+    } else {
+        match table_sources.resolve(&column.qualifier) {
+            Some(TableResolution::SchemaBacked { table_ref }) => table_ref.clone(),
+            Some(TableResolution::Unsupported) => return None,
+            None => resolve_current_database_qualified_mutation_table_ref(
+                table_sources,
+                schema,
+                &column.qualifier,
+            )?,
+        }
+    };
+
+    schema
+        .get(&table_ref, &column.column)
+        .map(|_| table_ref.column_type_reference(&column.column))
 }
 
 fn resolve_inferred_mutation_param_type(
