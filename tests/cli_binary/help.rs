@@ -93,7 +93,7 @@ fn no_args_prints_top_level_help() {
     assert!(stdout.contains("raw `?` placeholders"), "stdout: {stdout}");
     assert!(stdout.contains("--format <human|json>"), "stdout: {stdout}");
     assert!(
-        stdout.contains("JSON rendering is not yet available in this slice"),
+        stdout.contains("check JSON prints a stdout result envelope"),
         "stdout: {stdout}"
     );
     assert!(
@@ -181,7 +181,13 @@ fn check_help_describes_config_discovery_and_database_url() {
     assert!(stdout.contains("--config <path>"), "stdout: {stdout}");
     assert!(stdout.contains("--format <human|json>"), "stdout: {stdout}");
     assert!(
-        stdout.contains("JSON rendering is not yet available in this slice"),
+        stdout.contains(
+            "JSON prints a stdout result envelope with diagnostics and the check summary"
+        ),
+        "stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("JSON rendering is not yet available in this slice"),
         "stdout: {stdout}"
     );
     assert!(stdout.contains("--fail-on-empty"), "stdout: {stdout}");
@@ -238,7 +244,11 @@ fn compile_help_describes_output_writing_and_clean() {
     assert!(stdout.contains("--config <path>"), "stdout: {stdout}");
     assert!(stdout.contains("--format <human|json>"), "stdout: {stdout}");
     assert!(
-        stdout.contains("JSON rendering is not yet available in this slice"),
+        stdout.contains("compile success JSON is not yet available"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("JSON rendering is not yet available in this slice"),
         "stdout: {stdout}"
     );
     assert!(stdout.contains("--fail-on-empty"), "stdout: {stdout}");

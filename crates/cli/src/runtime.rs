@@ -18,7 +18,10 @@ use sqlay_core as core;
 use crate::args::{Command, ConfiguredCommand, OutputFormat, parse_args};
 use crate::diagnostics::{fail, print_diagnostics, single_cli_error};
 use crate::help::{INIT_NEXT_STEPS, help_text};
-use crate::output::{ConfiguredCommandOutcome, print_json_failure_result, print_success_summary};
+use crate::output::{
+    ConfiguredCommandOutcome, print_json_check_success_result, print_json_failure_result,
+    print_success_summary,
+};
 
 const EMPTY_SOURCE_SET_DIAGNOSTIC_PREFIX: &str =
     "source.include matched no SQL files after applying source.exclude";
@@ -98,6 +101,18 @@ fn run_configured_command(command: ConfiguredCommand, config: Option<PathBuf>) -
     }) {
         Ok(outcome) => {
             let diagnostics = add_success_cli_remediation(outcome.diagnostics().clone(), command);
+            if command.format() == OutputFormat::Json
+                && let ConfiguredCommandOutcome::Check(check_outcome) = &outcome
+            {
+                print_json_check_success_result(
+                    command,
+                    config_path.as_deref(),
+                    check_outcome,
+                    &diagnostics,
+                );
+                return ExitCode::SUCCESS;
+            }
+
             print_diagnostics(&diagnostics);
             print_success_summary(&outcome);
             ExitCode::SUCCESS
