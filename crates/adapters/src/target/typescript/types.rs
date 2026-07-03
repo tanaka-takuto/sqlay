@@ -318,7 +318,7 @@ fn dynamic_body_requires_input(dynamic_body: Option<&core::CompiledDynamicQuery>
         })
 }
 
-const fn typescript_core_type(ty: core::CoreType) -> &'static str {
+pub(super) const fn typescript_core_type(ty: core::CoreType) -> &'static str {
     match ty {
         core::CoreType::Bool => "boolean",
         core::CoreType::Int32 | core::CoreType::Float64 => "number",

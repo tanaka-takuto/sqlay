@@ -392,7 +392,7 @@ const nullableParamParams: readonly [string | null] = nullableParamQuery.params;
 const nullableParamOutput: paramNullableInput_Output = [];
 
 const repeatedParamInput: paramRepeatedId_Input = {
-  searchText: "varchar-320-a",
+  searchText: "varchar-255-nn-a",
 };
 const repeatedParamQuery = paramRepeatedId(repeatedParamInput);
 const repeatedParamParams: readonly [string, string] = repeatedParamQuery.params;

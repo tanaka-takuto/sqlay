@@ -10,9 +10,23 @@ use super::slot_variants::{
 mod conflicts;
 
 use conflicts::{
-    mutation_param_nullability_conflict_error, mutation_param_type_conflict_error,
-    param_nullability_conflict_error, param_type_conflict_error,
+    mutation_param_nullability_conflict_error,
+    mutation_param_schema_column_reference_conflict_error, mutation_param_type_conflict_error,
+    param_nullability_conflict_error, param_schema_column_reference_conflict_error,
+    param_type_conflict_error,
 };
+
+pub fn format_schema_column_reference(reference: Option<&core::ColumnTypeReference>) -> String {
+    reference.map_or_else(
+        || "no schema column reference".to_owned(),
+        |reference| {
+            reference.database().map_or_else(
+                || format!("{}.{}", reference.table(), reference.column()),
+                |database| format!("{}.{}.{}", database, reference.table(), reference.column()),
+            )
+        },
+    )
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ScopedParamBinding {
@@ -20,6 +34,7 @@ pub(super) struct ScopedParamBinding {
     pub(super) id: String,
     pub(super) type_ref: core::CoreTypeRef,
     pub(super) nullable: bool,
+    pub(super) schema_column_reference: Option<core::ColumnTypeReference>,
     pub(super) first_occurrence: ExpandedParamOccurrence,
 }
 
@@ -102,12 +117,23 @@ pub(super) fn validate_expanded_variant_param_bindings(
                     occurrence,
                 ));
             }
+            if existing.schema_column_reference.as_ref() != resolved_usage.schema_column_reference()
+            {
+                return Err(param_schema_column_reference_conflict_error(
+                    query,
+                    source_usage,
+                    existing,
+                    resolved_usage.schema_column_reference(),
+                    occurrence,
+                ));
+            }
         } else {
             scoped_bindings.push(ScopedParamBinding {
                 scope: scope.clone(),
                 id: source_usage.id().to_owned(),
                 type_ref: resolved_usage.type_ref().clone(),
                 nullable,
+                schema_column_reference: resolved_usage.schema_column_reference().cloned(),
                 first_occurrence: occurrence.clone(),
             });
         }
@@ -195,12 +221,23 @@ pub(super) fn validate_expanded_mutation_variant_param_bindings(
                     occurrence,
                 ));
             }
+            if existing.schema_column_reference.as_ref() != resolved_usage.schema_column_reference()
+            {
+                return Err(mutation_param_schema_column_reference_conflict_error(
+                    mutation,
+                    source_usage,
+                    existing,
+                    resolved_usage.schema_column_reference(),
+                    occurrence,
+                ));
+            }
         } else {
             scoped_bindings.push(ScopedParamBinding {
                 scope: scope.clone(),
                 id: source_usage.id().to_owned(),
                 type_ref: resolved_usage.type_ref().clone(),
                 nullable,
+                schema_column_reference: resolved_usage.schema_column_reference().cloned(),
                 first_occurrence: occurrence.clone(),
             });
         }

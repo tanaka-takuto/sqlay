@@ -223,6 +223,22 @@ impl MysqlSchemaTableRef {
         }
     }
 
+    pub(super) fn column_type_reference(&self, column_name: &str) -> core::ColumnTypeReference {
+        match self {
+            Self::CurrentDatabase { table_name } => {
+                core::ColumnTypeReference::new(None, table_name.clone(), column_name.to_owned())
+            }
+            Self::ExplicitDatabase {
+                database_name,
+                table_name,
+            } => core::ColumnTypeReference::new(
+                Some(database_name.clone()),
+                table_name.clone(),
+                column_name.to_owned(),
+            ),
+        }
+    }
+
     pub(super) const fn is_current_database(&self) -> bool {
         matches!(self, Self::CurrentDatabase { .. })
     }

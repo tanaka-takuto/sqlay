@@ -1,4 +1,4 @@
-use crate::{CoreType, CoreTypeRef, ResultColumn};
+use crate::{ColumnTypeReference, CoreType, CoreTypeRef, ResultColumn};
 
 /// Database metadata description normalized for compilation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -67,12 +67,24 @@ impl DbMutationMetadata {
 }
 
 /// Result column metadata from a database provider before final IR emission.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct DbResultColumn {
     name: String,
     type_ref: CoreTypeRef,
     nullable: Option<bool>,
+    schema_column_reference: Option<ColumnTypeReference>,
 }
+
+impl PartialEq for DbResultColumn {
+    fn eq(&self, other: &Self) -> bool {
+        // Schema column references are provenance metadata and do not define column identity.
+        self.name == other.name
+            && self.type_ref == other.type_ref
+            && self.nullable == other.nullable
+    }
+}
+
+impl Eq for DbResultColumn {}
 
 impl DbResultColumn {
     /// Build a database result column metadata value.
@@ -88,7 +100,15 @@ impl DbResultColumn {
             name,
             type_ref,
             nullable,
+            schema_column_reference: None,
         }
+    }
+
+    /// Attach the schema column reference that supplied this result metadata, when available.
+    #[must_use]
+    pub fn with_schema_column_reference(mut self, reference: ColumnTypeReference) -> Self {
+        self.schema_column_reference = Some(reference);
+        self
     }
 
     /// Column name exactly as reported by the database metadata provider.
@@ -115,6 +135,12 @@ impl DbResultColumn {
         self.nullable
     }
 
+    /// Schema column reference that supplied this result metadata, when available.
+    #[must_use]
+    pub const fn schema_column_reference(&self) -> Option<&ColumnTypeReference> {
+        self.schema_column_reference.as_ref()
+    }
+
     /// Conservative nullability for generated output.
     #[must_use]
     pub fn is_nullable_for_output(&self) -> bool {
@@ -124,20 +150,36 @@ impl DbResultColumn {
     /// Convert database metadata into a compiled result column.
     #[must_use]
     pub fn to_result_column(&self) -> ResultColumn {
-        ResultColumn::new_type_ref(
+        let column = ResultColumn::new_type_ref(
             self.name.clone(),
             self.type_ref.clone(),
             self.is_nullable_for_output(),
-        )
+        );
+
+        if let Some(reference) = self.schema_column_reference.clone() {
+            column.with_schema_column_reference(reference)
+        } else {
+            column
+        }
     }
 }
 
 /// Database-backed type metadata for one Param occurrence.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct DbParamUsage {
     id: String,
     type_ref: CoreTypeRef,
+    schema_column_reference: Option<ColumnTypeReference>,
 }
+
+impl PartialEq for DbParamUsage {
+    fn eq(&self, other: &Self) -> bool {
+        // Schema column references are provenance metadata and do not define Param usage identity.
+        self.id == other.id && self.type_ref == other.type_ref
+    }
+}
+
+impl Eq for DbParamUsage {}
 
 impl DbParamUsage {
     /// Build resolved Param usage metadata.
@@ -149,7 +191,18 @@ impl DbParamUsage {
     /// Build resolved Param usage metadata from a richer Core type reference.
     #[must_use]
     pub const fn new_type_ref(id: String, type_ref: CoreTypeRef) -> Self {
-        Self { id, type_ref }
+        Self {
+            id,
+            type_ref,
+            schema_column_reference: None,
+        }
+    }
+
+    /// Attach the schema column reference that supplied this Param metadata, when available.
+    #[must_use]
+    pub fn with_schema_column_reference(mut self, reference: ColumnTypeReference) -> Self {
+        self.schema_column_reference = Some(reference);
+        self
     }
 
     /// Param ID exactly as written in source metadata.
@@ -168,6 +221,12 @@ impl DbParamUsage {
     #[must_use]
     pub const fn type_ref(&self) -> &CoreTypeRef {
         &self.type_ref
+    }
+
+    /// Schema column reference that supplied this Param metadata, when available.
+    #[must_use]
+    pub const fn schema_column_reference(&self) -> Option<&ColumnTypeReference> {
+        self.schema_column_reference.as_ref()
     }
 }
 

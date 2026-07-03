@@ -26,6 +26,41 @@ fn resolves_param_types_from_schema_qualified_table_sources() {
             core::DbParamUsage::new("minimumAmount".to_owned(), core::CoreType::Decimal),
         ]
     );
+    assert_eq!(
+        params[0].schema_column_reference(),
+        Some(&column_ref(Some("billing"), "orders", "status"))
+    );
+    assert_eq!(
+        params[1].schema_column_reference(),
+        Some(&column_ref(Some("billing"), "orders", "total_amount"))
+    );
+}
+
+#[test]
+fn query_value_type_override_preserves_schema_column_reference() {
+    let query = raw_param_query(
+        "SELECT o.id FROM billing.orders AS o WHERE o.total_amount = ?;",
+        [param_usage("minimumAmount", Some(core::CoreType::Int64))],
+    );
+    let schema_columns = [
+        schema_column_in_database("billing", "orders", "id", core::CoreType::Int64),
+        schema_column_in_database("billing", "orders", "total_amount", core::CoreType::Decimal),
+    ];
+
+    let params = resolve_param_usage_metadata(&query, &schema_columns)
+        .expect("valueType should still preserve schema column provenance");
+
+    assert_eq!(
+        params,
+        [core::DbParamUsage::new(
+            "minimumAmount".to_owned(),
+            core::CoreType::Int64
+        )]
+    );
+    assert_eq!(
+        params[0].schema_column_reference(),
+        Some(&column_ref(Some("billing"), "orders", "total_amount"))
+    );
 }
 
 #[test]
@@ -88,6 +123,14 @@ fn mysql_schema_columns_preserve_source_identity_and_column_type() {
     assert_eq!(column.ty, core::CoreType::String);
 }
 
+fn column_ref(database: Option<&str>, table: &str, column: &str) -> core::ColumnTypeReference {
+    core::ColumnTypeReference::new(
+        database.map(str::to_owned),
+        table.to_owned(),
+        column.to_owned(),
+    )
+}
+
 #[test]
 fn rejects_table_identifiers_containing_dots_without_value_type() {
     let query = raw_param_query(
@@ -132,6 +175,33 @@ fn mutation_schema_table_refs_include_subquery_tables_used_by_params() {
             MysqlSchemaTableRef::current_database("accounts"),
             MysqlSchemaTableRef::current_database("users"),
         ]
+    );
+}
+
+#[test]
+fn mutation_value_type_override_preserves_schema_column_reference() {
+    let mutation = raw_param_mutation(
+        "UPDATE billing.orders AS o SET o.total_amount = ? WHERE o.id = ?;",
+        [
+            param_usage("amount", Some(core::CoreType::Int64)),
+            param_usage("orderId", None),
+        ],
+    );
+    let schema_columns = [
+        schema_column_in_database("billing", "orders", "id", core::CoreType::Int64),
+        schema_column_in_database("billing", "orders", "total_amount", core::CoreType::Decimal),
+    ];
+
+    let params = resolve_mutation_param_usage_metadata(&mutation, &schema_columns)
+        .expect("valueType should still preserve mutation schema column provenance");
+
+    assert_eq!(
+        params[0],
+        core::DbParamUsage::new("amount".to_owned(), core::CoreType::Int64)
+    );
+    assert_eq!(
+        params[0].schema_column_reference(),
+        Some(&column_ref(Some("billing"), "orders", "total_amount"))
     );
 }
 

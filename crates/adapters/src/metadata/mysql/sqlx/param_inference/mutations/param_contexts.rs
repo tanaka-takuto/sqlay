@@ -3,7 +3,6 @@ use sqlparser::ast::{Expr, Query as SqlQuery};
 
 use super::super::super::diagnostics::mutation_param_usage_error;
 use super::super::super::schema_columns::MysqlSchemaTableRef;
-use super::super::SchemaColumnTypes;
 use super::super::contexts::{
     ColumnRef, collect_expr_param_contexts_with_query_handler, collect_query_param_contexts,
 };
@@ -11,6 +10,9 @@ use super::super::tables::{
     SelectTableSources, TableResolution, select_from_query, select_table_sources,
 };
 use super::super::unsupported_contexts::collect_unsupported_query_param_contexts;
+use super::super::{ResolvedSchemaTypeRef, SchemaColumnTypes};
+use super::resolve_current_database_qualified_mutation_table_ref;
+use super::table_sources::MutationTableSources;
 
 pub(super) fn collect_mutation_expr_param_contexts(
     expr: &Expr,
@@ -51,6 +53,40 @@ pub(super) fn resolve_schema_column_type(
         usage,
         table_ref.unknown_column_message(usage.id(), column_name),
     ))
+}
+
+pub(super) fn resolve_schema_column_type_ref(
+    column: &ColumnRef,
+    table_sources: &MutationTableSources,
+    schema: &SchemaColumnTypes,
+) -> Option<ResolvedSchemaTypeRef> {
+    let table_ref = resolve_schema_column_table_ref(column, table_sources, schema)?;
+    let type_ref = schema.get(&table_ref, &column.column)?;
+    Some(ResolvedSchemaTypeRef::schema_column(
+        type_ref,
+        &table_ref,
+        &column.column,
+    ))
+}
+
+fn resolve_schema_column_table_ref(
+    column: &ColumnRef,
+    table_sources: &MutationTableSources,
+    schema: &SchemaColumnTypes,
+) -> Option<MysqlSchemaTableRef> {
+    if let Some(table_ref) = column.resolved_table_ref.as_ref() {
+        return Some(table_ref.clone());
+    }
+
+    match table_sources.resolve(&column.qualifier) {
+        Some(TableResolution::SchemaBacked { table_ref }) => Some(table_ref.clone()),
+        Some(TableResolution::Unsupported) => None,
+        None => resolve_current_database_qualified_mutation_table_ref(
+            table_sources,
+            schema,
+            &column.qualifier,
+        ),
+    }
 }
 
 fn collect_select_subquery_param_contexts(query: &SqlQuery, contexts: &mut Vec<Option<ColumnRef>>) {

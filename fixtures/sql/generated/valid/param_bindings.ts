@@ -76,7 +76,7 @@ export function paramRepeatedId(
   input: paramRepeatedId_Input,
 ): { sql: string; params: readonly [string, string] } {
   return {
-    sql: "\nSELECT\n  p.bigint_nn_col AS bigintNnCol,\n  p.varchar_255_nn_col AS varchar255NnCol,\n  p.varchar_320_nn_col AS varchar320NnCol\nFROM fixture_all_column_type AS p\nWHERE p.varchar_255_nn_col = ?\n  OR p.varchar_320_nn_col = ?;\n\n",
+    sql: "\nSELECT\n  p.bigint_nn_col AS bigintNnCol,\n  p.varchar_255_nn_col AS varchar255NnCol,\n  p.varchar_320_nn_col AS varchar320NnCol\nFROM fixture_all_column_type AS p\nWHERE p.varchar_255_nn_col = ?\n  OR p.varchar_255_nn_col = ?;\n\n",
     params: [input.searchText, input.searchText] as const,
   };
 }

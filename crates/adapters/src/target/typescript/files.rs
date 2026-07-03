@@ -5,6 +5,7 @@ use sqlay_app::TargetGenerator;
 use sqlay_core as core;
 
 use super::builders::render_generated_builder_file_contents;
+use super::type_mapping::resolve_type_mapping;
 
 /// TypeScript target generator.
 #[derive(Clone, Copy, Debug, Default)]
@@ -16,6 +17,8 @@ impl TargetGenerator for TypeScriptTargetGenerator {
         plan: &core::CompilationPlan,
         builders: &[core::CompiledBuilder],
     ) -> core::DiagnosticResult<core::GeneratedFiles> {
+        let _type_mapping =
+            resolve_type_mapping(plan.target().typescript().type_mapping(), builders)?;
         let mut builders_by_source_path: BTreeMap<PathBuf, Vec<&core::CompiledBuilder>> =
             BTreeMap::new();
 

@@ -1,6 +1,7 @@
 mod contexts;
 mod mutations;
 mod result_columns;
+mod schema_type_ref;
 mod tables;
 mod unsupported_contexts;
 
@@ -19,6 +20,7 @@ use super::schema_columns::{MysqlSchemaColumn, MysqlSchemaTableRef};
 use contexts::{ColumnRef, collect_query_param_contexts};
 pub(super) use mutations::{mutation_schema_table_refs, resolve_mutation_param_usage_metadata};
 pub(super) use result_columns::resolve_result_column_type_refs;
+pub(in crate::metadata::mysql::sqlx) use schema_type_ref::ResolvedSchemaTypeRef;
 use tables::{
     QuerySchemaTableRefResolution, SelectTableSources, resolve_query_schema_table_ref_status,
     select_from_query, select_table_sources,
@@ -87,18 +89,41 @@ pub(super) fn resolve_param_usage_metadata(
     let mut params = Vec::with_capacity(query.param_usages().len());
 
     for (usage, context) in query.param_usages().iter().zip(contexts) {
-        let type_ref = if let Some(value_type) = usage.value_type_override() {
-            core::CoreTypeRef::from(value_type)
+        let resolved = if let Some(value_type) = usage.value_type_override() {
+            let schema_column_reference = context.as_ref().and_then(|column| {
+                resolve_param_schema_type_ref(column, &table_sources, &schema)?
+                    .schema_column_reference
+            });
+            ResolvedSchemaTypeRef::new(core::CoreTypeRef::from(value_type), schema_column_reference)
         } else {
             resolve_inferred_param_type(query, usage, context.as_ref(), &table_sources, &schema)?
         };
-        params.push(core::DbParamUsage::new_type_ref(
-            usage.id().to_owned(),
-            type_ref,
-        ));
+        let mut param = core::DbParamUsage::new_type_ref(usage.id().to_owned(), resolved.type_ref);
+        if let Some(reference) = resolved.schema_column_reference {
+            param = param.with_schema_column_reference(reference);
+        }
+        params.push(param);
     }
 
     Ok(params)
+}
+
+fn resolve_param_schema_type_ref(
+    column: &ColumnRef,
+    table_sources: &SelectTableSources,
+    schema: &SchemaColumnTypes,
+) -> Option<ResolvedSchemaTypeRef> {
+    let QuerySchemaTableRefResolution::Resolved(table_ref) =
+        resolve_query_schema_table_ref_status(table_sources, schema, &column.qualifier)
+    else {
+        return None;
+    };
+    let type_ref = schema.get(&table_ref, &column.column)?;
+    Some(ResolvedSchemaTypeRef::schema_column(
+        type_ref,
+        &table_ref,
+        &column.column,
+    ))
 }
 
 fn resolve_inferred_param_type(
@@ -107,7 +132,7 @@ fn resolve_inferred_param_type(
     context: Option<&ColumnRef>,
     table_sources: &SelectTableSources,
     schema: &SchemaColumnTypes,
-) -> core::DiagnosticResult<core::CoreTypeRef> {
+) -> core::DiagnosticResult<ResolvedSchemaTypeRef> {
     let Some(column) = context else {
         return Err(param_usage_error(
             query,
@@ -118,6 +143,10 @@ fn resolve_inferred_param_type(
             ),
         ));
     };
+
+    if let Some(resolved) = resolve_param_schema_type_ref(column, table_sources, schema) {
+        return Ok(resolved);
+    }
 
     let table_ref =
         match resolve_query_schema_table_ref_status(table_sources, schema, &column.qualifier) {
@@ -147,10 +176,6 @@ fn resolve_inferred_param_type(
                 ));
             }
         };
-
-    if let Some(type_ref) = schema.get(&table_ref, &column.column) {
-        return Ok(type_ref);
-    }
 
     if !schema.has_table(&table_ref) {
         return Err(param_usage_error(

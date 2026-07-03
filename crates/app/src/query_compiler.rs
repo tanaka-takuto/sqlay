@@ -1,5 +1,6 @@
 use sqlay_core as core;
 
+use crate::compile::format_schema_column_reference;
 use crate::{MutationCompiler, QueryCompiler};
 
 /// Default application-owned query compiler.
@@ -132,19 +133,39 @@ fn compile_param_bindings(
                     ),
                 ));
             }
+            if existing.schema_column_reference() != resolved_usage.schema_column_reference() {
+                return Err(param_usage_error(
+                    source_location,
+                    source_usage,
+                    format!(
+                        "conflicting Param `{}` schema column references: first occurrence resolved from {} but later occurrence resolved from {}",
+                        source_usage.id(),
+                        format_schema_column_reference(existing.schema_column_reference()),
+                        format_schema_column_reference(resolved_usage.schema_column_reference())
+                    ),
+                ));
+            }
         } else {
-            input.push(core::InputField::new_type_ref(
+            let mut field = core::InputField::new_type_ref(
                 source_usage.id().to_owned(),
                 resolved_usage.type_ref().clone(),
                 nullable,
-            ));
+            );
+            if let Some(reference) = resolved_usage.schema_column_reference().cloned() {
+                field = field.with_schema_column_reference(reference);
+            }
+            input.push(field);
         }
 
-        params.push(core::ParamBinding::new_type_ref(
+        let mut param = core::ParamBinding::new_type_ref(
             source_usage.id().to_owned(),
             resolved_usage.type_ref().clone(),
             nullable,
-        ));
+        );
+        if let Some(reference) = resolved_usage.schema_column_reference().cloned() {
+            param = param.with_schema_column_reference(reference);
+        }
+        params.push(param);
     }
 
     Ok((input, params))
