@@ -19,9 +19,7 @@ use super::diagnostics::{param_usage_error, query_error};
 use super::schema_columns::{MysqlSchemaColumn, MysqlSchemaTableRef};
 use contexts::{ColumnRef, collect_query_param_contexts};
 pub(super) use mutations::{mutation_schema_table_refs, resolve_mutation_param_usage_metadata};
-pub(super) use result_columns::{
-    resolve_json_derived_result_columns, resolve_result_column_type_refs,
-};
+pub(super) use result_columns::resolve_result_column_hints;
 pub(in crate::metadata::mysql::sqlx) use schema_type_ref::ResolvedSchemaTypeRef;
 use tables::{
     QuerySchemaTableRefResolution, SelectTableSources, resolve_query_schema_table_ref_status,

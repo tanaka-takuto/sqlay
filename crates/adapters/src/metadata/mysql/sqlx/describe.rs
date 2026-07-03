@@ -4,9 +4,8 @@ use sqlay_core as core;
 
 use super::diagnostics::{mutation_error, query_error};
 use super::param_inference::{
-    ResolvedSchemaTypeRef, resolve_json_derived_result_columns,
-    resolve_mutation_param_usage_metadata, resolve_param_usage_metadata,
-    resolve_result_column_type_refs,
+    ResolvedSchemaTypeRef, resolve_mutation_param_usage_metadata, resolve_param_usage_metadata,
+    resolve_result_column_hints,
 };
 use super::result_mapping::map_mysql_result_column_metadata;
 use super::schema_columns::{
@@ -154,17 +153,17 @@ async fn describe_query_metadata(
         .await
         .map_err(|error| query_error(query, format!("failed to describe MySQL query: {error}")))?;
 
-    let result_type_refs = resolve_result_column_type_refs(query, &schema_columns)?;
-    let result_type_refs = if result_type_refs.len() == description.columns().len() {
-        result_type_refs
+    let result_column_hints = resolve_result_column_hints(query, &schema_columns)?;
+    let (result_type_refs, json_derived_columns) = if result_column_hints.type_refs.len()
+        == description.columns().len()
+        && result_column_hints.json_derived_columns.len() == description.columns().len()
+    {
+        (
+            result_column_hints.type_refs,
+            result_column_hints.json_derived_columns,
+        )
     } else {
-        Vec::new()
-    };
-    let json_derived_columns = resolve_json_derived_result_columns(query)?;
-    let json_derived_columns = if json_derived_columns.len() == description.columns().len() {
-        json_derived_columns
-    } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
 
     Ok(core::DbQueryMetadata::new(
@@ -211,13 +210,15 @@ fn map_mysql_result_column_metadata_with_schema_type_ref(
     schema_type_ref: Option<ResolvedSchemaTypeRef>,
     is_json_derived: bool,
 ) -> core::DbResultColumn {
+    if is_json_derived {
+        return core::DbResultColumn::new(name.to_owned(), core::CoreType::Unknown, nullable);
+    }
+
     let (type_ref, schema_column_reference) = schema_type_ref.map_or((None, None), |resolved| {
         (Some(resolved.type_ref), resolved.schema_column_reference)
     });
 
-    let mut column = if is_json_derived {
-        core::DbResultColumn::new(name.to_owned(), core::CoreType::Unknown, nullable)
-    } else if let Some(type_ref) = type_ref
+    let mut column = if let Some(type_ref) = type_ref
         && type_ref.enum_values().is_some()
     {
         core::DbResultColumn::new_type_ref(name.to_owned(), type_ref, nullable)
@@ -309,5 +310,26 @@ mod tests {
             &core::CoreTypeRef::from(core::CoreType::Unknown)
         );
         assert_eq!(column.nullable(), Some(true));
+    }
+
+    #[test]
+    fn json_derived_result_hint_does_not_attach_schema_column_reference() {
+        let column = map_mysql_result_column_metadata_with_schema_type_ref(
+            "shelf",
+            "LONGBLOB",
+            Some(true),
+            Some(ResolvedSchemaTypeRef {
+                type_ref: core::CoreTypeRef::from(core::CoreType::String),
+                schema_column_reference: Some(core::ColumnTypeReference::new(
+                    None,
+                    "books".to_owned(),
+                    "metadata".to_owned(),
+                )),
+            }),
+            true,
+        );
+
+        assert_eq!(column.ty(), core::CoreType::Unknown);
+        assert_eq!(column.schema_column_reference(), None);
     }
 }
