@@ -198,6 +198,10 @@ fn check_help_describes_config_discovery_and_database_url() {
     assert!(stdout.contains("database.urlEnv"), "stdout: {stdout}");
     assert!(stdout.contains("No files are written"), "stdout: {stdout}");
     assert!(
+        stdout.contains("sqlay check --format json"),
+        "stdout: {stdout}"
+    );
+    assert!(
         stdout.contains("preserves each input SQL path"),
         "stdout: {stdout}"
     );
@@ -265,6 +269,10 @@ fn compile_help_describes_output_writing_and_clean() {
     );
     assert!(stdout.contains("--clean"), "stdout: {stdout}");
     assert!(stdout.contains("stale generated files"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("sqlay compile --format json"),
+        "stdout: {stdout}"
+    );
     assert!(
         stdout.contains("skips stale generated file cleanup when no SQL files match"),
         "stdout: {stdout}"

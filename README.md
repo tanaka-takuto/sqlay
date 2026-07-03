@@ -112,6 +112,28 @@ does not execute SQL or depend on a database driver. See
 [`docs/query-execution.md`](./docs/query-execution.md) for a minimal
 `mysql2/promise` SELECT execution example.
 
+### Machine-Readable CLI Output
+
+`check` and `compile` default to human-readable output. For CI and automation, pass
+`--format json` or `--format=json`:
+
+```sh
+DATABASE_URL='mysql://user:password@host:3306/database' sqlay check --format json
+DATABASE_URL='mysql://user:password@host:3306/database' sqlay compile --format=json
+```
+
+JSON mode prints one JSON result envelope to stdout and leaves stderr empty for
+successful and failed `check` or `compile` runs. The envelope includes the sqlay
+product version, normalized command options, status, exit code, either a success
+summary or `null`, and structured diagnostics.
+
+`--format human` keeps the default stream contract: success summaries are printed
+to stdout and warnings or errors are printed to stderr. Unknown format values, such
+as `--format yaml`, are CLI usage errors. `--format` is intentionally limited to
+`check` and `compile`; there is no `--json` alias. See
+[ADR 0013](./docs/adr/0013-define-machine-readable-cli-format-output.md) for the
+accepted JSON contract.
+
 Dynamic values are written with paired inline `Param` markers around sample SQL
 expressions:
 
