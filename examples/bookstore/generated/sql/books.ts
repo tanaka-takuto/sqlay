@@ -5,7 +5,7 @@ type SqlParam = unknown;
 export type listAvailableBooks_Input = {
   discoveryFilter?: { $fragment: "staffPicksOnly" } | {
     $fragment: "byBookFormat";
-    format: string;
+    format: "hardcover" | "paperback" | "ebook";
   } | {
     $fragment: "byBookIds";
     ids: readonly [{ id: string }, ...{ id: string }[]];
@@ -17,7 +17,7 @@ export type listAvailableBooks_Row = {
   isbn: string;
   title: string;
   authorName: string;
-  format: string;
+  format: "hardcover" | "paperback" | "ebook";
   price: string;
   stockQuantity: number;
   averageRating: string;
@@ -80,7 +80,7 @@ export type findBookDetail_Row = {
   description: string | null;
   authorName: string;
   authorCountryCode: string | null;
-  format: string | null;
+  format: "hardcover" | "paperback" | "ebook" | null;
   price: string | null;
   publishedOn: string | null;
   seriesName: string | null;
@@ -125,7 +125,7 @@ export function listBooksNeedingRestock(
 export type listTopRatedBooks_Input = {
   discoveryFilter?: { $fragment: "staffPicksOnly" } | {
     $fragment: "byBookFormat";
-    format: string;
+    format: "hardcover" | "paperback" | "ebook";
   } | {
     $fragment: "byBookIds";
     ids: readonly [{ id: string }, ...{ id: string }[]];

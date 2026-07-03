@@ -5,7 +5,7 @@ type SqlParam = unknown;
 export type createOrder_Input = {
   customerId: string;
   orderNumber: string;
-  status: string;
+  status: "draft" | "paid" | "shipped" | "delivered" | "cancelled";
   currency: string;
   placedAt: string;
   paidAt: string | null;
@@ -16,7 +16,7 @@ export type createOrder_Input = {
 
 export function createOrder(
   input: createOrder_Input,
-): { sql: string; params: readonly [string, string, string, string, string, string | null, string | null, string | null, string | null] } {
+): { sql: string; params: readonly [string, string, "draft" | "paid" | "shipped" | "delivered" | "cancelled", string, string, string | null, string | null, string | null, string | null] } {
   return {
     sql: "\nINSERT INTO bookstore_orders (\n  customer_id,\n  order_number,\n  status,\n  currency,\n  placed_at,\n  paid_at,\n  shipped_at,\n  shipping_method,\n  gift_message\n) VALUES (\n  ?,\n  ?,\n  ?,\n  ?,\n  ?,\n  ?,\n  ?,\n  ?,\n  ?\n);\n\n",
     params: [input.customerId, input.orderNumber, input.status, input.currency, input.placedAt, input.paidAt, input.shippedAt, input.shippingMethod, input.giftMessage] as const,
@@ -30,7 +30,7 @@ export type findOrderById_Input = {
 export type findOrderById_Row = {
   orderId: string;
   orderNumber: string;
-  orderStatus: string;
+  orderStatus: "draft" | "paid" | "shipped" | "delivered" | "cancelled";
   currency: string;
   placedAt: string;
   paidAt: string | null;
@@ -57,7 +57,7 @@ export type findOrderByNumber_Input = {
 export type findOrderByNumber_Row = {
   orderId: string;
   orderNumber: string;
-  orderStatus: string;
+  orderStatus: "draft" | "paid" | "shipped" | "delivered" | "cancelled";
   currency: string;
   placedAt: string;
   paidAt: string | null;
@@ -145,16 +145,16 @@ export function createOrderItems(
 export type upsertOrderStatus_Input = {
   customerId: string;
   orderNumber: string;
-  initialStatus: string;
+  initialStatus: "draft" | "paid" | "shipped" | "delivered" | "cancelled";
   currency: string;
   placedAt: string;
-  nextStatus: string;
+  nextStatus: "draft" | "paid" | "shipped" | "delivered" | "cancelled";
   paidAt: string | null;
 };
 
 export function upsertOrderStatus(
   input: upsertOrderStatus_Input,
-): { sql: string; params: readonly [string, string, string, string, string, string, string | null] } {
+): { sql: string; params: readonly [string, string, "draft" | "paid" | "shipped" | "delivered" | "cancelled", string, string, "draft" | "paid" | "shipped" | "delivered" | "cancelled", string | null] } {
   return {
     sql: "\nINSERT INTO bookstore_orders (\n  customer_id,\n  order_number,\n  status,\n  currency,\n  placed_at\n) VALUES (\n  ?,\n  ?,\n  ?,\n  ?,\n  ?\n) ON DUPLICATE KEY UPDATE\n  status = ?,\n  paid_at = ?;\n\n",
     params: [input.customerId, input.orderNumber, input.initialStatus, input.currency, input.placedAt, input.nextStatus, input.paidAt] as const,

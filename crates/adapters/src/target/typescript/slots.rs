@@ -3,9 +3,10 @@ use std::fmt::Write as _;
 use sqlay_core as core;
 
 use super::literals::typescript_string_literal;
+use super::type_mapping::BuilderTypeMappingResolution;
 use super::types::{
     input_param_access, nested_slot_param_access, render_param_binding_input_field,
-    render_repeat_input_field, typescript_property_name,
+    render_slot_branch_repeat_input_field, typescript_property_name,
 };
 
 pub(super) const fn is_slot_query(query: &core::CompiledQuery) -> bool {
@@ -164,11 +165,15 @@ fn render_repeat_occurrence<F>(
     writeln!(output, "{indent}}}").expect("writing to String cannot fail");
 }
 
-pub(super) fn render_slot_input_field(output: &mut String, slot: &core::CompiledSlotDefinition) {
+pub(super) fn render_slot_input_field(
+    output: &mut String,
+    slot: &core::CompiledSlotDefinition,
+    type_mapping: Option<&BuilderTypeMappingResolution>,
+) {
     let branch_types = slot
         .branches()
         .iter()
-        .map(render_slot_branch_input_type)
+        .map(|branch| render_slot_branch_input_type(slot.id(), branch, type_mapping))
         .collect::<Vec<_>>();
     let slot_type = if branch_types.is_empty() {
         "never".to_owned()
@@ -185,11 +190,15 @@ pub(super) fn render_slot_input_field(output: &mut String, slot: &core::Compiled
     .expect("writing to String cannot fail");
 }
 
-fn render_slot_branch_input_type(branch: &core::CompiledSlotBranch) -> String {
+fn render_slot_branch_input_type(
+    slot_id: &str,
+    branch: &core::CompiledSlotBranch,
+    type_mapping: Option<&BuilderTypeMappingResolution>,
+) -> String {
     let fragment = typescript_string_literal(branch.target_id());
 
     let mut fields = String::new();
-    render_slot_branch_input_fields(&mut fields, branch);
+    render_slot_branch_input_fields(&mut fields, slot_id, branch, type_mapping);
 
     if fields.is_empty() {
         return format!("{{ $fragment: {fragment} }}");
@@ -203,7 +212,12 @@ fn render_slot_branch_input_type(branch: &core::CompiledSlotBranch) -> String {
     output
 }
 
-fn render_slot_branch_input_fields(output: &mut String, branch: &core::CompiledSlotBranch) {
+fn render_slot_branch_input_fields(
+    output: &mut String,
+    slot_id: &str,
+    branch: &core::CompiledSlotBranch,
+    type_mapping: Option<&BuilderTypeMappingResolution>,
+) {
     let params = unique_branch_params(branch);
     let mut rendered_params = Vec::new();
     let mut rendered_repeats = Vec::new();
@@ -212,58 +226,92 @@ fn render_slot_branch_input_fields(output: &mut String, branch: &core::CompiledS
         for param in segment.params() {
             render_branch_param_input_field(
                 output,
+                slot_id,
+                branch.target_id(),
                 &params,
                 param.input_name(),
                 &mut rendered_params,
+                type_mapping,
             );
         }
 
         if let Some(repeat) = branch.body().repeat_occurrences().get(index) {
             render_branch_repeat_input_field(
                 output,
+                slot_id,
                 branch,
                 repeat.repeat_id(),
                 &mut rendered_repeats,
+                type_mapping,
             );
         }
     }
 
     for param in &params {
-        render_branch_param_input_field(output, &params, param.input_name(), &mut rendered_params);
+        render_branch_param_input_field(
+            output,
+            slot_id,
+            branch.target_id(),
+            &params,
+            param.input_name(),
+            &mut rendered_params,
+            type_mapping,
+        );
     }
     for repeat in branch.repeats() {
-        render_branch_repeat_input_field(output, branch, repeat.id(), &mut rendered_repeats);
+        render_branch_repeat_input_field(
+            output,
+            slot_id,
+            branch,
+            repeat.id(),
+            &mut rendered_repeats,
+            type_mapping,
+        );
     }
 }
 
 fn render_branch_param_input_field(
     output: &mut String,
+    slot_id: &str,
+    target_id: &str,
     params: &[&core::ParamBinding],
     name: &str,
     rendered_params: &mut Vec<String>,
+    type_mapping: Option<&BuilderTypeMappingResolution>,
 ) {
     if rendered_params.iter().any(|rendered| rendered == name) {
         return;
     }
 
     if let Some(param) = params.iter().find(|param| param.input_name() == name) {
-        render_param_binding_input_field(output, "    ", param);
+        let annotation = type_mapping
+            .and_then(|mapping| mapping.slot_branch_param(slot_id, target_id, param.input_name()));
+        render_param_binding_input_field(output, "    ", param, annotation);
         rendered_params.push(param.input_name().to_owned());
     }
 }
 
 fn render_branch_repeat_input_field(
     output: &mut String,
+    slot_id: &str,
     branch: &core::CompiledSlotBranch,
     id: &str,
     rendered_repeats: &mut Vec<String>,
+    type_mapping: Option<&BuilderTypeMappingResolution>,
 ) {
     if rendered_repeats.iter().any(|rendered| rendered == id) {
         return;
     }
 
     if let Some(repeat) = branch.repeats().iter().find(|repeat| repeat.id() == id) {
-        render_repeat_input_field(output, "    ", repeat);
+        render_slot_branch_repeat_input_field(
+            output,
+            "    ",
+            slot_id,
+            branch.target_id(),
+            repeat,
+            type_mapping,
+        );
         rendered_repeats.push(repeat.id().to_owned());
     }
 }

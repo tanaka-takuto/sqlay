@@ -4,7 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use sqlay_app::TargetGenerator;
 use sqlay_core as core;
 
-use super::builders::render_generated_builder_file_contents;
+use super::builders::render_generated_builder_file_contents_with_type_mapping;
 use super::type_mapping::resolve_type_mapping;
 
 /// TypeScript target generator.
@@ -17,7 +17,7 @@ impl TargetGenerator for TypeScriptTargetGenerator {
         plan: &core::CompilationPlan,
         builders: &[core::CompiledBuilder],
     ) -> core::DiagnosticResult<core::GeneratedFiles> {
-        let _type_mapping =
+        let type_mapping =
             resolve_type_mapping(plan.target().typescript().type_mapping(), builders)?;
         let mut builders_by_source_path: BTreeMap<PathBuf, Vec<&core::CompiledBuilder>> =
             BTreeMap::new();
@@ -33,7 +33,10 @@ impl TargetGenerator for TypeScriptTargetGenerator {
         let mut files = Vec::with_capacity(builders_by_source_path.len());
         for (source_path, source_builders) in builders_by_source_path {
             let output_path = generated_typescript_path(plan.output_dir(), &source_path);
-            let contents = render_generated_builder_file_contents(&source_builders);
+            let contents = render_generated_builder_file_contents_with_type_mapping(
+                &source_builders,
+                &type_mapping,
+            );
             files.push(core::GeneratedFile::new(output_path, contents));
         }
 
