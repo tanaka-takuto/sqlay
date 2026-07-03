@@ -90,6 +90,25 @@ impl BuilderTypeMappingResolution {
     pub(in crate::target::typescript) fn dynamic_params_annotation(&self) -> Option<&str> {
         self.dynamic_params_annotation.as_deref()
     }
+
+    #[cfg(test)]
+    pub(in crate::target::typescript) fn slot_branch_param(
+        &self,
+        slot_id: &str,
+        target_id: &str,
+        param_name: &str,
+    ) -> Option<&str> {
+        self.slot_branches
+            .iter()
+            .find(|branch| branch.slot_id == slot_id && branch.target_id == target_id)
+            .and_then(|branch| {
+                branch
+                    .params
+                    .iter()
+                    .find(|param| param.name == param_name)
+                    .map(|param| param.ty.annotation.as_str())
+            })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

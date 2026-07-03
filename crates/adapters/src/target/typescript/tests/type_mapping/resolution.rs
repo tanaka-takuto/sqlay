@@ -190,6 +190,14 @@ fn slot_branch_param_column_override_counts_as_used() {
     .with_dynamic_body(dynamic_body)
     .with_source_path("sql/users.sql");
 
-    resolve_type_mapping(&mapping, &[core::CompiledBuilder::Query(query)])
+    let resolution = resolve_type_mapping(&mapping, &[core::CompiledBuilder::Query(query)])
         .expect("slot branch Param column override should be resolved as used");
+    let builder = resolution
+        .builder("listUsers")
+        .expect("builder mapping should be resolved");
+
+    assert_eq!(
+        builder.slot_branch_param("filter", "emailFilter", "email"),
+        Some("EmailAddress")
+    );
 }
