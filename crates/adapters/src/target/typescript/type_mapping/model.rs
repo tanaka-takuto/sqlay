@@ -27,6 +27,7 @@ pub(in crate::target::typescript) struct BuilderTypeMappingResolution {
     pub(super) inputs: Vec<NamedResolvedType>,
     pub(super) fixed_params: Vec<ResolvedTypeScriptType>,
     pub(super) repeats: Vec<RepeatTypeMappingResolution>,
+    pub(super) slot_branches: Vec<SlotBranchTypeMappingResolution>,
     pub(super) dynamic_params_annotation: Option<String>,
 }
 
@@ -39,6 +40,7 @@ impl BuilderTypeMappingResolution {
             inputs: Vec::new(),
             fixed_params: Vec::new(),
             repeats: Vec::new(),
+            slot_branches: Vec::new(),
             dynamic_params_annotation: None,
         }
     }
@@ -94,6 +96,14 @@ impl BuilderTypeMappingResolution {
 pub(in crate::target::typescript) struct RepeatTypeMappingResolution {
     pub(super) id: String,
     pub(super) fields: Vec<NamedResolvedType>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::target::typescript) struct SlotBranchTypeMappingResolution {
+    pub(super) slot_id: String,
+    pub(super) target_id: String,
+    pub(super) params: Vec<NamedResolvedType>,
+    pub(super) repeats: Vec<RepeatTypeMappingResolution>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

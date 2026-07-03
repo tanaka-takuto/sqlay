@@ -170,6 +170,17 @@ impl BuilderTypeMappingResolution {
                     .iter()
                     .flat_map(|repeat| repeat.fields.iter().map(|field| &field.ty)),
             )
+            .chain(
+                self.slot_branches
+                    .iter()
+                    .flat_map(|branch| branch.params.iter().map(|param| &param.ty)),
+            )
+            .chain(self.slot_branches.iter().flat_map(|branch| {
+                branch
+                    .repeats
+                    .iter()
+                    .flat_map(|repeat| repeat.fields.iter().map(|field| &field.ty))
+            }))
             .collect()
     }
 }

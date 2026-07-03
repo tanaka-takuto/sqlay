@@ -150,3 +150,46 @@ fn resolves_repeat_fields_without_narrowing_dynamic_params_array() {
     );
     assert_eq!(builder.repeat_field("lineItems", "sku"), Some("string"));
 }
+
+#[test]
+fn slot_branch_param_column_override_counts_as_used() {
+    let user_email = column_ref(None, "users", "email");
+    let mapping = core::TypeScriptTypeMappingConfig::new(
+        Vec::new(),
+        vec![column_override(user_email.clone(), "EmailAddress", None)],
+        Vec::new(),
+    );
+    let branch = core::CompiledSlotBranch::new(
+        "emailFilter".to_owned(),
+        vec![sql_segment(
+            " AND email = ?",
+            vec![
+                core::ParamBinding::new("email".to_owned(), core::CoreType::String, false)
+                    .with_schema_column_reference(user_email),
+            ],
+        )],
+    );
+    let dynamic_body = core::CompiledDynamicQuery::new(
+        vec![
+            sql_segment("SELECT id FROM users WHERE active = TRUE", Vec::new()),
+            sql_segment(";", Vec::new()),
+        ],
+        vec![core::CompiledSlotOccurrence::new("filter".to_owned())],
+        vec![core::CompiledSlotDefinition::new(
+            "filter".to_owned(),
+            vec![branch],
+        )],
+    );
+    let query = core::CompiledQuery::new(
+        core::QueryId::new("listUsers".to_owned()),
+        "SELECT id FROM users WHERE active = TRUE;".to_owned(),
+        core::Cardinality::Many,
+        Vec::new(),
+        Vec::new(),
+    )
+    .with_dynamic_body(dynamic_body)
+    .with_source_path("sql/users.sql");
+
+    resolve_type_mapping(&mapping, &[core::CompiledBuilder::Query(query)])
+        .expect("slot branch Param column override should be resolved as used");
+}

@@ -1,7 +1,10 @@
 use sqlay_core as core;
 
 use super::diagnostics::TypeMappingUsage;
-use super::model::{BuilderTypeMappingResolution, NamedResolvedType, RepeatTypeMappingResolution};
+use super::model::{
+    BuilderTypeMappingResolution, NamedResolvedType, RepeatTypeMappingResolution,
+    SlotBranchTypeMappingResolution,
+};
 use super::{display_path, find_named_override, resolve_surface_type};
 
 pub(super) fn resolve_builder_type_mapping(
@@ -44,6 +47,7 @@ pub(super) fn resolve_builder_type_mapping(
                 usage,
                 &mut resolution,
             );
+            resolve_slot_branches(query.dynamic_body(), mapping, usage, &mut resolution);
         }
         core::CompiledBuilder::Mutation(mutation) => {
             resolve_direct_inputs(
@@ -69,6 +73,7 @@ pub(super) fn resolve_builder_type_mapping(
                 usage,
                 &mut resolution,
             );
+            resolve_slot_branches(mutation.dynamic_body(), mapping, usage, &mut resolution);
         }
     }
 
@@ -228,6 +233,67 @@ fn resolve_direct_repeats(
     }
 }
 
+fn resolve_slot_branches(
+    dynamic_body: Option<&core::CompiledDynamicQuery>,
+    mapping: &core::TypeScriptTypeMappingConfig,
+    usage: &mut TypeMappingUsage,
+    resolution: &mut BuilderTypeMappingResolution,
+) {
+    let Some(dynamic_body) = dynamic_body else {
+        return;
+    };
+
+    for slot in dynamic_body.slots() {
+        for branch in slot.branches() {
+            let mut branch_resolution = SlotBranchTypeMappingResolution {
+                slot_id: slot.id().to_owned(),
+                target_id: branch.target_id().to_owned(),
+                params: Vec::new(),
+                repeats: Vec::with_capacity(branch.repeats().len()),
+            };
+
+            for param in unique_branch_params(branch) {
+                let ty = resolve_surface_type(
+                    None,
+                    param.schema_column_reference(),
+                    param.type_ref(),
+                    param.is_nullable(),
+                    mapping,
+                    usage,
+                );
+                branch_resolution.params.push(NamedResolvedType {
+                    name: param.input_name().to_owned(),
+                    ty,
+                });
+            }
+
+            for repeat in branch.repeats() {
+                let mut fields = Vec::with_capacity(repeat.fields().len());
+                for field in repeat.fields() {
+                    let ty = resolve_surface_type(
+                        None,
+                        field.schema_column_reference(),
+                        field.type_ref(),
+                        field.is_nullable(),
+                        mapping,
+                        usage,
+                    );
+                    fields.push(NamedResolvedType {
+                        name: field.input_name().to_owned(),
+                        ty,
+                    });
+                }
+                branch_resolution.repeats.push(RepeatTypeMappingResolution {
+                    id: repeat.id().to_owned(),
+                    fields,
+                });
+            }
+
+            resolution.slot_branches.push(branch_resolution);
+        }
+    }
+}
+
 fn unique_param_schema_reference<'a>(
     input_name: &str,
     params: &'a [core::ParamBinding],
@@ -240,4 +306,21 @@ fn unique_param_schema_reference<'a>(
     references
         .all(|reference| reference == first)
         .then_some(first)
+}
+
+fn unique_branch_params(branch: &core::CompiledSlotBranch) -> Vec<&core::ParamBinding> {
+    let mut params = Vec::new();
+
+    for segment in branch.body().base_segments() {
+        for param in segment.params() {
+            if !params
+                .iter()
+                .any(|existing: &&core::ParamBinding| existing.input_name() == param.input_name())
+            {
+                params.push(param);
+            }
+        }
+    }
+
+    params
 }
