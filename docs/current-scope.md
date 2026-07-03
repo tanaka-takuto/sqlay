@@ -185,7 +185,8 @@ or nested Repeat ranges.
 
 [ADR 0012](./adr/0012-define-configurable-typescript-type-mapping-overrides.md)
 defines the accepted direction for configurable TypeScript type annotation
-overrides.
+overrides. See [TypeScript Type Mapping](./typescript-type-mapping.md) for
+user-facing configuration guidance.
 
 Type mapping overrides are a TypeScript target feature. They change generated
 TypeScript type annotations for result rows, input fields, Repeat item fields, and

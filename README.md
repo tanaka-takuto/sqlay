@@ -112,6 +112,23 @@ does not execute SQL or depend on a database driver. See
 [`docs/query-execution.md`](./docs/query-execution.md) for a minimal
 `mysql2/promise` SELECT execution example.
 
+### TypeScript Type Mapping
+
+`target.typescript.typeMapping` can override generated TypeScript annotations for
+Core types, schema-backed columns, builder result fields, direct Param inputs, and
+Repeat item fields. This is useful for schema-backed enum literal unions, custom
+project types, and explicit `decimal` or `int64` to `number` opt-ins.
+
+Overrides affect generated TypeScript annotations only. They do not configure
+`mysql2`, parse SELECT results, validate inputs at runtime, or change generated SQL.
+When a nullable field is overridden, generated code preserves nullability as
+`CustomType | null`. Inline Param `valueType` remains a sqlay Core type hint such
+as `decimal` or `datetime`; it is not a TypeScript type override.
+
+See [`docs/typescript-type-mapping.md`](./docs/typescript-type-mapping.md) for the
+full config shape, override priority, import rules, precision-risk notes, and the
+runtime responsibility boundary.
+
 ### Machine-Readable CLI Output
 
 `check` and `compile` default to human-readable output. For CI and automation, pass
