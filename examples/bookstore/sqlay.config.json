@@ -11,6 +11,13 @@
     "urlEnv": "DATABASE_URL"
   },
   "target": {
-    "language": "typescript"
+    "language": "typescript",
+    "typescript": {
+      "typeMapping": {
+        "core": {
+          "decimal": "number"
+        }
+      }
+    }
   }
 }

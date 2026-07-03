@@ -94,6 +94,16 @@ import {
   typeMetadataOddColumnNames,
   typeMetadataSingleRow,
 } from "./generated/valid/type_metadata_matrix";
+import {
+  type typeMappingOverrideRows_Input,
+  type typeMappingOverrideSlotSearch_Input,
+  type typeMappingOverrideSlotSearch_Output,
+  type typeMappingOverrides_Input,
+  type typeMappingOverrides_Output,
+  typeMappingOverrideRows,
+  typeMappingOverrideSlotSearch,
+  typeMappingOverrides,
+} from "./generated-type-mapping/valid/type_mapping_overrides";
 
 type Assert<T extends true> = T;
 type IsExact<A, B> =
@@ -180,6 +190,75 @@ type RepeatFragmentSlotSearchInputContract = Assert<
 type RepeatFragmentSlotSearchReturnContract = Assert<
   IsExact<
     ReturnType<typeof repeatFragmentSlotSearch>,
+    { sql: string; params: readonly unknown[] }
+  >
+>;
+type TypeMappingOverridesInputContract = Assert<
+  IsExact<
+    typeMappingOverrides_Input,
+    {
+      minimumAmount: import("@fixtures/domain-types").FixtureAmount;
+      parentId: number;
+    }
+  >
+>;
+type TypeMappingOverridesOutputContract = Assert<
+  IsExact<
+    typeMappingOverrides_Output,
+    {
+      idNumber: number;
+      decimalNumber: number;
+      enumState: "one" | "two";
+      nullableEnumState: "one" | "two" | null;
+      setFlags: string;
+      fixtureLabel: import("@fixtures/domain-types").FixtureLabel;
+      nullableFixtureLabel: import("@fixtures/domain-types").FixtureLabel | null;
+      builderLocalAmount: import("@fixtures/domain-types").FixtureAmount | null;
+      qualifiedChildLabel: import("@fixtures/domain-types").QualifiedChildLabel;
+    } | null
+  >
+>;
+type TypeMappingOverrideRowsInputContract = Assert<
+  IsExact<
+    typeMappingOverrideRows_Input,
+    {
+      rows: readonly [
+        {
+          childId: number;
+          parentId: number;
+          childLabel: import("@fixtures/domain-types").QualifiedChildLabel;
+          childAmount: import("@fixtures/domain-types").FixtureAmount;
+        },
+        ...{
+          childId: number;
+          parentId: number;
+          childLabel: import("@fixtures/domain-types").QualifiedChildLabel;
+          childAmount: import("@fixtures/domain-types").FixtureAmount;
+        }[],
+      ];
+    }
+  >
+>;
+type TypeMappingOverrideRowsReturnContract = Assert<
+  IsExact<
+    ReturnType<typeof typeMappingOverrideRows>,
+    { sql: string; params: readonly unknown[] }
+  >
+>;
+type TypeMappingOverrideSlotSearchInputContract = Assert<
+  IsExact<
+    typeMappingOverrideSlotSearch_Input,
+    {
+      labelFilter?: {
+        $fragment: "typeMappingFixtureLabel";
+        fixtureLabel: import("@fixtures/domain-types").FixtureLabel;
+      };
+    }
+  >
+>;
+type TypeMappingOverrideSlotSearchReturnContract = Assert<
+  IsExact<
+    ReturnType<typeof typeMappingOverrideSlotSearch>,
     { sql: string; params: readonly unknown[] }
   >
 >;
@@ -475,6 +554,46 @@ const repeatFragmentSlotSearchParams: readonly unknown[] =
   repeatFragmentSlotSearchQuery.params;
 const repeatFragmentSlotSearchOutput: repeatFragmentSlotSearch_Output = [];
 
+const typeMappingOverridesInput: typeMappingOverrides_Input = {
+  minimumAmount: 10.5,
+  parentId: 1,
+};
+const typeMappingOverridesQuery = typeMappingOverrides(typeMappingOverridesInput);
+const typeMappingOverridesParams: readonly [
+  import("@fixtures/domain-types").FixtureAmount,
+  number,
+] = typeMappingOverridesQuery.params;
+const typeMappingOverridesOutput: typeMappingOverrides_Output = null;
+
+const typeMappingOverrideRowsInput: typeMappingOverrideRows_Input = {
+  rows: [
+    {
+      childId: 700,
+      parentId: 1,
+      childLabel: "child-type-mapping",
+      childAmount: 12.34,
+    },
+  ],
+};
+const typeMappingOverrideRowsQuery = typeMappingOverrideRows(
+  typeMappingOverrideRowsInput,
+);
+const typeMappingOverrideRowsParams: readonly unknown[] =
+  typeMappingOverrideRowsQuery.params;
+
+const typeMappingOverrideSlotSearchInput: typeMappingOverrideSlotSearch_Input = {
+  labelFilter: {
+    $fragment: "typeMappingFixtureLabel",
+    fixtureLabel: "varchar-255-nn-a",
+  },
+};
+const typeMappingOverrideSlotSearchQuery = typeMappingOverrideSlotSearch(
+  typeMappingOverrideSlotSearchInput,
+);
+const typeMappingOverrideSlotSearchParams: readonly unknown[] =
+  typeMappingOverrideSlotSearchQuery.params;
+const typeMappingOverrideSlotSearchOutput: typeMappingOverrideSlotSearch_Output = [];
+
 const slotRuntimeSearchInput: slotRuntimeSearch_Input = {
   minId: "1",
   state: "state_a",
@@ -607,6 +726,11 @@ void repeatRepeatedIdEmissionParams;
 void repeatRepeatedIdEmissionOutput;
 void repeatFragmentSlotSearchParams;
 void repeatFragmentSlotSearchOutput;
+void typeMappingOverridesParams;
+void typeMappingOverridesOutput;
+void typeMappingOverrideRowsParams;
+void typeMappingOverrideSlotSearchParams;
+void typeMappingOverrideSlotSearchOutput;
 void slotRuntimeSearchParams;
 void slotRuntimeSearchOutput;
 void slotRuntimeOptionalFilterQuery;

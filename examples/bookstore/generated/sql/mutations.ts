@@ -105,7 +105,7 @@ export function deleteUnapprovedReview(
 }
 
 export type createOrderItems_Input = {
-  items: readonly [{ orderId: string; bookId: string; quantity: number; unitPrice: string; discountAmount: string | null }, ...{ orderId: string; bookId: string; quantity: number; unitPrice: string; discountAmount: string | null }[]];
+  items: readonly [{ orderId: string; bookId: string; quantity: number; unitPrice: number; discountAmount: number | null }, ...{ orderId: string; bookId: string; quantity: number; unitPrice: number; discountAmount: number | null }[]];
 };
 
 export function createOrderItems(

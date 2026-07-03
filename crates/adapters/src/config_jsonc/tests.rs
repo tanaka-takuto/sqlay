@@ -25,6 +25,8 @@ const VALID_CONFIG: &str = r#"
   }
 }
 "#;
+const TYPE_MAPPING_INVALID_CONFIG: &str =
+    include_str!("../../../../fixtures/sql/sqlay.type-mapping.invalid.config.json");
 
 mod parser {
     use super::*;
@@ -408,6 +410,24 @@ mod validation {
         assert!(messages.contains("unknown config field `target.typescript.typeMapping.builders.listOrders.params.minimumAmount.import.alias`; supported fields are `from` and `name`"));
         assert!(messages.contains("unknown config field `target.typescript.typeMapping.builders.listOrders.params.minimumAmount.nullable`; supported fields are `type` and `import`"));
         assert!(messages.contains("unknown config field `target.typescript.typeMapping.builders.listOrders.repeats.lineItems.params`; supported fields are `fields`"));
+    }
+
+    #[test]
+    fn rejects_invalid_typescript_type_mapping_fixture_config() {
+        let report = JsoncConfigLoader::parse_str(TYPE_MAPPING_INVALID_CONFIG)
+            .expect_err("invalid TypeScript type mapping fixture config should be rejected");
+        let messages = diagnostic_messages(&report);
+
+        assert!(messages.contains("unsupported config field `target.typescript.typeMapping.core.money`; supported core type keys are `bool`, `int32`, `int64`, `float64`, `decimal`, `string`, `bytes`, `date`, `time`, `datetime`, `json`, and `unknown`"));
+        assert!(messages.contains(
+            "config field `target.typescript.typeMapping.columns.orders` must use `table.column` or `database.table.column`"
+        ));
+        assert!(messages.contains("config field `target.typescript.typeMapping.builders.typeMappingOverrides.fields.builderLocalAmount.type` value `FixtureAmount | null` must be a supported TypeScript primitive or portable type identifier matching `^[A-Za-z_][A-Za-z0-9_]*$`"));
+        assert!(messages.contains("config field `target.typescript.typeMapping.builders.typeMappingOverrides.params.minimumAmount.import.from` value `./types` must be a non-relative module specifier"));
+        assert!(messages.contains("config field `target.typescript.typeMapping.builders.typeMappingOverrides.params.minimumAmount.import.name` value `Amount` must match `type` value `FixtureAmount`; import aliases are not supported"));
+        assert!(messages.contains("unknown config field `target.typescript.typeMapping.builders.typeMappingOverrides.params.minimumAmount.import.alias`; supported fields are `from` and `name`"));
+        assert!(messages.contains("unknown config field `target.typescript.typeMapping.builders.typeMappingOverrides.params.minimumAmount.nullable`; supported fields are `type` and `import`"));
+        assert!(messages.contains("unknown config field `target.typescript.typeMapping.builders.typeMappingOverrides.repeats.rows.params`; supported fields are `fields`"));
     }
 }
 

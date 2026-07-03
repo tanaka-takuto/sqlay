@@ -1,0 +1,59 @@
+{
+  "source": {
+    "include": ["valid/type_mapping_overrides.sql"],
+    "exclude": []
+  },
+  "output": {
+    "dir": "generated-type-mapping-invalid"
+  },
+  "database": {
+    "dialect": "mysql",
+    "urlEnv": "DATABASE_URL"
+  },
+  "target": {
+    "language": "typescript",
+    "typescript": {
+      "typeMapping": {
+        "columns": {
+          "fixture_all_column_type.missing_col": "MissingColumn"
+        },
+        "builders": {
+          "missingBuilder": {
+            "fields": {
+              "field": "FieldType"
+            }
+          },
+          "typeMappingOverrides": {
+            "fields": {
+              "idNumber": {
+                "type": "ConflictingType",
+                "import": {
+                  "from": "@fixtures/conflict-a",
+                  "name": "ConflictingType"
+                }
+              },
+              "decimalNumber": {
+                "type": "ConflictingType",
+                "import": {
+                  "from": "@fixtures/conflict-b",
+                  "name": "ConflictingType"
+                }
+              },
+              "missingField": "MissingField"
+            },
+            "params": {
+              "missingParam": "MissingParam"
+            },
+            "repeats": {
+              "missingRows": {
+                "fields": {
+                  "childAmount": "FixtureAmount"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

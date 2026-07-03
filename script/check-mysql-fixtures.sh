@@ -163,6 +163,7 @@ trap 'rm -rf "$tmp_root"' EXIT HUP INT TERM
 
 fixture_root=$repo_root/fixtures/sql
 tmp_fixture=$tmp_root/sql
+tmp_type_mapping_fixture=$tmp_root/sql-type-mapping
 
 cp -R "$fixture_root" "$tmp_fixture"
 cp "$tmp_fixture/sqlay.valid.config.json" "$tmp_fixture/sqlay.config.json"
@@ -176,6 +177,16 @@ load_mysql_file "$fixture_root/seed.sql"
   DATABASE_URL=$DATABASE_URL cargo run --manifest-path "$repo_root/Cargo.toml" --locked -- compile
 )
 compare_directories "$fixture_root/generated" "$tmp_fixture/generated"
+
+cp -R "$fixture_root" "$tmp_type_mapping_fixture"
+cp "$tmp_type_mapping_fixture/sqlay.type-mapping.config.json" "$tmp_type_mapping_fixture/sqlay.config.json"
+rm -rf "$tmp_type_mapping_fixture/generated-type-mapping"
+(
+  cd "$tmp_type_mapping_fixture/valid/nested"
+  DATABASE_URL=$DATABASE_URL cargo run --manifest-path "$repo_root/Cargo.toml" --locked -- compile
+)
+compare_directories "$fixture_root/generated-type-mapping" "$tmp_type_mapping_fixture/generated-type-mapping"
 cd "$repo_root"
 cargo test --locked -p sqlay-adapters --all-features --tests -- --ignored --nocapture
 npm exec -- tsc --noEmit --project "$tmp_fixture/tsconfig.json"
+npm exec -- tsc --noEmit --project "$tmp_type_mapping_fixture/tsconfig.json"

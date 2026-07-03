@@ -1,0 +1,53 @@
+{
+  "source": {
+    "include": ["valid/type_mapping_overrides.sql"],
+    "exclude": []
+  },
+  "output": {
+    "dir": "generated-type-mapping-invalid"
+  },
+  "database": {
+    "dialect": "mysql",
+    "urlEnv": "DATABASE_URL"
+  },
+  "target": {
+    "language": "typescript",
+    "typescript": {
+      "typeMapping": {
+        "core": {
+          "money": "MoneyAmount"
+        },
+        "columns": {
+          "orders": "OrderType"
+        },
+        "builders": {
+          "typeMappingOverrides": {
+            "fields": {
+              "builderLocalAmount": {
+                "type": "FixtureAmount | null"
+              }
+            },
+            "params": {
+              "minimumAmount": {
+                "type": "FixtureAmount",
+                "import": {
+                  "from": "./types",
+                  "name": "Amount",
+                  "alias": "FixtureAmount"
+                },
+                "nullable": true
+              }
+            },
+            "repeats": {
+              "rows": {
+                "params": {
+                  "childAmount": "FixtureAmount"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

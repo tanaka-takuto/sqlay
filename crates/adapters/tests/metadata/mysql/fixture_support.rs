@@ -24,12 +24,21 @@ pub(super) const QUERY_FIXTURES: &[&str] = &[
     include_str!("../../../../../fixtures/sql/valid/param_bindings.sql"),
     include_str!("../../../../../fixtures/sql/valid/slot_runtime.sql"),
     include_str!("../../../../../fixtures/sql/valid/mutation_builders.sql"),
+    include_str!("../../../../../fixtures/sql/valid/type_mapping_overrides.sql"),
 ];
 
 pub(super) const VALID_CONFIG: &str =
     include_str!("../../../../../fixtures/sql/sqlay.valid.config.json");
 pub(super) const INVALID_CONFIG: &str =
     include_str!("../../../../../fixtures/sql/sqlay.invalid.config.json");
+pub(super) const TYPE_MAPPING_CONFIG: &str =
+    include_str!("../../../../../fixtures/sql/sqlay.type-mapping.config.json");
+pub(super) const TYPE_MAPPING_INVALID_CONFIG: &str =
+    include_str!("../../../../../fixtures/sql/sqlay.type-mapping.invalid.config.json");
+pub(super) const TYPE_MAPPING_INVALID_USAGE_CONFIG: &str =
+    include_str!("../../../../../fixtures/sql/sqlay.type-mapping.invalid-usage.config.json");
+pub(super) const TYPE_MAPPING_OVERRIDES: &str =
+    include_str!("../../../../../fixtures/sql/valid/type_mapping_overrides.sql");
 pub(super) const FRAGMENT_PARAM_INFERENCE_FAILURE: &str =
     include_str!("../../../../../fixtures/sql/invalid/fragment_param_inference_failure.sql");
 pub(super) const MUTATION_UNSUPPORTED_INFERENCE_CONTEXT: &str =

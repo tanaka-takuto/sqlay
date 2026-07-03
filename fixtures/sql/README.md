@@ -10,6 +10,12 @@ test fixtures, not user-facing examples.
 - `sqlay.valid.config.json` compiles `valid/**/*.sql`.
 - `sqlay.invalid.config.json` points at `invalid/**/*.sql` for source-level
   diagnostics fixtures.
+- `sqlay.type-mapping.config.json` compiles the dedicated TypeScript type mapping
+  override fixture into `generated-type-mapping/`.
+- `sqlay.type-mapping.invalid.config.json` covers config-level type mapping
+  diagnostics.
+- `sqlay.type-mapping.invalid-usage.config.json` covers generation-time unused,
+  unknown, and conflicting type mapping diagnostics.
 - `valid/type_metadata_matrix.sql` contains `@sqlay` query blocks that exercise
   result metadata for direct columns, aliases, joins, expressions, aggregate
   expressions, nullable columns, non-null columns, non-identifier column names, and
@@ -31,9 +37,16 @@ test fixtures, not user-facing examples.
 - `valid/repeat_builders.sql` exercises valid Repeat builders, including dynamic
   `IN` lists, bulk `VALUES` rows, Fragment-contained Repeat, repeated Repeat IDs,
   non-empty array inputs, runtime empty-array guards, and Repeat parameter order.
+- `valid/type_mapping_overrides.sql` exercises schema-backed enum literal unions,
+  SET string defaults, Core type overrides, column overrides, builder-local field
+  and Param overrides, Repeat item overrides, schema-qualified column references,
+  nullable overrides, fixed params tuple overrides, and dynamic Slot/Repeat params
+  arrays.
 - `valid/nested/path_mapping.sql` verifies that generated output preserves nested
   config-relative source paths.
 - `generated/` contains committed generated TypeScript expected artifacts.
+- `generated-type-mapping/` contains committed generated TypeScript expected
+  artifacts for the dedicated type mapping override config.
 - `invalid/` contains negative SQL source, Param, Slot/Fragment, mutation, and
   Repeat diagnostics fixtures.
 
