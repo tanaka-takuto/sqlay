@@ -265,6 +265,44 @@ fn query_compiler_rejects_repeated_param_ids_with_conflicting_nullability() {
 }
 
 #[test]
+fn query_compiler_rejects_repeated_param_ids_with_conflicting_schema_column_references() {
+    let query = core::RawQuery::new(
+        core::QueryMetadata::new("findUser".to_owned(), None),
+        "SELECT id FROM users WHERE email = ? OR email = ?;".to_owned(),
+    )
+    .with_param_usages(vec![
+        core::ParamUsage::new(
+            "email".to_owned(),
+            None,
+            false,
+            core::SourceLocation::unknown(),
+        ),
+        core::ParamUsage::new(
+            "email".to_owned(),
+            None,
+            false,
+            core::SourceLocation::unknown(),
+        ),
+    ]);
+    let analysis = core::AnalyzedQuery::new(core::Cardinality::Many);
+    let metadata = core::DbQueryMetadata::new(Vec::new()).with_param_usages(vec![
+        core::DbParamUsage::new("email".to_owned(), core::CoreType::String)
+            .with_schema_column_reference(column_ref(None, "users", "email")),
+        core::DbParamUsage::new("email".to_owned(), core::CoreType::String)
+            .with_schema_column_reference(column_ref(None, "contacts", "email")),
+    ]);
+
+    let report = DefaultQueryCompiler
+        .compile(&query, &analysis, &metadata)
+        .expect_err("conflicting repeated Param schema column references should be rejected");
+
+    assert_eq!(
+        diagnostic_messages(&report),
+        "conflicting Param `email` schema column references: first occurrence resolved from users.email but later occurrence resolved from contacts.email"
+    );
+}
+
+#[test]
 fn query_compiler_uses_inferred_cardinality_when_metadata_has_no_override() {
     let compiled = compile_query(None, core::Cardinality::Many);
 

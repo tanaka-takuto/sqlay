@@ -10,8 +10,10 @@ use super::slot_variants::{
 mod conflicts;
 
 use conflicts::{
-    mutation_param_nullability_conflict_error, mutation_param_type_conflict_error,
-    param_nullability_conflict_error, param_type_conflict_error,
+    mutation_param_nullability_conflict_error,
+    mutation_param_schema_column_reference_conflict_error, mutation_param_type_conflict_error,
+    param_nullability_conflict_error, param_schema_column_reference_conflict_error,
+    param_type_conflict_error,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -100,6 +102,16 @@ pub(super) fn validate_expanded_variant_param_bindings(
                     source_usage,
                     existing,
                     nullable,
+                    occurrence,
+                ));
+            }
+            if existing.schema_column_reference.as_ref() != resolved_usage.schema_column_reference()
+            {
+                return Err(param_schema_column_reference_conflict_error(
+                    query,
+                    source_usage,
+                    existing,
+                    resolved_usage.schema_column_reference(),
                     occurrence,
                 ));
             }
@@ -194,6 +206,16 @@ pub(super) fn validate_expanded_mutation_variant_param_bindings(
                     source_usage,
                     existing,
                     nullable,
+                    occurrence,
+                ));
+            }
+            if existing.schema_column_reference.as_ref() != resolved_usage.schema_column_reference()
+            {
+                return Err(mutation_param_schema_column_reference_conflict_error(
+                    mutation,
+                    source_usage,
+                    existing,
+                    resolved_usage.schema_column_reference(),
                     occurrence,
                 ));
             }

@@ -77,6 +77,7 @@ pub struct DbResultColumn {
 
 impl PartialEq for DbResultColumn {
     fn eq(&self, other: &Self) -> bool {
+        // Schema column references are provenance metadata and do not define column identity.
         self.name == other.name
             && self.type_ref == other.type_ref
             && self.nullable == other.nullable
@@ -173,6 +174,7 @@ pub struct DbParamUsage {
 
 impl PartialEq for DbParamUsage {
     fn eq(&self, other: &Self) -> bool {
+        // Schema column references are provenance metadata and do not define Param usage identity.
         self.id == other.id && self.type_ref == other.type_ref
     }
 }

@@ -276,5 +276,13 @@ mod tests {
             column.type_ref(),
             &core::CoreTypeRef::from(core::CoreType::Bool)
         );
+        assert_eq!(
+            column.schema_column_reference(),
+            Some(&core::ColumnTypeReference::new(
+                None,
+                "fixture".to_owned(),
+                "boolCol".to_owned(),
+            ))
+        );
     }
 }

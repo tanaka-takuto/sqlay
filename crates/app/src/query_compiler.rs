@@ -132,6 +132,18 @@ fn compile_param_bindings(
                     ),
                 ));
             }
+            if existing.schema_column_reference() != resolved_usage.schema_column_reference() {
+                return Err(param_usage_error(
+                    source_location,
+                    source_usage,
+                    format!(
+                        "conflicting Param `{}` schema column references: first occurrence resolved from {} but later occurrence resolved from {}",
+                        source_usage.id(),
+                        format_schema_column_reference(existing.schema_column_reference()),
+                        format_schema_column_reference(resolved_usage.schema_column_reference())
+                    ),
+                ));
+            }
         } else {
             let mut field = core::InputField::new_type_ref(
                 source_usage.id().to_owned(),
@@ -168,6 +180,18 @@ fn source_error(
     }
 
     core::DiagnosticReport::new(diagnostic)
+}
+
+fn format_schema_column_reference(reference: Option<&core::ColumnTypeReference>) -> String {
+    reference.map_or_else(
+        || "no schema column reference".to_owned(),
+        |reference| {
+            reference.database().map_or_else(
+                || format!("{}.{}", reference.table(), reference.column()),
+                |database| format!("{}.{}.{}", database, reference.table(), reference.column()),
+            )
+        },
+    )
 }
 
 fn param_usage_error(

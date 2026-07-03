@@ -7,6 +7,13 @@ use crate::compile::slot_variants::{
     ExpandedParamOccurrence, ExpandedRepeatParamOccurrence,
 };
 
+mod schema_reference;
+
+pub(super) use schema_reference::{
+    mutation_param_schema_column_reference_conflict_error,
+    param_schema_column_reference_conflict_error,
+};
+
 pub(super) fn param_type_conflict_error(
     query: &core::RawQuery,
     usage: &core::ParamUsage,

@@ -14,6 +14,8 @@ use super::*;
 use std::collections::HashMap;
 use std::path::Path;
 
+mod schema_column_reference;
+
 #[test]
 fn query_summary_counts_param_placeholders_and_input_fields_separately() {
     let query = core::CompiledQuery::new(

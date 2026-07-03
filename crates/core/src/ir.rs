@@ -266,6 +266,7 @@ pub struct InputField {
 
 impl PartialEq for InputField {
     fn eq(&self, other: &Self) -> bool {
+        // Schema column references are provenance metadata and do not define input identity.
         self.name == other.name
             && self.type_ref == other.type_ref
             && self.nullable == other.nullable
@@ -341,6 +342,7 @@ pub struct ParamBinding {
 
 impl PartialEq for ParamBinding {
     fn eq(&self, other: &Self) -> bool {
+        // Schema column references are provenance metadata and do not define Param identity.
         self.input_name == other.input_name
             && self.type_ref == other.type_ref
             && self.nullable == other.nullable
@@ -416,6 +418,7 @@ pub struct ResultColumn {
 
 impl PartialEq for ResultColumn {
     fn eq(&self, other: &Self) -> bool {
+        // Schema column references are provenance metadata and do not define result identity.
         self.name == other.name
             && self.type_ref == other.type_ref
             && self.nullable == other.nullable
@@ -561,6 +564,9 @@ impl fmt::Debug for CoreTypeRef {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 /// Ordered value set for a schema-backed enum type.
 #[derive(Clone, Debug, Eq, PartialEq)]
