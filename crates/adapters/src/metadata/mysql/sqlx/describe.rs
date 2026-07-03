@@ -4,8 +4,8 @@ use sqlay_core as core;
 
 use super::diagnostics::{mutation_error, query_error};
 use super::param_inference::{
-    ResolvedResultColumnTypeRef, resolve_mutation_param_usage_metadata,
-    resolve_param_usage_metadata, resolve_result_column_type_refs,
+    ResolvedSchemaTypeRef, resolve_mutation_param_usage_metadata, resolve_param_usage_metadata,
+    resolve_result_column_type_refs,
 };
 use super::result_mapping::map_mysql_result_column_metadata;
 use super::schema_columns::{
@@ -200,13 +200,10 @@ fn map_mysql_result_column_metadata_with_schema_type_ref(
     name: &str,
     type_name: &str,
     nullable: Option<bool>,
-    schema_type_ref: Option<ResolvedResultColumnTypeRef>,
+    schema_type_ref: Option<ResolvedSchemaTypeRef>,
 ) -> core::DbResultColumn {
     let (type_ref, schema_column_reference) = schema_type_ref.map_or((None, None), |resolved| {
-        (
-            Some(resolved.type_ref),
-            Some(resolved.schema_column_reference),
-        )
+        (Some(resolved.type_ref), resolved.schema_column_reference)
     });
 
     let mut column = if let Some(type_ref) = type_ref
@@ -251,9 +248,7 @@ async fn describe_mutation_param_usages(
 mod tests {
     use sqlay_core as core;
 
-    use super::{
-        ResolvedResultColumnTypeRef, map_mysql_result_column_metadata_with_schema_type_ref,
-    };
+    use super::{ResolvedSchemaTypeRef, map_mysql_result_column_metadata_with_schema_type_ref};
 
     #[test]
     fn schema_scalar_type_ref_does_not_override_sqlx_result_type_metadata() {
@@ -261,13 +256,13 @@ mod tests {
             "boolCol",
             "BOOL",
             Some(false),
-            Some(ResolvedResultColumnTypeRef {
+            Some(ResolvedSchemaTypeRef {
                 type_ref: core::CoreTypeRef::from(core::CoreType::Int32),
-                schema_column_reference: core::ColumnTypeReference::new(
+                schema_column_reference: Some(core::ColumnTypeReference::new(
                     None,
                     "fixture".to_owned(),
                     "boolCol".to_owned(),
-                ),
+                )),
             }),
         );
 

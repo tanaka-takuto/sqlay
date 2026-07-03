@@ -1,6 +1,7 @@
 mod contexts;
 mod mutations;
 mod result_columns;
+mod schema_type_ref;
 mod tables;
 mod unsupported_contexts;
 
@@ -18,7 +19,8 @@ use super::diagnostics::{param_usage_error, query_error};
 use super::schema_columns::{MysqlSchemaColumn, MysqlSchemaTableRef};
 use contexts::{ColumnRef, collect_query_param_contexts};
 pub(super) use mutations::{mutation_schema_table_refs, resolve_mutation_param_usage_metadata};
-pub(super) use result_columns::{ResolvedResultColumnTypeRef, resolve_result_column_type_refs};
+pub(super) use result_columns::resolve_result_column_type_refs;
+pub(in crate::metadata::mysql::sqlx) use schema_type_ref::ResolvedSchemaTypeRef;
 use tables::{
     QuerySchemaTableRefResolution, SelectTableSources, resolve_query_schema_table_ref_status,
     select_from_query, select_table_sources,
@@ -88,7 +90,7 @@ pub(super) fn resolve_param_usage_metadata(
 
     for (usage, context) in query.param_usages().iter().zip(contexts) {
         let resolved = if let Some(value_type) = usage.value_type_override() {
-            ResolvedParamTypeRef {
+            ResolvedSchemaTypeRef {
                 type_ref: core::CoreTypeRef::from(value_type),
                 schema_column_reference: resolve_param_schema_column_reference(
                     context.as_ref(),
@@ -107,11 +109,6 @@ pub(super) fn resolve_param_usage_metadata(
     }
 
     Ok(params)
-}
-
-struct ResolvedParamTypeRef {
-    type_ref: core::CoreTypeRef,
-    schema_column_reference: Option<core::ColumnTypeReference>,
 }
 
 fn resolve_param_schema_column_reference(
@@ -135,7 +132,7 @@ fn resolve_inferred_param_type(
     context: Option<&ColumnRef>,
     table_sources: &SelectTableSources,
     schema: &SchemaColumnTypes,
-) -> core::DiagnosticResult<ResolvedParamTypeRef> {
+) -> core::DiagnosticResult<ResolvedSchemaTypeRef> {
     let Some(column) = context else {
         return Err(param_usage_error(
             query,
@@ -177,7 +174,7 @@ fn resolve_inferred_param_type(
         };
 
     if let Some(type_ref) = schema.get(&table_ref, &column.column) {
-        return Ok(ResolvedParamTypeRef {
+        return Ok(ResolvedSchemaTypeRef {
             type_ref,
             schema_column_reference: Some(table_ref.column_type_reference(&column.column)),
         });
