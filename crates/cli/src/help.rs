@@ -46,37 +46,40 @@ Config path boundary:
   Place sqlay.config.json at the project root when SQL lives in sibling directories.
   Generated TypeScript preserves each input SQL path relative to the config directory under output.dir.
 
-Param marker example:
+Optional filter Slot/Fragment example:
+  /* @sqlay
+  {
+    type: fragment
+    id: byStatus
+  }
+  */
+  AND orders.status = /* @sqlay { type: param id: status } */ 'paid' /* @sqlay { type: paramEnd } */
+
   /* @sqlay
   {
     type: query
-    id: listCustomersByFilter
+    id: listOrders
   }
   */
-  SELECT customers.id, customers.email
-  FROM customers
-  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */
-    IS NULL
-    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */
-      IS NULL
-      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */
-      IS NULL
-      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */);
+  SELECT orders.id, orders.status
+  FROM orders
+  WHERE 1 = 1
+  /* @sqlay { type: slot id: statusFilter targets: [byStatus] } */;
 
 Generated TypeScript input:
-  export type listCustomersByFilter_Input = {
-    emailFilter: string | null;
-    createdBefore: string | null;
-    active: boolean | null;
+  export type listOrders_Input = {
+    statusFilter?: {
+      $fragment: \"byStatus\";
+      status: string;
+    };
   };
 
 Param metadata:
+  For optional filters that change whether a predicate exists, prefer Slot/Fragment composition over nullable sentinel predicates.
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
+  Use nullable: true for values that are semantically nullable in a stable SQL shape.
   Use nullable: true for T | null inputs; optional input properties are not supported.
   For non-null Param inputs, omit nullable; use only nullable: true for nullable inputs.
-  Repeat the same Param id for optional filters; params follow marker occurrence order.
   Repeated Param ids share one generated input field.
   Each marker occurrence appends one params entry in source order.
   All occurrences of a repeated Param id must use the same valueType and nullability.
@@ -114,37 +117,40 @@ Behavior:
   The success summary reports matched SQL files, compiled builders with query and mutation counts, Fragment, Slot, Repeat, validation case counts, output.dir, and per-query/per-mutation Param, Slot, Repeat, and validation case counts.
   Empty source matches are reported as warnings unless --fail-on-empty is provided.
 
-Param marker example:
+Optional filter Slot/Fragment example:
+  /* @sqlay
+  {
+    type: fragment
+    id: byStatus
+  }
+  */
+  AND orders.status = /* @sqlay { type: param id: status } */ 'paid' /* @sqlay { type: paramEnd } */
+
   /* @sqlay
   {
     type: query
-    id: listCustomersByFilter
+    id: listOrders
   }
   */
-  SELECT customers.id, customers.email
-  FROM customers
-  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */
-    IS NULL
-    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */
-      IS NULL
-      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */
-      IS NULL
-      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */);
+  SELECT orders.id, orders.status
+  FROM orders
+  WHERE 1 = 1
+  /* @sqlay { type: slot id: statusFilter targets: [byStatus] } */;
 
 Generated TypeScript input:
-  export type listCustomersByFilter_Input = {
-    emailFilter: string | null;
-    createdBefore: string | null;
-    active: boolean | null;
+  export type listOrders_Input = {
+    statusFilter?: {
+      $fragment: \"byStatus\";
+      status: string;
+    };
   };
 
 Param metadata:
+  For optional filters that change whether a predicate exists, prefer Slot/Fragment composition over nullable sentinel predicates.
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
+  Use nullable: true for values that are semantically nullable in a stable SQL shape.
   Use nullable: true for T | null inputs; optional input properties are not supported.
   For non-null Param inputs, omit nullable; use only nullable: true for nullable inputs.
-  Repeat the same Param id for optional filters; params follow marker occurrence order.
   Repeated Param ids share one generated input field.
   Each marker occurrence appends one params entry in source order.
   All occurrences of a repeated Param id must use the same valueType and nullability.
@@ -181,37 +187,40 @@ Behavior:
   compile --clean skips stale generated file cleanup when no SQL files match unless --allow-empty-clean is also provided.
   TypeScript type mapping is conservative: BIGINT, DECIMAL, date/time, and enum values map conservatively to string; bytes map to Uint8Array; JSON and unknown types map to unknown; nullable metadata adds | null.
 
-Param marker example:
+Optional filter Slot/Fragment example:
+  /* @sqlay
+  {
+    type: fragment
+    id: byStatus
+  }
+  */
+  AND orders.status = /* @sqlay { type: param id: status } */ 'paid' /* @sqlay { type: paramEnd } */
+
   /* @sqlay
   {
     type: query
-    id: listCustomersByFilter
+    id: listOrders
   }
   */
-  SELECT customers.id, customers.email
-  FROM customers
-  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */
-    IS NULL
-    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */
-      IS NULL
-      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */
-      IS NULL
-      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */);
+  SELECT orders.id, orders.status
+  FROM orders
+  WHERE 1 = 1
+  /* @sqlay { type: slot id: statusFilter targets: [byStatus] } */;
 
 Generated TypeScript input:
-  export type listCustomersByFilter_Input = {
-    emailFilter: string | null;
-    createdBefore: string | null;
-    active: boolean | null;
+  export type listOrders_Input = {
+    statusFilter?: {
+      $fragment: \"byStatus\";
+      status: string;
+    };
   };
 
 Param metadata:
+  For optional filters that change whether a predicate exists, prefer Slot/Fragment composition over nullable sentinel predicates.
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
+  Use nullable: true for values that are semantically nullable in a stable SQL shape.
   Use nullable: true for T | null inputs; optional input properties are not supported.
   For non-null Param inputs, omit nullable; use only nullable: true for nullable inputs.
-  Repeat the same Param id for optional filters; params follow marker occurrence order.
   Repeated Param ids share one generated input field.
   Each marker occurrence appends one params entry in source order.
   All occurrences of a repeated Param id must use the same valueType and nullability.

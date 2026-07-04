@@ -188,12 +188,47 @@ export type findBook_Input = {
 ```
 
 Optional direct Param input properties are not currently supported because they
-imply SQL structure changes. Use a nullable sentinel pattern, separate queries for
-distinct SQL shapes, or Slot/Fragment composition for supported dynamic SQL.
+imply SQL structure changes. When an input changes whether a predicate exists, use
+Slot/Fragment composition as the first choice:
 
-For optional filters, repeat the same nullable Param ID where the SQL needs the
-value. Repeated Param IDs share one generated input field, while generated `params`
-includes one value per marker occurrence in source order:
+```sql
+/* @sqlay
+{
+  type: fragment
+  id: byStatus
+}
+*/
+  AND o.status = /* @sqlay { type: param id: status } */ 'paid' /* @sqlay { type: paramEnd } */
+
+/* @sqlay
+{
+  type: query
+  id: listOrders
+}
+*/
+SELECT o.id, o.status
+FROM bookstore_orders AS o
+WHERE 1 = 1
+/* @sqlay { type: slot id: statusFilter targets: [byStatus] } */;
+```
+
+Callers omit `statusFilter` when the predicate should not be emitted, or select the
+fragment when the predicate is present:
+
+```ts
+listOrders();
+
+listOrders({
+  statusFilter: { $fragment: "byStatus", status: "paid" },
+});
+```
+
+Use `nullable: true` for values that are semantically nullable in a stable SQL
+shape, not as the preferred way to choose whether SQL branches exist. A nullable
+sentinel predicate can still be used as a caveated fixed-shape fallback when that
+is intentional. In that case, repeat the same nullable Param ID where the SQL needs
+the value. Repeated Param IDs share one generated input field, while generated
+`params` includes one value per marker occurrence in source order:
 
 ```sql
 WHERE (
