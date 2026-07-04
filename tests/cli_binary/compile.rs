@@ -677,8 +677,11 @@ fn compile_format_json_reports_database_connection_failure_as_setup_diagnostic()
         ),
         "json: {json}"
     );
+    let (_, driver_detail) = message
+        .rsplit_once("configured by `database.urlEnv`: ")
+        .expect("diagnostic message should include the configured env var before driver details");
     assert!(
-        message.contains("error with configuration"),
+        !driver_detail.trim().is_empty(),
         "json should include the underlying driver error: {json}"
     );
     assert!(

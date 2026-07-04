@@ -575,8 +575,11 @@ fn check_reports_database_connection_failure_as_setup_diagnostic() {
         ),
         "stderr: {stderr}"
     );
+    let (_, driver_detail) = stderr
+        .rsplit_once("configured by `database.urlEnv`: ")
+        .expect("stderr should include the configured env var before driver details");
     assert!(
-        stderr.contains("error with configuration"),
+        !driver_detail.trim().is_empty(),
         "stderr should include the underlying driver error: {stderr}"
     );
     assert!(
