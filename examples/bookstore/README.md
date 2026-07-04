@@ -28,6 +28,12 @@ decimal precision tradeoff at runtime.
 The generated files under `generated/` are committed expected artifacts. They are
 regenerated and compared byte for byte by the examples check.
 
+`seed.sql` is deterministic and intentionally includes production-readiness
+boundary cases: cancelled orders, a paid order with no items, repeated sort keys,
+discount and no-discount line items, zero and large prices, a large `BIGINT`
+identifier, long text, nullable-column combinations, and JSON metadata with nested
+objects, arrays, numbers, booleans, missing keys, and JSON null values.
+
 See [`../../docs/query-execution.md`](../../docs/query-execution.md) for a minimal
 `mysql2/promise` SELECT execution example, and
 [`../../docs/mutation-execution.md`](../../docs/mutation-execution.md) for mutation
