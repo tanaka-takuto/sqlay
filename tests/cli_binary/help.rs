@@ -90,6 +90,43 @@ fn assert_param_marker_guidance(stdout: &str) {
     );
 }
 
+fn assert_mutation_guidance(stdout: &str) {
+    assert!(
+        stdout.contains("Minimal mutation annotation:"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("type: mutation"), "stdout: {stdout}");
+    assert!(stdout.contains("id: createUser"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("INSERT INTO users (email, name)"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("/* @sqlay { type: param id: email } */ 'ada@example.test' /* @sqlay { type: paramEnd } */"),
+        "stdout should show a compact mutation Param range: {stdout}"
+    );
+    assert!(
+        stdout.contains("supports INSERT, UPDATE, DELETE, and REPLACE builders"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("check and compile validate mutation SQL and infer input Params, but never execute mutation statements"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("Mutation builders return { sql, params } only"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("affectedRows, insertId, changedRows, transactions, upserts, and REPLACE result interpretation belong to application/driver code"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("docs/mutation-execution.md"),
+        "stdout: {stdout}"
+    );
+}
+
 #[test]
 fn no_args_prints_top_level_help() {
     let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
@@ -141,6 +178,7 @@ fn no_args_prints_top_level_help() {
         "stdout: {stdout}"
     );
     assert_param_marker_guidance(&stdout);
+    assert_mutation_guidance(&stdout);
     assert!(
         !stdout.contains("MVP query metadata"),
         "stdout should not describe current help as MVP-only: {stdout}"
@@ -256,6 +294,7 @@ fn check_help_describes_config_discovery_and_database_url() {
         "stdout: {stdout}"
     );
     assert_param_marker_guidance(&stdout);
+    assert_mutation_guidance(&stdout);
 }
 
 #[test]
@@ -332,6 +371,7 @@ fn compile_help_describes_output_writing_and_clean() {
         "stdout: {stdout}"
     );
     assert_param_marker_guidance(&stdout);
+    assert_mutation_guidance(&stdout);
     assert!(
         stdout.contains("BIGINT, DECIMAL, date/time, and enum values map conservatively"),
         "stdout: {stdout}"
