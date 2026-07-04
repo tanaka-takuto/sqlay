@@ -2,6 +2,8 @@ pub const TEST_DATABASE_URL_ENV: &str = "SQLAY_TEST_DATABASE_URL";
 
 pub const UNUSED_DATABASE_URL: &str = "mysql://sqlay:sqlay@127.0.0.1:3306/sqlay";
 
+pub const MALFORMED_DATABASE_URL: &str = "not-a-mysql-url";
+
 pub const DUPLICATE_IDS_FIXTURE: &str =
     include_str!("../../fixtures/sql/invalid/duplicate_ids.sql");
 

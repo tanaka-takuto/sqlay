@@ -1,9 +1,9 @@
 use std::process::Command;
 
 use crate::support::{
-    TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL, VALID_CONFIG, assert_empty_source_diagnostic,
-    json_stdout, unique_temp_dir, write_fragment_only_project, write_managed_generated_file,
-    write_simple_query_project,
+    MALFORMED_DATABASE_URL, TEST_DATABASE_URL_ENV, UNUSED_DATABASE_URL, VALID_CONFIG,
+    assert_empty_source_diagnostic, json_stdout, unique_temp_dir, write_fragment_only_project,
+    write_managed_generated_file, write_simple_query_project,
 };
 
 #[test]
@@ -632,6 +632,65 @@ fn compile_format_json_reports_pipeline_failure_to_stdout_only() {
                 "environment variable `SQLAY_TEST_DATABASE_URL` configured by `database.urlEnv` is not set"
             ),
         "json: {json}"
+    );
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
+fn compile_format_json_reports_database_connection_failure_as_setup_diagnostic() {
+    let config_dir = unique_temp_dir("sqlay-cli-compile-json-connection-failure");
+    write_simple_query_project(&config_dir);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .args(["compile", "--format=json"])
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, MALFORMED_DATABASE_URL)
+        .output()
+        .expect("sqlay compile should run");
+
+    assert_eq!(output.status.code(), Some(1), "status: {:?}", output.status);
+    assert!(
+        output.stderr.is_empty(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json = json_stdout(&output);
+    assert_eq!(json["command"]["name"], "compile");
+    assert_eq!(json["command"]["options"]["format"], "json");
+    assert_eq!(json["status"], "failure");
+    assert_eq!(json["summary"], serde_json::Value::Null);
+    let diagnostic = json["diagnostics"][0]
+        .as_object()
+        .expect("diagnostic should be an object");
+    assert_eq!(diagnostic["severity"], "error");
+    let message = diagnostic["message"]
+        .as_str()
+        .expect("diagnostic message should be a string");
+    assert!(
+        message.contains("could not connect to MySQL database before validating SQL metadata"),
+        "json: {json}"
+    );
+    assert!(
+        message.contains(
+            "environment variable `SQLAY_TEST_DATABASE_URL` configured by `database.urlEnv`"
+        ),
+        "json: {json}"
+    );
+    let (_, driver_detail) = message
+        .rsplit_once("configured by `database.urlEnv`: ")
+        .expect("diagnostic message should include the configured env var before driver details");
+    assert!(
+        !driver_detail.trim().is_empty(),
+        "json should include the underlying driver error: {json}"
+    );
+    assert!(
+        !diagnostic.contains_key("location"),
+        "connection-phase diagnostics should not include a SQL location: {json}"
+    );
+    assert!(
+        !message.contains(MALFORMED_DATABASE_URL),
+        "connection-phase diagnostics should not print the configured database URL: {json}"
     );
 
     std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");

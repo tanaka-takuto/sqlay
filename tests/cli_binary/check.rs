@@ -1,9 +1,9 @@
 use std::process::Command;
 
 use crate::support::{
-    DUPLICATE_IDS_FIXTURE, EXEC_CARDINALITY_FIXTURE, INVALID_SOURCE_CONFIG, TEST_DATABASE_URL_ENV,
-    UNSUPPORTED_CONFIG, UNUSED_DATABASE_URL, VALID_CONFIG, assert_empty_source_diagnostic,
-    json_stdout, unique_temp_dir, write_simple_query_project,
+    DUPLICATE_IDS_FIXTURE, EXEC_CARDINALITY_FIXTURE, INVALID_SOURCE_CONFIG, MALFORMED_DATABASE_URL,
+    TEST_DATABASE_URL_ENV, UNSUPPORTED_CONFIG, UNUSED_DATABASE_URL, VALID_CONFIG,
+    assert_empty_source_diagnostic, json_stdout, unique_temp_dir, write_simple_query_project,
 };
 
 #[test]
@@ -540,6 +540,55 @@ fn check_reports_missing_database_url_environment_variable() {
         ),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
+}
+
+#[test]
+fn check_reports_database_connection_failure_as_setup_diagnostic() {
+    let config_dir = unique_temp_dir("sqlay-cli-database-connection-failure");
+    write_simple_query_project(&config_dir);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .arg("check")
+        .current_dir(&config_dir)
+        .env(TEST_DATABASE_URL_ENV, MALFORMED_DATABASE_URL)
+        .output()
+        .expect("sqlay check should run");
+
+    assert_eq!(output.status.code(), Some(1), "status: {:?}", output.status);
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error:"), "stderr: {stderr}");
+    assert!(
+        stderr.contains("could not connect to MySQL database before validating SQL metadata"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains(
+            "environment variable `SQLAY_TEST_DATABASE_URL` configured by `database.urlEnv`"
+        ),
+        "stderr: {stderr}"
+    );
+    let (_, driver_detail) = stderr
+        .rsplit_once("configured by `database.urlEnv`: ")
+        .expect("stderr should include the configured env var before driver details");
+    assert!(
+        !driver_detail.trim().is_empty(),
+        "stderr should include the underlying driver error: {stderr}"
+    );
+    assert!(
+        !stderr.contains("sql/users.sql"),
+        "connection-phase diagnostics should not point at a SQL file: {stderr}"
+    );
+    assert!(
+        !stderr.contains(MALFORMED_DATABASE_URL),
+        "connection-phase diagnostics should not print the configured database URL: {stderr}"
     );
 
     std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");

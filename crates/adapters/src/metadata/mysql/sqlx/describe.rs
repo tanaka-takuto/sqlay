@@ -2,7 +2,7 @@ use ::sqlx::{AssertSqlSafe, Column, Connection, Executor, MySqlConnection, SqlSa
 use sqlay_app::{MetadataProvider, MutationMetadataProvider};
 use sqlay_core as core;
 
-use super::diagnostics::{mutation_error, query_error};
+use super::diagnostics::{connection_error, mutation_error, query_error};
 use super::param_inference::{
     ResolvedSchemaTypeRef, resolve_mutation_param_usage_metadata, resolve_param_usage_metadata,
     resolve_result_column_hints,
@@ -16,6 +16,7 @@ use super::schema_columns::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SqlxMysqlMetadataProvider {
     database_url: String,
+    database_url_env: Option<String>,
 }
 
 impl SqlxMysqlMetadataProvider {
@@ -24,13 +25,27 @@ impl SqlxMysqlMetadataProvider {
     pub fn new(database_url: impl Into<String>) -> Self {
         Self {
             database_url: database_url.into(),
+            database_url_env: None,
         }
+    }
+
+    /// Attach the configured `database.urlEnv` name for connection diagnostics.
+    #[must_use]
+    pub fn with_database_url_env(mut self, env_name: impl Into<String>) -> Self {
+        self.database_url_env = Some(env_name.into());
+        self
     }
 
     /// Configured database URL.
     #[must_use]
     pub fn database_url(&self) -> &str {
         &self.database_url
+    }
+
+    /// Configured environment variable name used to read the database URL.
+    #[must_use]
+    pub fn database_url_env(&self) -> Option<&str> {
+        self.database_url_env.as_deref()
     }
 }
 
@@ -41,9 +56,13 @@ impl MetadataProvider for SqlxMysqlMetadataProvider {
         _analysis: &core::AnalyzedQuery,
     ) -> core::DiagnosticResult<core::DbQueryMetadata> {
         if tokio::runtime::Handle::try_current().is_ok() {
-            describe_query_metadata_on_worker_thread(self.database_url().to_owned(), query.clone())
+            describe_query_metadata_on_worker_thread(
+                self.database_url().to_owned(),
+                self.database_url_env().map(str::to_owned),
+                query.clone(),
+            )
         } else {
-            describe_query_metadata_blocking(self.database_url(), query)
+            describe_query_metadata_blocking(self.database_url(), self.database_url_env(), query)
         }
     }
 }
@@ -57,46 +76,58 @@ impl MutationMetadataProvider for SqlxMysqlMetadataProvider {
         if tokio::runtime::Handle::try_current().is_ok() {
             describe_mutation_metadata_on_worker_thread(
                 self.database_url().to_owned(),
+                self.database_url_env().map(str::to_owned),
                 mutation.clone(),
             )
         } else {
-            describe_mutation_metadata_blocking(self.database_url(), mutation)
+            describe_mutation_metadata_blocking(
+                self.database_url(),
+                self.database_url_env(),
+                mutation,
+            )
         }
     }
 }
 
 fn describe_query_metadata_on_worker_thread(
     database_url: String,
+    database_url_env: Option<String>,
     query: core::RawQuery,
 ) -> core::DiagnosticResult<core::DbQueryMetadata> {
     let error_query = query.clone();
-    std::thread::spawn(move || describe_query_metadata_blocking(&database_url, &query))
-        .join()
-        .unwrap_or_else(|_| {
-            Err(query_error(
-                &error_query,
-                "MySQL metadata worker thread panicked",
-            ))
-        })
+    std::thread::spawn(move || {
+        describe_query_metadata_blocking(&database_url, database_url_env.as_deref(), &query)
+    })
+    .join()
+    .unwrap_or_else(|_| {
+        Err(query_error(
+            &error_query,
+            "MySQL metadata worker thread panicked",
+        ))
+    })
 }
 
 fn describe_mutation_metadata_on_worker_thread(
     database_url: String,
+    database_url_env: Option<String>,
     mutation: core::RawMutation,
 ) -> core::DiagnosticResult<core::DbMutationMetadata> {
     let error_mutation = mutation.clone();
-    std::thread::spawn(move || describe_mutation_metadata_blocking(&database_url, &mutation))
-        .join()
-        .unwrap_or_else(|_| {
-            Err(mutation_error(
-                &error_mutation,
-                "MySQL mutation metadata worker thread panicked",
-            ))
-        })
+    std::thread::spawn(move || {
+        describe_mutation_metadata_blocking(&database_url, database_url_env.as_deref(), &mutation)
+    })
+    .join()
+    .unwrap_or_else(|_| {
+        Err(mutation_error(
+            &error_mutation,
+            "MySQL mutation metadata worker thread panicked",
+        ))
+    })
 }
 
 fn describe_query_metadata_blocking(
     database_url: &str,
+    database_url_env: Option<&str>,
     query: &core::RawQuery,
 ) -> core::DiagnosticResult<core::DbQueryMetadata> {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -109,11 +140,16 @@ fn describe_query_metadata_blocking(
             )
         })?;
 
-    runtime.block_on(describe_query_metadata(database_url, query))
+    runtime.block_on(describe_query_metadata(
+        database_url,
+        database_url_env,
+        query,
+    ))
 }
 
 fn describe_mutation_metadata_blocking(
     database_url: &str,
+    database_url_env: Option<&str>,
     mutation: &core::RawMutation,
 ) -> core::DiagnosticResult<core::DbMutationMetadata> {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -126,21 +162,19 @@ fn describe_mutation_metadata_blocking(
             )
         })?;
 
-    runtime.block_on(describe_mutation_metadata(database_url, mutation))
+    runtime.block_on(describe_mutation_metadata(
+        database_url,
+        database_url_env,
+        mutation,
+    ))
 }
 
 async fn describe_query_metadata(
     database_url: &str,
+    database_url_env: Option<&str>,
     query: &core::RawQuery,
 ) -> core::DiagnosticResult<core::DbQueryMetadata> {
-    let mut connection = MySqlConnection::connect(database_url)
-        .await
-        .map_err(|error| {
-            query_error(
-                query,
-                format!("failed to connect to MySQL database: {error}"),
-            )
-        })?;
+    let mut connection = connect_mysql(database_url, database_url_env).await?;
 
     let schema_columns = fetch_schema_columns(&mut connection, query).await?;
     let param_usages = describe_param_usages(query, &schema_columns)?;
@@ -187,20 +221,23 @@ async fn describe_query_metadata(
 
 async fn describe_mutation_metadata(
     database_url: &str,
+    database_url_env: Option<&str>,
     mutation: &core::RawMutation,
 ) -> core::DiagnosticResult<core::DbMutationMetadata> {
-    let mut connection = MySqlConnection::connect(database_url)
-        .await
-        .map_err(|error| {
-            mutation_error(
-                mutation,
-                format!("failed to connect to MySQL database: {error}"),
-            )
-        })?;
+    let mut connection = connect_mysql(database_url, database_url_env).await?;
 
     let param_usages = describe_mutation_param_usages(&mut connection, mutation).await?;
 
     Ok(core::DbMutationMetadata::new().with_param_usages(param_usages))
+}
+
+async fn connect_mysql(
+    database_url: &str,
+    database_url_env: Option<&str>,
+) -> core::DiagnosticResult<MySqlConnection> {
+    MySqlConnection::connect(database_url)
+        .await
+        .map_err(|error| connection_error(database_url_env, database_url, &error))
 }
 
 fn map_mysql_result_column_metadata_with_schema_type_ref(
