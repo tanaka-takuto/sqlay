@@ -24,6 +24,18 @@
     "availability": "available"
   },
   {
+    "bookId": "9223372036854775001",
+    "isbn": "BOUNDARY-0001",
+    "title": "Large Identifier Catalog Record",
+    "authorName": "Bookstore Archive Collective",
+    "format": "paperback",
+    "price": 18,
+    "stockQuantity": 8,
+    "averageRating": 5,
+    "reviewCount": "1",
+    "availability": "available"
+  },
+  {
     "bookId": "102",
     "isbn": "9780316229296",
     "title": "The Fifth Season",

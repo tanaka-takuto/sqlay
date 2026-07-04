@@ -150,6 +150,8 @@ sqlay keeps precision-sensitive values conservative by default:
 - MySQL `BIGINT` and unsigned 64-bit values map to `string`.
 - Date and time values map to `string`.
 - Unknown metadata maps to `unknown`.
+- JSON-derived computed result expressions such as `JSON_UNQUOTE(JSON_EXTRACT(...))` map to
+  `unknown` when sqlay cannot prove a stable scalar contract from database metadata alone.
 
 `DECIMAL` and 64-bit integer values default to `string` because JavaScript `number` cannot represent
 every value in those MySQL domains without precision loss, and driver-level conversion is an
@@ -190,6 +192,43 @@ builder-local override when one enum field needs a different annotation.
 MySQL `SET` remains `string` in the initial design. MySQL drivers expose SET values as strings,
 including comma-separated combinations and the empty string, so sqlay does not emit arrays or SET
 aliases.
+
+## JSON Expression Results
+
+Computed expressions derived from JSON can return values whose runtime shape depends on the stored
+JSON value and expression shape. sqlay therefore keeps those generated result fields conservative by
+default:
+
+```ts
+export type findBooksByShelf_Row = {
+  shelf: unknown | null;
+};
+```
+
+When an application owns a narrower contract for a specific generated field, use a builder-local
+field override:
+
+```jsonc
+{
+  "target": {
+    "language": "typescript",
+    "typescript": {
+      "typeMapping": {
+        "builders": {
+          "findBooksByShelf": {
+            "fields": {
+              "shelf": "string",
+            },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+This changes only the generated TypeScript annotation. Application code remains responsible for
+ensuring the query, stored JSON data, and database-driver behavior match that narrower type.
 
 ## Nullability
 

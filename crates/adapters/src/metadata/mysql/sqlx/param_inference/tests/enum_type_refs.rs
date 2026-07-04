@@ -1,4 +1,4 @@
-use super::super::{resolve_param_usage_metadata, resolve_result_column_type_refs};
+use super::super::{resolve_param_usage_metadata, resolve_result_column_hints};
 use super::*;
 
 #[test]
@@ -50,8 +50,9 @@ fn resolves_result_type_refs_from_schema_backed_direct_projection_columns() {
         schema_column("orders", "total_amount", core::CoreType::Decimal),
     ];
 
-    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns)
-        .expect("schema-backed direct projection columns should resolve");
+    let result_type_refs = resolve_result_column_hints(&query, &schema_columns)
+        .expect("schema-backed direct projection columns should resolve")
+        .type_refs;
 
     assert_eq!(result_type_refs.len(), 2);
     assert_enum_values(
@@ -76,8 +77,9 @@ fn resolves_result_type_refs_from_unqualified_projection_columns_when_unambiguou
     );
     let schema_columns = [schema_enum_column("orders", "status", ["draft", "paid"])];
 
-    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns)
-        .expect("unqualified projection columns should resolve when unambiguous");
+    let result_type_refs = resolve_result_column_hints(&query, &schema_columns)
+        .expect("unqualified projection columns should resolve when unambiguous")
+        .type_refs;
 
     assert_eq!(result_type_refs.len(), 1);
     let resolved = result_type_refs[0]
@@ -101,8 +103,9 @@ fn does_not_resolve_unqualified_result_type_refs_when_column_is_ambiguous() {
         schema_enum_column_in_database("archive", "orders", "status", ["archived"]),
     ];
 
-    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns)
-        .expect("ambiguous unqualified projection columns should not fail resolution");
+    let result_type_refs = resolve_result_column_hints(&query, &schema_columns)
+        .expect("ambiguous unqualified projection columns should not fail resolution")
+        .type_refs;
 
     assert_eq!(result_type_refs, [None]);
 }
@@ -118,8 +121,9 @@ fn does_not_resolve_unqualified_result_type_refs_when_unsupported_source_is_pres
         schema_enum_column_in_database("archive", "orders", "status", ["archived"]),
     ];
 
-    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns)
-        .expect("unsupported table sources should not fail result resolution");
+    let result_type_refs = resolve_result_column_hints(&query, &schema_columns)
+        .expect("unsupported table sources should not fail result resolution")
+        .type_refs;
 
     assert_eq!(result_type_refs, [None]);
 }
@@ -135,8 +139,9 @@ fn resolves_result_type_refs_from_current_database_three_part_projection_columns
         schema_enum_column_in_database("sqlay", "orders", "status", ["draft", "paid"]),
     ];
 
-    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns)
-        .expect("current-database three-part projection columns should resolve");
+    let result_type_refs = resolve_result_column_hints(&query, &schema_columns)
+        .expect("current-database three-part projection columns should resolve")
+        .type_refs;
 
     assert_eq!(result_type_refs.len(), 1);
     assert_enum_values(
@@ -159,9 +164,11 @@ fn resolves_current_database_three_part_result_type_refs_when_table_name_is_ambi
         schema_enum_column_in_database("archive", "orders", "status", ["archived"]),
     ];
 
-    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns).expect(
-        "current-database qualified projection should resolve even with duplicate table names",
-    );
+    let result_type_refs = resolve_result_column_hints(&query, &schema_columns)
+        .expect(
+            "current-database qualified projection should resolve even with duplicate table names",
+        )
+        .type_refs;
 
     assert_eq!(result_type_refs.len(), 2);
     assert_enum_values(
@@ -189,8 +196,9 @@ fn does_not_resolve_current_database_three_part_result_type_refs_from_unrelated_
         schema_enum_column_in_database("archive", "orders", "status", ["archived"]),
     ];
 
-    let result_type_refs = resolve_result_column_type_refs(&query, &schema_columns)
-        .expect("unrelated explicit table source should not fail result type-ref resolution");
+    let result_type_refs = resolve_result_column_hints(&query, &schema_columns)
+        .expect("unrelated explicit table source should not fail result type-ref resolution")
+        .type_refs;
 
     assert_eq!(result_type_refs, [None]);
 }

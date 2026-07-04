@@ -13,6 +13,9 @@ use super::fixture_support::{
 };
 use super::type_coverage::{assert_fixture_core_type_matrix, assert_fixture_nullability_matrix};
 
+const CONNECTION_FAILURE_PREFIX: &str =
+    "could not connect to MySQL database before validating SQL metadata: ";
+
 #[test]
 #[ignore = "requires a running MySQL service and DATABASE_URL"]
 fn sqlx_mysql_metadata_provider_returns_fixture_query_metadata()
@@ -71,13 +74,20 @@ fn sqlx_mysql_metadata_provider_reports_connection_failures_as_diagnostics() {
         .describe(&query, &analysis)
         .expect_err("invalid database URL should fail before metadata lookup");
 
+    let diagnostic = &report.diagnostics()[0];
     assert!(
-        report.diagnostics()[0]
-            .message()
-            .starts_with("failed to connect to MySQL database:"),
+        diagnostic.message().starts_with(CONNECTION_FAILURE_PREFIX),
         "{}",
-        report.diagnostics()[0].message()
+        diagnostic.message()
     );
+    let driver_detail = diagnostic
+        .message()
+        .strip_prefix(CONNECTION_FAILURE_PREFIX)
+        .expect("connection diagnostic should include the expected prefix")
+        .trim();
+    assert!(!driver_detail.is_empty(), "{}", diagnostic.message());
+    assert_eq!(diagnostic.location(), None);
+    assert!(!diagnostic.message().contains("not-a-mysql-url"));
 }
 
 #[tokio::test]
@@ -90,13 +100,20 @@ async fn sqlx_mysql_metadata_provider_reports_connection_failures_inside_tokio_r
         .describe(&query, &analysis)
         .expect_err("invalid database URL should fail without panicking inside Tokio");
 
+    let diagnostic = &report.diagnostics()[0];
     assert!(
-        report.diagnostics()[0]
-            .message()
-            .starts_with("failed to connect to MySQL database:"),
+        diagnostic.message().starts_with(CONNECTION_FAILURE_PREFIX),
         "{}",
-        report.diagnostics()[0].message()
+        diagnostic.message()
     );
+    let driver_detail = diagnostic
+        .message()
+        .strip_prefix(CONNECTION_FAILURE_PREFIX)
+        .expect("connection diagnostic should include the expected prefix")
+        .trim();
+    assert!(!driver_detail.is_empty(), "{}", diagnostic.message());
+    assert_eq!(diagnostic.location(), None);
+    assert!(!diagnostic.message().contains("not-a-mysql-url"));
 }
 
 #[test]

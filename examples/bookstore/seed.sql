@@ -7,7 +7,14 @@ INSERT INTO bookstore_authors (
   (1, 'Ursula K. Le Guin', 'US', 'Author of speculative fiction and essays.'),
   (2, 'N. K. Jemisin', 'US', 'Author of award-winning fantasy novels.'),
   (3, 'Octavia E. Butler', 'US', 'Author of science fiction novels.'),
-  (4, 'Italo Calvino', 'IT', NULL);
+  (4, 'Italo Calvino', 'IT', NULL),
+  (5, 'Mary Shelley', 'GB', 'Author of early science fiction and gothic novels.'),
+  (
+    9223372036854775000,
+    'Bookstore Archive Collective',
+    NULL,
+    'Maintains long-running catalog records for boundary-case editions.'
+  );
 
 INSERT INTO bookstore_customers (
   id,
@@ -20,7 +27,17 @@ INSERT INTO bookstore_customers (
 ) VALUES
   (1000, 'river@example.test', 'River Reader', 'gold', '2024-01-15', 1, '2026-04-10 09:30:00.000000'),
   (1001, 'morgan@example.test', 'Morgan Pages', 'silver', '2025-06-01', 0, '2026-04-12 18:45:00.000000'),
-  (1002, 'casey@example.test', 'Casey Stack', 'standard', '2026-02-20', 1, NULL);
+  (1002, 'casey@example.test', 'Casey Stack', 'standard', '2026-02-20', 1, NULL),
+  (1003, 'taylor@example.test', 'Taylor Longform', 'standard', '2023-12-31', 0, NULL),
+  (
+    1004,
+    'avery.boundary@example.test',
+    'Avery Boundary-Case Reader With A Long But Valid Bookstore Customer Name',
+    'gold',
+    '2026-04-12',
+    1,
+    '2026-04-12 18:45:00.000000'
+  );
 
 INSERT INTO bookstore_categories (
   id,
@@ -30,7 +47,9 @@ INSERT INTO bookstore_categories (
   (10, 'science-fiction', 'Science Fiction'),
   (11, 'fantasy', 'Fantasy'),
   (12, 'literary-fiction', 'Literary Fiction'),
-  (13, 'staff-picks', 'Staff Picks');
+  (13, 'staff-picks', 'Staff Picks'),
+  (14, 'collectors', 'Collectors'),
+  (15, 'promotions', 'Promotions');
 
 INSERT INTO bookstore_books (
   id,
@@ -129,6 +148,77 @@ INSERT INTO bookstore_books (
     '1972-01-01',
     '2026-01-06 10:00:00.000000',
     JSON_OBJECT('shelf', 'D4', 'series', NULL)
+  ),
+  (
+    106,
+    5,
+    '9780000000001',
+    'Frankenstein Digital Sampler',
+    'A free digital sampler used to exercise zero-price and missing-metadata-key cases.',
+    'ebook',
+    0.00,
+    8,
+    0,
+    '1818-01-01',
+    '2026-01-03 10:00:00.000000',
+    JSON_OBJECT(
+      'series',
+      NULL,
+      'tags',
+      JSON_ARRAY('public-domain', 'sampler'),
+      'pages',
+      64,
+      'signed',
+      FALSE
+    )
+  ),
+  (
+    107,
+    9223372036854775000,
+    '9780000000002',
+    'Boundary Collector Edition',
+    CONCAT(
+      'A deliberately verbose collector listing that remains readable while ',
+      'exercising TEXT handling, large DECIMAL prices, nested JSON metadata, ',
+      'boolean JSON values, and duplicate stock quantities for production-readiness ',
+      'checks that need more than first-success sample data.'
+    ),
+    'hardcover',
+    99999.99,
+    2,
+    2,
+    '1900-01-01',
+    '2026-01-02 10:00:00.000000',
+    JSON_OBJECT(
+      'shelf',
+      'VAULT',
+      'series',
+      'Boundary Cases',
+      'dimensions',
+      JSON_OBJECT('heightMm', 240, 'widthMm', 160, 'weightGrams', 1200),
+      'tags',
+      JSON_ARRAY('collector', 'oversized', 'fragile'),
+      'pages',
+      1200,
+      'signed',
+      TRUE,
+      'limitedRun',
+      TRUE
+    )
+  ),
+  (
+    9223372036854775001,
+    9223372036854775000,
+    'BOUNDARY-0001',
+    'Large Identifier Catalog Record',
+    'A catalog record with a large BIGINT primary key and duplicate price and stock values.',
+    'paperback',
+    18.00,
+    8,
+    3,
+    NULL,
+    '2026-01-03 10:00:00.000000',
+    JSON_OBJECT('series', NULL, 'tags', JSON_ARRAY(), 'pages', 0, 'signed', FALSE)
   );
 
 INSERT INTO bookstore_book_categories (
@@ -142,7 +232,11 @@ INSERT INTO bookstore_book_categories (
   (102, 13),
   (103, 10),
   (104, 10),
-  (105, 12);
+  (105, 12),
+  (106, 15),
+  (107, 14),
+  (107, 13),
+  (9223372036854775001, 10);
 
 INSERT INTO bookstore_orders (
   id,
@@ -203,6 +297,30 @@ INSERT INTO bookstore_orders (
     NULL,
     NULL,
     NULL
+  ),
+  (
+    5004,
+    1001,
+    'BK-1004',
+    'cancelled',
+    'USD',
+    '2026-04-10 09:15:00.000000',
+    NULL,
+    NULL,
+    NULL,
+    'Cancelled after address verification failed.'
+  ),
+  (
+    5005,
+    1003,
+    'BK-1005',
+    'paid',
+    'USD',
+    '2026-04-10 09:15:00.000000',
+    '2026-04-10 09:20:00.000000',
+    NULL,
+    'digital',
+    NULL
   );
 
 INSERT INTO bookstore_order_items (
@@ -218,7 +336,10 @@ INSERT INTO bookstore_order_items (
   (9002, 5001, 101, 1, 22.50, NULL),
   (9003, 5001, 105, 2, 15.95, 3.00),
   (9004, 5002, 104, 1, 14.99, NULL),
-  (9005, 5003, 103, 1, 11.99, NULL);
+  (9005, 5003, 103, 1, 11.99, NULL),
+  (9006, 5004, 107, 1, 99999.99, 250.00),
+  (9007, 5002, 106, 1, 0.00, 0.00),
+  (9008, 5002, 9223372036854775001, 3, 18.00, NULL);
 
 INSERT INTO bookstore_reviews (
   id,
@@ -234,4 +355,16 @@ INSERT INTO bookstore_reviews (
   (7000, 100, 1000, 9000, 5, 'Still brilliant', 'A thoughtful classic.', 1, '2026-03-10 09:00:00.000000'),
   (7001, 102, 1000, 9001, 5, 'Compelling', NULL, 1, '2026-03-11 09:00:00.000000'),
   (7002, 104, 1001, 9004, 4, NULL, 'Powerful and direct.', 1, '2026-04-12 09:00:00.000000'),
-  (7003, 101, 1000, 9002, 4, 'Pending moderation', NULL, 0, '2026-04-13 09:00:00.000000');
+  (7003, 101, 1000, 9002, 4, 'Pending moderation', NULL, 0, '2026-04-13 09:00:00.000000'),
+  (7004, 106, 1001, 9007, 3, 'Useful sample', 'Short and practical.', 1, '2026-04-13 10:00:00.000000'),
+  (
+    7005,
+    9223372036854775001,
+    1001,
+    9008,
+    5,
+    NULL,
+    'Validates that large identifier rows still participate in ordinary review queries.',
+    1,
+    '2026-04-13 11:00:00.000000'
+  );

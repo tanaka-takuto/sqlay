@@ -321,9 +321,20 @@ esac
     fn write_fake_mysql(&self) {
         write_executable(
             &self.fake_bin.join("mysql"),
-            r"#!/bin/sh
+            r#"#!/bin/sh
+set -eu
+
+for arg in "$@"; do
+  case "$arg" in
+    --execute)
+      echo 1
+      exit 0
+      ;;
+  esac
+done
+
 cat >/dev/null
-",
+"#,
         );
     }
 

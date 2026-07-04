@@ -22,5 +22,13 @@
     "reorderLevel": 3,
     "unitsBelowTarget": "2",
     "restockState": "low"
+  },
+  {
+    "bookId": "107",
+    "title": "Boundary Collector Edition",
+    "stockQuantity": 2,
+    "reorderLevel": 2,
+    "unitsBelowTarget": "0",
+    "restockState": "low"
   }
 ]

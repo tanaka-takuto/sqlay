@@ -119,6 +119,106 @@ load_mysql_file() {
   esac
 }
 
+query_mysql_scalar() {
+  query=$1
+
+  case "$mysql_client" in
+    host)
+      MYSQL_PWD=$database_password mysql \
+        --protocol=TCP \
+        -h "$database_host" \
+        -P "$database_port" \
+        -u "$database_user" \
+        --database="$database_name" \
+        --batch \
+        --skip-column-names \
+        --raw \
+        --execute "$query"
+      ;;
+    compose)
+      "$script_dir/dev/compose.sh" exec -T mysql \
+        env MYSQL_PWD="$database_password" \
+        mysql \
+        --protocol=TCP \
+        -h "$database_host" \
+        -P "$database_port" \
+        -u "$database_user" \
+        --database="$database_name" \
+        --batch \
+        --skip-column-names \
+        --raw \
+        --execute "$query"
+      ;;
+    *)
+      echo "check-examples: no MySQL client selected" >&2
+      exit 1
+      ;;
+  esac
+}
+
+assert_mysql_scalar() {
+  description=$1
+  query=$2
+  expected=$3
+  actual=$(query_mysql_scalar "$query" | tr -d '\r')
+
+  if [ "$actual" != "$expected" ]; then
+    cat >&2 <<EOF
+check-examples: bookstore seed boundary check failed: $description
+  expected: $expected
+  actual: $actual
+EOF
+    exit 1
+  fi
+}
+
+verify_bookstore_seed_boundaries() {
+  assert_mysql_scalar \
+    "cancelled order coverage" \
+    "SELECT IF(EXISTS(SELECT 1 FROM bookstore_orders WHERE status = 'cancelled'), 1, 0)" \
+    "1"
+  assert_mysql_scalar \
+    "paid order with no items coverage" \
+    "SELECT IF(EXISTS(SELECT 1 FROM bookstore_orders AS o WHERE o.status = 'paid' AND NOT EXISTS (SELECT 1 FROM bookstore_order_items AS oi WHERE oi.order_id = o.id)), 1, 0)" \
+    "1"
+  assert_mysql_scalar \
+    "duplicate placed_at coverage" \
+    "SELECT IF(EXISTS(SELECT 1 FROM (SELECT placed_at FROM bookstore_orders GROUP BY placed_at HAVING COUNT(*) > 1) AS duplicate_placed_at), 1, 0)" \
+    "1"
+  assert_mysql_scalar \
+    "duplicate price coverage" \
+    "SELECT IF(EXISTS(SELECT 1 FROM (SELECT price FROM bookstore_books GROUP BY price HAVING COUNT(*) > 1) AS duplicate_price), 1, 0)" \
+    "1"
+  assert_mysql_scalar \
+    "duplicate stock quantity coverage" \
+    "SELECT IF(EXISTS(SELECT 1 FROM (SELECT stock_quantity FROM bookstore_books GROUP BY stock_quantity HAVING COUNT(*) > 1) AS duplicate_stock_quantity), 1, 0)" \
+    "1"
+  assert_mysql_scalar \
+    "rich JSON metadata coverage" \
+    "SELECT IF(EXISTS(SELECT 1 FROM bookstore_books WHERE JSON_TYPE(JSON_EXTRACT(metadata, '$.dimensions')) = 'OBJECT' AND JSON_TYPE(JSON_EXTRACT(metadata, '$.tags')) = 'ARRAY' AND JSON_TYPE(JSON_EXTRACT(metadata, '$.pages')) = 'INTEGER' AND JSON_TYPE(JSON_EXTRACT(metadata, '$.signed')) = 'BOOLEAN'), 1, 0)" \
+    "1"
+  assert_mysql_scalar \
+    "JSON null and missing-key coverage" \
+    "SELECT IF(EXISTS(SELECT 1 FROM bookstore_books WHERE JSON_TYPE(JSON_EXTRACT(metadata, '$.series')) = 'NULL' AND JSON_EXTRACT(metadata, '$.shelf') IS NULL), 1, 0)" \
+    "1"
+  assert_mysql_scalar \
+    "zero price coverage" \
+    "SELECT IF(EXISTS(SELECT 1 FROM bookstore_books WHERE price = 0.00), 1, 0)" \
+    "1"
+  assert_mysql_scalar \
+    "large decimal price coverage" \
+    "SELECT IF(EXISTS(SELECT 1 FROM bookstore_books WHERE price >= 99999.99), 1, 0)" \
+    "1"
+  assert_mysql_scalar \
+    "large bigint id coverage" \
+    "SELECT IF(EXISTS(SELECT 1 FROM bookstore_books WHERE id > 9000000000000000000), 1, 0)" \
+    "1"
+  assert_mysql_scalar \
+    "long text coverage" \
+    "SELECT IF(EXISTS(SELECT 1 FROM bookstore_books WHERE CHAR_LENGTH(description) > 255), 1, 0)" \
+    "1"
+}
+
 compare_directories() {
   expected_dir=$1
   actual_dir=$2
@@ -170,6 +270,7 @@ ln -s "$repo_root/node_modules" "$tmp_example/node_modules"
 
 load_mysql_file "$example_root/schema.sql"
 load_mysql_file "$example_root/seed.sql"
+verify_bookstore_seed_boundaries
 
 cd "$repo_root"
 DATABASE_URL=$DATABASE_URL cargo run --locked -- compile --config "$tmp_example/sqlay.config.json"

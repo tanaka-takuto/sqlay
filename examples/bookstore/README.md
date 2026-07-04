@@ -33,6 +33,12 @@ representative generated builders. The examples check loads the seed data, execu
 those builders through `mysql2/promise`, and compares the result rows with the
 checked-in JSON files without adding driver code to generated TypeScript.
 
+`seed.sql` is deterministic and intentionally includes production-readiness
+boundary cases: cancelled orders, a paid order with no items, repeated sort keys,
+discount and no-discount line items, zero and large prices, a large `BIGINT`
+identifier, long text, nullable-column combinations, and JSON metadata with nested
+objects, arrays, numbers, booleans, missing keys, and JSON null values.
+
 See [`../../docs/query-execution.md`](../../docs/query-execution.md) for a minimal
 `mysql2/promise` SELECT execution example, and
 [`../../docs/mutation-execution.md`](../../docs/mutation-execution.md) for mutation
