@@ -104,6 +104,11 @@ async function executeOne(
     statement.sql,
     toExecuteValues(caseName, statement.params),
   );
+  if (rows.length > 1) {
+    throw new Error(
+      `Expected at most one row for ${caseName}, got ${rows.length}`,
+    );
+  }
   return normalizeValue(rows[0] ?? null);
 }
 

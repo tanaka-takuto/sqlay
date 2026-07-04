@@ -351,7 +351,12 @@ if [ "$#" -eq 4 ] \
   && [ "$2" = "--" ] \
   && [ "$3" = "tsx" ]; then
   case "$4" in
-    "$TMPDIR"/sqlay-examples.*/bookstore/assert-query-results.ts) ;;
+    "$TMPDIR"/sqlay-examples.*/bookstore/assert-query-results.ts)
+      if ! grep -q 'rows.length > 1' "$4"; then
+        echo "expected result assertion script to reject multi-row single-result queries" >&2
+        exit 64
+      fi
+      ;;
     *)
       echo "expected npm to run a temporary bookstore result assertion, got: $*" >&2
       exit 64
