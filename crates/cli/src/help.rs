@@ -29,10 +29,30 @@ Minimal query annotation:
   */
   SELECT id, name FROM users;
 
+Minimal mutation annotation:
+  /* @sqlay
+  {
+    type: mutation
+    id: createUser
+  }
+  */
+  INSERT INTO users (email, name)
+  VALUES (
+    /* @sqlay { type: param id: email } */ 'ada@example.test' /* @sqlay { type: paramEnd } */,
+    /* @sqlay { type: param id: name } */ 'Ada' /* @sqlay { type: paramEnd } */
+  );
+
 Query metadata:
   type: query is required.
   id is required and must match ^[A-Za-z_][A-Za-z0-9_]*$.
   cardinality is optional: one or many. cardinality: exec is rejected.
+
+Mutation builders:
+  type: mutation supports INSERT, UPDATE, DELETE, and REPLACE builders.
+  check and compile validate mutation SQL and infer input Params, but never execute mutation statements.
+  Mutation builders return { sql, params } only.
+  affectedRows, insertId, changedRows, transactions, upserts, and REPLACE result interpretation belong to application/driver code.
+  See docs/mutation-execution.md for mysql2/promise execution examples.
 
 Directive boundary:
   Compiler directives are @sqlay Hjson block comments.
@@ -106,7 +126,7 @@ Usage:
   sqlay check [options]
 
 Behavior:
-  Loads sqlay.config.json, reads SQL files, validates MySQL SELECT queries, and renders generated TypeScript output in memory.
+  Loads sqlay.config.json, reads SQL files, validates MySQL queries and mutations, and renders generated TypeScript output in memory.
   When --config is omitted, searches from the current working directory upward for sqlay.config.json.
   Reads the database URL from the environment variable named by database.urlEnv.
   No files are written.
@@ -153,6 +173,26 @@ Param metadata:
   Each marker occurrence appends one params entry in source order.
   All occurrences of a repeated Param id must use the same valueType and nullability.
   For bool Params, use TRUE or FALSE as the sample expression.
+
+Minimal mutation annotation:
+  /* @sqlay
+  {
+    type: mutation
+    id: createUser
+  }
+  */
+  INSERT INTO users (email, name)
+  VALUES (
+    /* @sqlay { type: param id: email } */ 'ada@example.test' /* @sqlay { type: paramEnd } */,
+    /* @sqlay { type: param id: name } */ 'Ada' /* @sqlay { type: paramEnd } */
+  );
+
+Mutation builders:
+  type: mutation supports INSERT, UPDATE, DELETE, and REPLACE builders.
+  check and compile validate mutation SQL and infer input Params, but never execute mutation statements.
+  Mutation builders return { sql, params } only.
+  affectedRows, insertId, changedRows, transactions, upserts, and REPLACE result interpretation belong to application/driver code.
+  See docs/mutation-execution.md for mysql2/promise execution examples.
 
 Options:
   -h, --help         Print this help.
@@ -222,6 +262,26 @@ Param metadata:
   Each marker occurrence appends one params entry in source order.
   All occurrences of a repeated Param id must use the same valueType and nullability.
   For bool Params, use TRUE or FALSE as the sample expression.
+
+Minimal mutation annotation:
+  /* @sqlay
+  {
+    type: mutation
+    id: createUser
+  }
+  */
+  INSERT INTO users (email, name)
+  VALUES (
+    /* @sqlay { type: param id: email } */ 'ada@example.test' /* @sqlay { type: paramEnd } */,
+    /* @sqlay { type: param id: name } */ 'Ada' /* @sqlay { type: paramEnd } */
+  );
+
+Mutation builders:
+  type: mutation supports INSERT, UPDATE, DELETE, and REPLACE builders.
+  check and compile validate mutation SQL and infer input Params, but never execute mutation statements.
+  Mutation builders return { sql, params } only.
+  affectedRows, insertId, changedRows, transactions, upserts, and REPLACE result interpretation belong to application/driver code.
+  See docs/mutation-execution.md for mysql2/promise execution examples.
 
 Options:
   -h, --help         Print this help.
