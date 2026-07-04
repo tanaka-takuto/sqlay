@@ -1,0 +1,34 @@
+[
+  {
+    "bookId": "103",
+    "title": "Parable of the Sower",
+    "stockQuantity": 0,
+    "reorderLevel": 5,
+    "unitsBelowTarget": "5",
+    "restockState": "out"
+  },
+  {
+    "bookId": "101",
+    "title": "A Wizard of Earthsea",
+    "stockQuantity": 2,
+    "reorderLevel": 4,
+    "unitsBelowTarget": "2",
+    "restockState": "low"
+  },
+  {
+    "bookId": "105",
+    "title": "Invisible Cities",
+    "stockQuantity": 1,
+    "reorderLevel": 3,
+    "unitsBelowTarget": "2",
+    "restockState": "low"
+  },
+  {
+    "bookId": "107",
+    "title": "Boundary Collector Edition",
+    "stockQuantity": 2,
+    "reorderLevel": 2,
+    "unitsBelowTarget": "0",
+    "restockState": "low"
+  }
+]

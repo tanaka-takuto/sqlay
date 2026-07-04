@@ -1,0 +1,62 @@
+[
+  {
+    "bookId": "105",
+    "isbn": "9780156453806",
+    "title": "Invisible Cities",
+    "authorName": "Italo Calvino",
+    "format": "paperback",
+    "price": 15.95,
+    "stockQuantity": 1,
+    "averageRating": 0,
+    "reviewCount": "0",
+    "availability": "low_stock"
+  },
+  {
+    "bookId": "104",
+    "isbn": "9780446603775",
+    "title": "Kindred",
+    "authorName": "Octavia E. Butler",
+    "format": "paperback",
+    "price": 14.99,
+    "stockQuantity": 5,
+    "averageRating": 4,
+    "reviewCount": "1",
+    "availability": "available"
+  },
+  {
+    "bookId": "9223372036854775001",
+    "isbn": "BOUNDARY-0001",
+    "title": "Large Identifier Catalog Record",
+    "authorName": "Bookstore Archive Collective",
+    "format": "paperback",
+    "price": 18,
+    "stockQuantity": 8,
+    "averageRating": 5,
+    "reviewCount": "1",
+    "availability": "available"
+  },
+  {
+    "bookId": "102",
+    "isbn": "9780316229296",
+    "title": "The Fifth Season",
+    "authorName": "N. K. Jemisin",
+    "format": "paperback",
+    "price": 18,
+    "stockQuantity": 8,
+    "averageRating": 5,
+    "reviewCount": "1",
+    "availability": "available"
+  },
+  {
+    "bookId": "100",
+    "isbn": "9780441478125",
+    "title": "The Left Hand of Darkness",
+    "authorName": "Ursula K. Le Guin",
+    "format": "paperback",
+    "price": 16.99,
+    "stockQuantity": 12,
+    "averageRating": 5,
+    "reviewCount": "1",
+    "availability": "available"
+  }
+]

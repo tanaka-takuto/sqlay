@@ -1,0 +1,20 @@
+[
+  {
+    "orderNumber": "BK-1000",
+    "orderItemId": "9000",
+    "bookTitle": "The Left Hand of Darkness",
+    "quantity": 1,
+    "unitPrice": 16.99,
+    "discountAmount": null,
+    "lineTotal": 16.99
+  },
+  {
+    "orderNumber": "BK-1000",
+    "orderItemId": "9001",
+    "bookTitle": "The Fifth Season",
+    "quantity": 1,
+    "unitPrice": 18,
+    "discountAmount": 2,
+    "lineTotal": 16
+  }
+]

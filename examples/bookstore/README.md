@@ -28,6 +28,11 @@ decimal precision tradeoff at runtime.
 The generated files under `generated/` are committed expected artifacts. They are
 regenerated and compared byte for byte by the examples check.
 
+The expected query results under `expected-results/` are deterministic fixtures for
+representative generated builders. The examples check loads the seed data, executes
+those builders through `mysql2/promise`, and compares the result rows with the
+checked-in JSON files without adding driver code to generated TypeScript.
+
 `seed.sql` is deterministic and intentionally includes production-readiness
 boundary cases: cancelled orders, a paid order with no items, repeated sort keys,
 discount and no-discount line items, zero and large prices, a large `BIGINT`

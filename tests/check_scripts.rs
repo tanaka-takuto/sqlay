@@ -17,6 +17,17 @@ fn example_check_typechecks_temporary_generated_project() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+
+    let npm_calls = std::fs::read_to_string(fixture.root.join("npm-calls.log"))
+        .expect("npm call log should be written");
+    assert!(
+        npm_calls.contains("exec -- tsx "),
+        "example check should execute bookstore result assertions, got: {npm_calls}"
+    );
+    assert!(
+        npm_calls.contains("assert-query-results.ts"),
+        "example check should run the query result assertion script, got: {npm_calls}"
+    );
 }
 
 #[test]
@@ -333,6 +344,27 @@ cat >/dev/null
             r#"#!/bin/sh
 set -eu
 
+printf '%s\n' "$*" >> "$TMPDIR/npm-calls.log"
+
+if [ "$#" -eq 4 ] \
+  && [ "$1" = "exec" ] \
+  && [ "$2" = "--" ] \
+  && [ "$3" = "tsx" ]; then
+  case "$4" in
+    "$TMPDIR"/sqlay-examples.*/bookstore/assert-query-results.ts)
+      if ! grep -q 'rows.length > 1' "$4"; then
+        echo "expected result assertion script to reject multi-row single-result queries" >&2
+        exit 64
+      fi
+      ;;
+    *)
+      echo "expected npm to run a temporary bookstore result assertion, got: $*" >&2
+      exit 64
+      ;;
+  esac
+  exit 0
+fi
+
 if [ "$#" -ne 6 ] \
   || [ "$1" != "exec" ] \
   || [ "$2" != "--" ] \
@@ -344,7 +376,13 @@ if [ "$#" -ne 6 ] \
 fi
 
 case "$6" in
-  "$TMPDIR"/sqlay-examples.*/bookstore/tsconfig.json) ;;
+  "$TMPDIR"/sqlay-examples.*/bookstore/tsconfig.json)
+    project_dir=$(dirname "$6")
+    if [ ! -L "$project_dir/node_modules" ]; then
+      echo "expected temporary bookstore project to link repo node_modules" >&2
+      exit 64
+    fi
+    ;;
   "$TMPDIR"/sqlay-mysql-fixtures.*/sql/tsconfig.json) ;;
   "$TMPDIR"/sqlay-mysql-fixtures.*/sql-type-mapping/tsconfig.json) ;;
   *)

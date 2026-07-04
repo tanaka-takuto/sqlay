@@ -1,0 +1,38 @@
+[
+  {
+    "authorId": "9223372036854775000",
+    "authorName": "Bookstore Archive Collective",
+    "booksSold": 3,
+    "revenue": 54
+  },
+  {
+    "authorId": "1",
+    "authorName": "Ursula K. Le Guin",
+    "booksSold": 2,
+    "revenue": 39.49
+  },
+  {
+    "authorId": "4",
+    "authorName": "Italo Calvino",
+    "booksSold": 2,
+    "revenue": 28.9
+  },
+  {
+    "authorId": "2",
+    "authorName": "N. K. Jemisin",
+    "booksSold": 1,
+    "revenue": 16
+  },
+  {
+    "authorId": "3",
+    "authorName": "Octavia E. Butler",
+    "booksSold": 1,
+    "revenue": 14.99
+  },
+  {
+    "authorId": "5",
+    "authorName": "Mary Shelley",
+    "booksSold": 1,
+    "revenue": 0
+  }
+]

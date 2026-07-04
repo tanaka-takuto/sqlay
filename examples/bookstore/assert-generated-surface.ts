@@ -26,10 +26,14 @@ import {
 import {
   findLatestOrderForCustomer,
   type findLatestOrderForCustomer_Output,
+  listOrderLineItems,
+  type listOrderLineItems_Output,
   listCustomerOrders,
   type listCustomerOrders_Output,
   listMonthlySales,
   type listMonthlySales_Output,
+  listRevenueByAuthor,
+  type listRevenueByAuthor_Output,
   listUnreviewedPurchases,
   type listUnreviewedPurchases_Output,
 } from "./generated/sql/orders";
@@ -56,6 +60,22 @@ const bookDetailQuery = findBookDetail({ isbn: "9780441478125" });
 const bookDetailSql: string = bookDetailQuery.sql;
 const bookDetailParams: readonly [string] = bookDetailQuery.params;
 const bookDetailOutput: findBookDetail_Output = null;
+const bookDetailWithShelf: findBookDetail_Output = {
+  bookId: "100",
+  isbn: "9780441478125",
+  title: "The Left Hand of Darkness",
+  description: "A classic novel of diplomacy and identity.",
+  authorName: "Ursula K. Le Guin",
+  authorCountryCode: "US",
+  format: "paperback",
+  price: 16.99,
+  publishedOn: "1969-03-01",
+  seriesName: "null",
+  shelfCode: "A1",
+  primaryCategory: "Science Fiction",
+  approvedReviewCount: "1",
+  averageRating: 5,
+};
 
 const restockQuery = listBooksNeedingRestock();
 const restockOutput: listBooksNeedingRestock_Output = [];
@@ -77,6 +97,9 @@ const topRatedByIdsInput: listTopRatedBooks_Input = {
 const customerOrdersQuery = listCustomerOrders();
 const customerOrdersOutput: listCustomerOrders_Output = [];
 
+const orderLineItemsQuery = listOrderLineItems({ orderNumber: "BK-1000" });
+const orderLineItemsOutput: listOrderLineItems_Output = [];
+
 const latestOrderQuery = findLatestOrderForCustomer();
 const latestOrderOutput: findLatestOrderForCustomer_Output = null;
 
@@ -85,6 +108,9 @@ const unreviewedPurchasesOutput: listUnreviewedPurchases_Output = [];
 
 const monthlySalesQuery = listMonthlySales();
 const monthlySalesOutput: listMonthlySales_Output = [];
+
+const revenueByAuthorQuery = listRevenueByAuthor();
+const revenueByAuthorOutput: listRevenueByAuthor_Output = [];
 
 const createOrderMutation = createOrder({
   customerId: "1000",
@@ -164,6 +190,7 @@ void availableBooksByIdsQuery;
 void bookDetailSql;
 void bookDetailParams;
 void bookDetailOutput;
+void bookDetailWithShelf;
 void restockQuery;
 void restockOutput;
 void topRatedQuery;
@@ -172,12 +199,16 @@ void topRatedByFormatInput;
 void topRatedByIdsInput;
 void customerOrdersQuery;
 void customerOrdersOutput;
+void orderLineItemsQuery;
+void orderLineItemsOutput;
 void latestOrderQuery;
 void latestOrderOutput;
 void unreviewedPurchasesQuery;
 void unreviewedPurchasesOutput;
 void monthlySalesQuery;
 void monthlySalesOutput;
+void revenueByAuthorQuery;
+void revenueByAuthorOutput;
 void createOrderSql;
 void createOrderParams;
 void createdOrderQuery;

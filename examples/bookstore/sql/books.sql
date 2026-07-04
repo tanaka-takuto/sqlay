@@ -56,6 +56,7 @@ SELECT
   b.price AS price,
   b.published_on AS publishedOn,
   CAST(JSON_UNQUOTE(JSON_EXTRACT(b.metadata, '$.series')) AS CHAR(255)) AS seriesName,
+  CAST(JSON_UNQUOTE(JSON_EXTRACT(b.metadata, '$.shelf')) AS CHAR(255)) AS shelfCode,
   (
     SELECT MIN(c.display_name)
     FROM bookstore_book_categories AS bc

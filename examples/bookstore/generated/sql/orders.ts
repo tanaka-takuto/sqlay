@@ -28,6 +28,31 @@ export function listCustomerOrders(
   };
 }
 
+export type listOrderLineItems_Input = {
+  orderNumber: string;
+};
+
+export type listOrderLineItems_Row = {
+  orderNumber: string;
+  orderItemId: string;
+  bookTitle: string;
+  quantity: number;
+  unitPrice: number;
+  discountAmount: number | null;
+  lineTotal: number;
+};
+
+export type listOrderLineItems_Output = listOrderLineItems_Row[];
+
+export function listOrderLineItems(
+  input: listOrderLineItems_Input,
+): { sql: string; params: readonly [string] } {
+  return {
+    sql: "\nSELECT\n  o.order_number AS orderNumber,\n  oi.id AS orderItemId,\n  b.title AS bookTitle,\n  oi.quantity AS quantity,\n  oi.unit_price AS unitPrice,\n  oi.discount_amount AS discountAmount,\n  oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0) AS lineTotal\nFROM bookstore_orders AS o\nINNER JOIN bookstore_order_items AS oi\n  ON oi.order_id = o.id\nINNER JOIN bookstore_books AS b\n  ON b.id = oi.book_id\nWHERE o.order_number = ?\nORDER BY oi.id;\n\n",
+    params: [input.orderNumber] as const,
+  };
+}
+
 export type findLatestOrderForCustomer_Input = Record<string, never>;
 
 export type findLatestOrderForCustomer_Row = {
@@ -91,7 +116,27 @@ export function listMonthlySales(
   _input: listMonthlySales_Input = {},
 ): { sql: string; params: readonly [] } {
   return {
-    sql: "\nSELECT\n  DATE_FORMAT(o.placed_at, '%Y-%m-01') AS salesMonth,\n  COUNT(DISTINCT o.id) AS orderCount,\n  SUM(oi.quantity) AS booksSold,\n  SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)) AS grossSales,\n  AVG(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)) AS averageLineTotal\nFROM bookstore_orders AS o\nINNER JOIN bookstore_order_items AS oi\n  ON oi.order_id = o.id\nWHERE o.status IN ('paid', 'shipped', 'delivered')\nGROUP BY DATE_FORMAT(o.placed_at, '%Y-%m-01')\nORDER BY salesMonth;\n",
+    sql: "\nSELECT\n  DATE_FORMAT(o.placed_at, '%Y-%m-01') AS salesMonth,\n  COUNT(DISTINCT o.id) AS orderCount,\n  SUM(oi.quantity) AS booksSold,\n  SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)) AS grossSales,\n  AVG(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)) AS averageLineTotal\nFROM bookstore_orders AS o\nINNER JOIN bookstore_order_items AS oi\n  ON oi.order_id = o.id\nWHERE o.status IN ('paid', 'shipped', 'delivered')\nGROUP BY DATE_FORMAT(o.placed_at, '%Y-%m-01')\nORDER BY salesMonth;\n\n",
+    params: [] as const,
+  };
+}
+
+export type listRevenueByAuthor_Input = Record<string, never>;
+
+export type listRevenueByAuthor_Row = {
+  authorId: string;
+  authorName: string;
+  booksSold: number | null;
+  revenue: number | null;
+};
+
+export type listRevenueByAuthor_Output = listRevenueByAuthor_Row[];
+
+export function listRevenueByAuthor(
+  _input: listRevenueByAuthor_Input = {},
+): { sql: string; params: readonly [] } {
+  return {
+    sql: "\nSELECT\n  a.id AS authorId,\n  a.display_name AS authorName,\n  SUM(oi.quantity) AS booksSold,\n  SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)) AS revenue\nFROM bookstore_orders AS o\nINNER JOIN bookstore_order_items AS oi\n  ON oi.order_id = o.id\nINNER JOIN bookstore_books AS b\n  ON b.id = oi.book_id\nINNER JOIN bookstore_authors AS a\n  ON a.id = b.author_id\nWHERE o.status IN ('paid', 'shipped', 'delivered')\nGROUP BY\n  a.id,\n  a.display_name\nORDER BY revenue DESC, a.display_name;\n",
     params: [] as const,
   };
 }

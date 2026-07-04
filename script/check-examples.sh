@@ -266,6 +266,7 @@ tmp_example=$tmp_root/bookstore
 
 cp -R "$example_root" "$tmp_example"
 rm -rf "$tmp_example/generated"
+ln -s "$repo_root/node_modules" "$tmp_example/node_modules"
 
 load_mysql_file "$example_root/schema.sql"
 load_mysql_file "$example_root/seed.sql"
@@ -275,3 +276,4 @@ cd "$repo_root"
 DATABASE_URL=$DATABASE_URL cargo run --locked -- compile --config "$tmp_example/sqlay.config.json"
 compare_directories "$example_root/generated" "$tmp_example/generated"
 npm exec -- tsc --noEmit --project "$tmp_example/tsconfig.json"
+npm exec -- tsx "$tmp_example/assert-query-results.ts"
