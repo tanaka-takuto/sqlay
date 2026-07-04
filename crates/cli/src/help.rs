@@ -55,27 +55,15 @@ Param marker example:
   */
   SELECT customers.id, customers.email
   FROM customers
-  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
-    'ada@example.test'
-    /* @sqlay { type: paramEnd } */
+  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */
     IS NULL
-    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
-    'ada@example.test'
-    /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
-      '2026-01-01 00:00:00'
-      /* @sqlay { type: paramEnd } */
+    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */
       IS NULL
-      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
-      '2026-01-01 00:00:00'
-      /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */
-      TRUE
-      /* @sqlay { type: paramEnd } */
+      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */
       IS NULL
-      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */
-      TRUE
-      /* @sqlay { type: paramEnd } */);
+      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */);
 
 Generated TypeScript input:
   export type listCustomersByFilter_Input = {
@@ -134,27 +122,15 @@ Param marker example:
   */
   SELECT customers.id, customers.email
   FROM customers
-  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
-    'ada@example.test'
-    /* @sqlay { type: paramEnd } */
+  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */
     IS NULL
-    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
-    'ada@example.test'
-    /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
-      '2026-01-01 00:00:00'
-      /* @sqlay { type: paramEnd } */
+    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */
       IS NULL
-      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
-      '2026-01-01 00:00:00'
-      /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */
-      TRUE
-      /* @sqlay { type: paramEnd } */
+      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */
       IS NULL
-      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */
-      TRUE
-      /* @sqlay { type: paramEnd } */);
+      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */);
 
 Generated TypeScript input:
   export type listCustomersByFilter_Input = {
@@ -212,27 +188,15 @@ Param marker example:
   */
   SELECT customers.id, customers.email
   FROM customers
-  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
-    'ada@example.test'
-    /* @sqlay { type: paramEnd } */
+  WHERE (/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */
     IS NULL
-    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */
-    'ada@example.test'
-    /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
-      '2026-01-01 00:00:00'
-      /* @sqlay { type: paramEnd } */
+    OR customers.email = /* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */
       IS NULL
-      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
-      '2026-01-01 00:00:00'
-      /* @sqlay { type: paramEnd } */)
-    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */
-      TRUE
-      /* @sqlay { type: paramEnd } */
+      OR customers.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */)
+    AND (/* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */
       IS NULL
-      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */
-      TRUE
-      /* @sqlay { type: paramEnd } */);
+      OR customers.active = /* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */);
 
 Generated TypeScript input:
   export type listCustomersByFilter_Input = {

@@ -250,9 +250,7 @@ row annotations, not runtime SQL parameter packing.
 Inline Param `valueType` is a sqlay Core type hint, not a TypeScript annotation:
 
 ```sql
-WHERE o.total_amount >= /* @sqlay { type: param id: minimumAmount valueType: decimal } */
-  10.00
-  /* @sqlay { type: paramEnd } */
+WHERE o.total_amount >= /* @sqlay { type: param id: minimumAmount valueType: decimal } */ 10.00 /* @sqlay { type: paramEnd } */
 ```
 
 `valueType: decimal` tells sqlay how to classify the SQL value when schema inference is unavailable.

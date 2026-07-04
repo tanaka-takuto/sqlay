@@ -4,9 +4,7 @@
   id: equalsValue
 }
 */
-  = /* @sqlay { type: param id: value } */
-    'varchar-320-a'
-    /* @sqlay { type: paramEnd } */ THEN TRUE
+  = /* @sqlay { type: param id: value } */ 'varchar-320-a' /* @sqlay { type: paramEnd } */ THEN TRUE
   WHEN 1
 
 /* @sqlay

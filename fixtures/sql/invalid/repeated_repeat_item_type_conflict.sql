@@ -9,15 +9,11 @@ SELECT
 FROM fixture_all_column_type AS p
 WHERE p.bigint_nn_col IN (
   /* @sqlay { type: repeat id: items separator: "," } */
-  /* @sqlay { type: param id: id valueType: int64 } */
-  1
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: id valueType: int64 } */ 1 /* @sqlay { type: paramEnd } */
   /* @sqlay { type: repeatEnd } */
 )
 OR p.bigint_nn_col IN (
   /* @sqlay { type: repeat id: items separator: "," } */
-  /* @sqlay { type: param id: id valueType: string } */
-  '1'
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: id valueType: string } */ '1' /* @sqlay { type: paramEnd } */
   /* @sqlay { type: repeatEnd } */
 );

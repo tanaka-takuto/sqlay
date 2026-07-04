@@ -6,6 +6,24 @@ fn assert_param_marker_guidance(stdout: &str) {
         "stdout: {stdout}"
     );
     assert!(
+        stdout.contains(
+            "/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */"
+        ),
+        "stdout should keep scalar Param ranges on one line: {stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */"
+        ),
+        "stdout should keep datetime Param ranges on one line: {stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "/* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */"
+        ),
+        "stdout should keep bool Param ranges on one line: {stdout}"
+    );
+    assert!(
         stdout.contains("id: listCustomersByFilter"),
         "stdout: {stdout}"
     );

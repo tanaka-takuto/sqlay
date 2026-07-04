@@ -163,9 +163,7 @@ expressions:
 */
 SELECT b.title
 FROM books AS b
-WHERE b.isbn = /* @sqlay { type: param id: isbn } */
-  '9780131103627'
-  /* @sqlay { type: paramEnd } */;
+WHERE b.isbn = /* @sqlay { type: param id: isbn } */ '9780131103627' /* @sqlay { type: paramEnd } */;
 ```
 
 Raw `?` placeholders are not accepted in source SQL; use `Param` markers so the SQL
@@ -177,9 +175,7 @@ For nullable inputs, keep `valueType` to a sqlay CoreType name and add
 `nullable: true` instead of writing a TypeScript union:
 
 ```sql
-WHERE b.published_at < /* @sqlay { type: param id: publishedBefore valueType: datetime nullable: true } */
-  '2026-01-01 00:00:00'
-  /* @sqlay { type: paramEnd } */
+WHERE b.published_at < /* @sqlay { type: param id: publishedBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */
 ```
 
 ```ts
@@ -198,14 +194,10 @@ includes one value per marker occurrence in source order:
 
 ```sql
 WHERE (
-  /* @sqlay { type: param id: status valueType: string nullable: true } */
-  'paid'
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: status valueType: string nullable: true } */ 'paid' /* @sqlay { type: paramEnd } */
   IS NULL
   OR o.status =
-  /* @sqlay { type: param id: status valueType: string nullable: true } */
-  'paid'
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: status valueType: string nullable: true } */ 'paid' /* @sqlay { type: paramEnd } */
 )
 ```
 
@@ -234,21 +226,11 @@ INSERT INTO bookstore_orders (
   currency,
   placed_at
 ) VALUES (
-  /* @sqlay { type: param id: customerId } */
-  1000
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: orderNumber } */
-  'BK-2000'
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: status } */
-  'draft'
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: currency } */
-  'USD'
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: placedAt } */
-  '2026-04-20 12:00:00.000000'
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: customerId } */ 1000 /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: orderNumber } */ 'BK-2000' /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: status } */ 'draft' /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: currency } */ 'USD' /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: placedAt } */ '2026-04-20 12:00:00.000000' /* @sqlay { type: paramEnd } */
 );
 ```
 
@@ -292,9 +274,7 @@ for each query that uses them.
   id: byBookFormat
 }
 */
-  AND b.format = /* @sqlay { type: param id: format } */
-    'paperback'
-    /* @sqlay { type: paramEnd } */
+  AND b.format = /* @sqlay { type: param id: format } */ 'paperback' /* @sqlay { type: paramEnd } */
 
 /* @sqlay
 {
@@ -342,9 +322,7 @@ ordinary SQL owns the surrounding list syntax such as `IN (` and `)`.
 ```sql
 AND b.id IN (
   /* @sqlay { type: repeat id: ids separator: ", " } */
-  /* @sqlay { type: param id: id valueType: int64 } */
-  100
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: id valueType: int64 } */ 100 /* @sqlay { type: paramEnd } */
   /* @sqlay { type: repeatEnd } */
 )
 ```
@@ -376,15 +354,9 @@ INSERT INTO bookstore_order_items (
 ) VALUES
 /* @sqlay { type: repeat id: items separator: "," } */
 (
-  /* @sqlay { type: param id: orderId } */
-  5000
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: bookId } */
-  100
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: quantity } */
-  1
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: orderId } */ 5000 /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: bookId } */ 100 /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: quantity } */ 1 /* @sqlay { type: paramEnd } */
 )
 /* @sqlay { type: repeatEnd } */;
 ```

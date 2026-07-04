@@ -55,9 +55,7 @@ INNER JOIN bookstore_order_items AS oi
   ON oi.order_id = o.id
 INNER JOIN bookstore_books AS b
   ON b.id = oi.book_id
-WHERE o.order_number = /* @sqlay { type: param id: orderNumber } */
-  'BK-1000'
-  /* @sqlay { type: paramEnd } */
+WHERE o.order_number = /* @sqlay { type: param id: orderNumber } */ 'BK-1000' /* @sqlay { type: paramEnd } */
 ORDER BY oi.id;
 
 /* @sqlay

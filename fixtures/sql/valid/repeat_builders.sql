@@ -10,9 +10,7 @@ SELECT
 FROM fixture_all_column_type AS p
 WHERE p.char_16_nn_col IN (
   /* @sqlay { type: repeat id: states separator: ", " } */
-  /* @sqlay { type: param id: state } */
-  'state_a'
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: state } */ 'state_a' /* @sqlay { type: paramEnd } */
   /* @sqlay { type: repeatEnd } */
 )
 ORDER BY p.bigint_nn_col;
@@ -31,18 +29,10 @@ INSERT INTO fixture_child (
 ) VALUES
 /* @sqlay { type: repeat id: rows separator: "," } */
 (
-  /* @sqlay { type: param id: childId } */
-  300
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: parentId } */
-  1
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: childLabel } */
-  'child-repeat'
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: childAmount } */
-  42.50
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: childId } */ 300 /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: parentId } */ 1 /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: childLabel } */ 'child-repeat' /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: childAmount } */ 42.50 /* @sqlay { type: paramEnd } */
 )
 /* @sqlay { type: repeatEnd } */;
 
@@ -62,15 +52,9 @@ WHERE EXISTS (
     AND (
       /* @sqlay { type: repeat id: childPairs separator: " OR " } */
       (
-        c.child_bigint_nn_col = /* @sqlay { type: param id: childId valueType: int64 } */
-          100
-          /* @sqlay { type: paramEnd } */
-        AND c.parent_bigint_nn_col = /* @sqlay { type: param id: parentId valueType: int64 } */
-          1
-          /* @sqlay { type: paramEnd } */
-        AND c.parent_bigint_nn_col >= /* @sqlay { type: param id: parentId valueType: int64 } */
-          1
-          /* @sqlay { type: paramEnd } */
+        c.child_bigint_nn_col = /* @sqlay { type: param id: childId valueType: int64 } */ 100 /* @sqlay { type: paramEnd } */
+        AND c.parent_bigint_nn_col = /* @sqlay { type: param id: parentId valueType: int64 } */ 1 /* @sqlay { type: paramEnd } */
+        AND c.parent_bigint_nn_col >= /* @sqlay { type: param id: parentId valueType: int64 } */ 1 /* @sqlay { type: paramEnd } */
       )
       /* @sqlay { type: repeatEnd } */
     )
@@ -78,12 +62,8 @@ WHERE EXISTS (
 OR (p.bigint_nn_col, p.bigint_nn_col) IN (
   /* @sqlay { type: repeat id: childPairs separator: ", " } */
   (
-    /* @sqlay { type: param id: parentId valueType: int64 } */
-    1
-    /* @sqlay { type: paramEnd } */,
-    /* @sqlay { type: param id: childId valueType: int64 } */
-    100
-    /* @sqlay { type: paramEnd } */
+    /* @sqlay { type: param id: parentId valueType: int64 } */ 1 /* @sqlay { type: paramEnd } */,
+    /* @sqlay { type: param id: childId valueType: int64 } */ 100 /* @sqlay { type: paramEnd } */
   )
   /* @sqlay { type: repeatEnd } */
 )
@@ -101,9 +81,7 @@ AND EXISTS (
   WHERE c.parent_bigint_nn_col = p.bigint_nn_col
     AND c.child_bigint_nn_col IN (
       /* @sqlay { type: repeat id: childIds separator: ", " } */
-      /* @sqlay { type: param id: childId valueType: int64 } */
-      100
-      /* @sqlay { type: paramEnd } */
+      /* @sqlay { type: param id: childId valueType: int64 } */ 100 /* @sqlay { type: paramEnd } */
       /* @sqlay { type: repeatEnd } */
     )
 )

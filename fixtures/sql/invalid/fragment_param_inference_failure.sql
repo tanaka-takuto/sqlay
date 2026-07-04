@@ -4,9 +4,7 @@
   id: lowerTextFilter
 }
 */
-  AND LOWER(p.varchar_320_nn_col) = /* @sqlay { type: param id: lowerText } */
-    'varchar-320-a'
-    /* @sqlay { type: paramEnd } */
+  AND LOWER(p.varchar_320_nn_col) = /* @sqlay { type: param id: lowerText } */ 'varchar-320-a' /* @sqlay { type: paramEnd } */
 
 /* @sqlay
 {
