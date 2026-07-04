@@ -38,6 +38,29 @@ function readDatabaseUrl(envName: string): string {
   return databaseUrl;
 }
 
+function readDatabaseOptions(envName: string) {
+  const parsed = new URL(readDatabaseUrl(envName));
+  if (parsed.protocol !== "mysql:") {
+    throw new Error(`${envName} must use the mysql:// scheme`);
+  }
+
+  const database = parsed.pathname.replace(/^\/+/, "");
+  if (!database) {
+    throw new Error(`${envName} must include a database name`);
+  }
+
+  return {
+    host: parsed.hostname,
+    port: parsed.port ? Number(parsed.port) : 3306,
+    user: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database: decodeURIComponent(database),
+    supportBigNumbers: true,
+    bigNumberStrings: true,
+    dateStrings: true,
+  };
+}
+
 async function loadBookDetail(
   pool: Pool,
   input: findBookDetail_Input,
@@ -51,7 +74,7 @@ async function loadBookDetail(
 }
 
 async function main(): Promise<void> {
-  const pool = mysql.createPool(readDatabaseUrl("DATABASE_URL"));
+  const pool = mysql.createPool(readDatabaseOptions("DATABASE_URL"));
 
   try {
     const book = await loadBookDetail(pool, { isbn: "9780441478125" });
@@ -61,6 +84,28 @@ async function main(): Promise<void> {
   }
 }
 ```
+
+## Runtime Type Compatibility
+
+Generated row types are static TypeScript annotations. `mysql2` still owns runtime
+conversion from MySQL values to JavaScript values, so configure the pool at the
+application boundary when you want returned rows to match sqlay's conservative
+generated types.
+
+For the default sqlay mappings, `supportBigNumbers: true` and
+`bigNumberStrings: true` keep MySQL `BIGINT`, unsigned 64-bit integer values, and
+other big-number columns as strings instead of mixing JavaScript `number` and
+`string` results by value range. `dateStrings: true` keeps date/time values such as
+`DATE`, `DATETIME`, and `TIMESTAMP` as strings instead of JavaScript `Date` objects.
+
+Leave `decimalNumbers` unset or `false` when generated `DECIMAL` fields use
+sqlay's default `string` mapping. Set `decimalNumbers: true` only when the
+application also opts into a compatible generated type, such as mapping
+`target.typescript.typeMapping.core.decimal` to `number`, and accepts the JavaScript
+precision risk.
+
+These are application `mysql2` options. sqlay does not configure the driver, parse
+result values, or change generated SQL.
 
 `mysql2` accepts mutable parameter arrays in its TypeScript surface. Generated
 sqlay builders return readonly params, so spread them into a mutable array at the

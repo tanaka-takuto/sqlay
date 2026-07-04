@@ -126,8 +126,8 @@ When a nullable field is overridden, generated code preserves nullability as
 as `decimal` or `datetime`; it is not a TypeScript type override.
 
 See [`docs/typescript-type-mapping.md`](./docs/typescript-type-mapping.md) for the
-full config shape, override priority, import rules, precision-risk notes, and the
-runtime responsibility boundary.
+full config shape, override priority, import rules, precision-risk notes,
+`mysql2` runtime option guidance, and the runtime responsibility boundary.
 
 ### Machine-Readable CLI Output
 
