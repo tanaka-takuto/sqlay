@@ -60,7 +60,8 @@ SELECT
   p.decimal_18_4_nn_col + c.decimal_12_2_nn_col AS decimalExpressionCol,
   c.double_col * 2 AS doubleExpressionCol,
   p.timestamp_col IS NULL AS timestampIsNullCol,
-  JSON_EXTRACT(p.json_col, '$.tier') AS jsonExtractCol
+  JSON_EXTRACT(p.json_col, '$.tier') AS jsonExtractCol,
+  JSON_UNQUOTE(JSON_EXTRACT(p.json_col, '$.tier')) AS jsonUnquoteExtractCol
 FROM fixture_all_column_type AS p
 LEFT JOIN fixture_child AS c
   ON c.parent_bigint_nn_col = p.bigint_nn_col;
