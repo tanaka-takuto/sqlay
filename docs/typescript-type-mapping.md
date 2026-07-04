@@ -179,6 +179,27 @@ This changes generated TypeScript annotations only. It does not make `mysql2` re
 numbers, prevent precision loss, or convert strings to numbers. Configure and test the application's
 execution path before using number overrides for precision-sensitive values.
 
+## mysql2 Runtime Compatibility
+
+When application code executes generated builders through `mysql2`, keep the driver
+configuration aligned with the generated type annotations:
+
+- Use `supportBigNumbers: true` and `bigNumberStrings: true` when generated 64-bit
+  integer fields remain strings. Without `bigNumberStrings`, `mysql2` can return a
+  JavaScript `number` for values inside the safe range and a `string` for larger
+  values, which does not match one stable generated field type.
+- Use `dateStrings: true` when generated date/time fields remain strings.
+- Keep `decimalNumbers` unset or `false` while generated `DECIMAL` fields remain
+  strings. Set `decimalNumbers: true` only with an explicit project decision, such
+  as mapping `core.decimal` to `number`, and after accepting JavaScript number
+  precision risk.
+- If `target.typescript.typeMapping` changes a generated annotation to a custom
+  project type, configure and test the application's execution path so runtime
+  values really satisfy that type.
+
+These settings belong in application code. sqlay does not parse result rows,
+configure `mysql2`, or generate driver wrappers.
+
 Schema-backed MySQL `ENUM` columns generate inline literal unions by default:
 
 ```ts

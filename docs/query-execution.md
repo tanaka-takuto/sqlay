@@ -44,6 +44,30 @@ function readDatabaseUrl(envName: string): string {
   return databaseUrl;
 }
 
+function readDatabaseOptions(envName: string) {
+  const parsed = new URL(readDatabaseUrl(envName));
+  if (parsed.protocol !== "mysql:") {
+    throw new Error(`${envName} must use the mysql:// scheme`);
+  }
+
+  const database = parsed.pathname.replace(/^\/+/, "");
+  if (!database) {
+    throw new Error(`${envName} must include a database name`);
+  }
+
+  return {
+    host: parsed.hostname,
+    port: parsed.port ? Number(parsed.port) : 3306,
+    user: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database: decodeURIComponent(database),
+    supportBigNumbers: true,
+    bigNumberStrings: true,
+    decimalNumbers: true,
+    dateStrings: true,
+  };
+}
+
 function toMysqlExecuteValues(
   statementName: string,
   params: readonly unknown[],
@@ -101,7 +125,7 @@ async function loadAvailableBooksByIds(
 }
 
 async function main(): Promise<void> {
-  const pool = mysql.createPool(readDatabaseUrl("DATABASE_URL"));
+  const pool = mysql.createPool(readDatabaseOptions("DATABASE_URL"));
 
   try {
     const book = await loadBookDetail(pool, { isbn: "9780441478125" });
@@ -114,13 +138,40 @@ async function main(): Promise<void> {
 }
 ```
 
+## Runtime Type Compatibility
+
+Generated row types are static TypeScript annotations. `mysql2` still owns runtime
+conversion from MySQL values to JavaScript values, so configure the pool at the
+application boundary when you want returned rows to match sqlay's conservative
+generated types.
+
+For the default sqlay mappings, `supportBigNumbers: true` and
+`bigNumberStrings: true` keep MySQL `BIGINT`, unsigned 64-bit integer values, and
+other big-number columns as strings instead of mixing JavaScript `number` and
+`string` results by value range. `dateStrings: true` keeps date/time values such as
+`DATE`, `DATETIME`, and `TIMESTAMP` as strings instead of JavaScript `Date` objects.
+
+Leave `decimalNumbers` unset or `false` when generated `DECIMAL` fields use
+sqlay's default `string` mapping. Set `decimalNumbers: true` only when the
+application also opts into a compatible generated type, such as mapping
+`target.typescript.typeMapping.core.decimal` to `number`, and accepts the JavaScript
+precision risk.
+
+The bookstore example above sets `decimalNumbers: true` because its
+`sqlay.config.json` maps `core.decimal` to `number`.
+
+These are application `mysql2` options. sqlay does not configure the driver, parse
+result values, or change generated SQL.
+
+## Parameter Value Compatibility
+
 `mysql2` accepts `ExecuteValues[]` in its TypeScript surface. Slot, Fragment, and
-Repeat builders can return `readonly unknown[]` because selected SQL branches can
-change the runtime parameter shape. Narrow those params at the application driver
-boundary instead of casting them to `any[]` or weakening generated sqlay types.
-The helper above accepts the value types `mysql2` can execute and reports the
-statement name plus parameter index when an unsupported value reaches the driver
-boundary.
+Repeat builders can return `readonly unknown[]` because selected SQL branches or
+input array lengths can change the runtime parameter shape. Narrow those params at
+the application driver boundary instead of casting them to `any[]` or weakening
+generated sqlay types. The helper above accepts the value types `mysql2` can
+execute and reports the statement name plus parameter index when an unsupported
+value reaches the driver boundary.
 
 The row aliases combine generated row types with `RowDataPacket`, which lets
 `mysql2` type the returned rows without replacing the generated sqlay types with

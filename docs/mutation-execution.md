@@ -8,6 +8,30 @@ The examples below use generated builders from
 [`examples/bookstore/sql/mutations.sql`](../examples/bookstore/sql/mutations.sql)
 with `mysql2/promise`.
 
+## Pool Runtime Options
+
+Mutation examples often re-select rows with generated SELECT builders after a
+write. Configure the `mysql2` pool with the same runtime type compatibility options
+used for query execution before those read helpers run:
+
+```ts
+const pool = mysql.createPool({
+  host: "127.0.0.1",
+  user: "bookstore",
+  password: "bookstore",
+  database: "bookstore",
+  supportBigNumbers: true,
+  bigNumberStrings: true,
+  decimalNumbers: true,
+  dateStrings: true,
+  // The bookstore config maps DECIMAL to number and accepts precision risk.
+});
+```
+
+See [Query Execution with mysql2](./query-execution.md#runtime-type-compatibility)
+for the option rationale and a `DATABASE_URL` parsing example. These remain
+application driver options; mutation builders still return only SQL text and params.
+
 ## Shared Helper
 
 Use a small application-side helper to narrow generated params before handing them
