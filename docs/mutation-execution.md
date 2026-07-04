@@ -10,12 +10,12 @@ with `mysql2/promise`.
 
 ## Shared Helper
 
-`mysql2` accepts mutable parameter arrays in its TypeScript surface. Generated
-sqlay builders return readonly params, so spread them into a mutable array at the
-driver boundary:
+Use a small application-side helper to narrow generated params before handing them
+to `mysql2`:
 
 ```ts
 import type {
+  ExecuteValues,
   Pool,
   PoolConnection,
   ResultSetHeader,
@@ -40,13 +40,42 @@ type BuiltStatement = {
   params: readonly unknown[];
 };
 
+function toMysqlExecuteValues(
+  statementName: string,
+  params: readonly unknown[],
+): ExecuteValues[] {
+  return params.map((param, index) => {
+    if (isMysqlExecuteValue(param)) {
+      return param;
+    }
+
+    throw new Error(
+      `Parameter ${index} for ${statementName} is not supported by mysql2: ${typeof param}`,
+    );
+  });
+}
+
+function isMysqlExecuteValue(value: unknown): value is ExecuteValues {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "bigint" ||
+    typeof value === "boolean" ||
+    value instanceof Date ||
+    Buffer.isBuffer(value) ||
+    value instanceof Uint8Array
+  );
+}
+
 async function executeMutation(
   connection: PoolConnection,
+  statementName: string,
   statement: BuiltStatement,
 ): Promise<ResultSetHeader> {
   const [result] = await connection.execute<ResultSetHeader>(
     statement.sql,
-    [...statement.params],
+    toMysqlExecuteValues(statementName, statement.params),
   );
   return result;
 }
@@ -58,7 +87,7 @@ async function loadOrderById(
   const statement = findOrderById({ orderId });
   const [rows] = await connection.execute<RowDataPacket[]>(
     statement.sql,
-    [...statement.params],
+    toMysqlExecuteValues("findOrderById", statement.params),
   );
   return (rows[0] ?? null) as findOrderById_Output;
 }
@@ -70,14 +99,22 @@ async function loadOrderByNumber(
   const statement = findOrderByNumber({ orderNumber });
   const [rows] = await connection.execute<RowDataPacket[]>(
     statement.sql,
-    [...statement.params],
+    toMysqlExecuteValues("findOrderByNumber", statement.params),
   );
   return (rows[0] ?? null) as findOrderByNumber_Output;
 }
 ```
 
-The casts above are application-boundary choices. sqlay can generate the SELECT row
-type, but the database driver still owns the runtime row object.
+`mysql2` accepts `ExecuteValues[]` in its TypeScript surface. Slot, Fragment, and
+Repeat builders can return `readonly unknown[]` because selected SQL branches or
+input array lengths can change the runtime parameter shape. Narrow those params at
+the application driver boundary instead of casting them to `any[]` or weakening
+generated sqlay types. The helper above accepts the value types `mysql2` can
+execute and reports the statement name plus parameter index when an unsupported
+value reaches the driver boundary.
+
+The row casts above are separate application-boundary choices. sqlay can generate
+the SELECT row type, but the database driver still owns the runtime row object.
 
 ## Single-Row Insert
 
@@ -90,7 +127,11 @@ async function createOrderAndLoad(
   connection: PoolConnection,
   input: createOrder_Input,
 ): Promise<findOrderById_Output> {
-  const insertResult = await executeMutation(connection, createOrder(input));
+  const insertResult = await executeMutation(
+    connection,
+    "createOrder",
+    createOrder(input),
+  );
   const createdOrderId = String(insertResult.insertId);
   return loadOrderById(connection, createdOrderId);
 }
@@ -112,6 +153,7 @@ async function payDraftOrder(
 ): Promise<void> {
   const result = await executeMutation(
     connection,
+    "markOrderPaid",
     markOrderPaid({
       orderNumber,
       paidAt: "2026-04-20 12:01:00.000000",
@@ -129,6 +171,7 @@ async function deletePendingReview(
 ): Promise<boolean> {
   const result = await executeMutation(
     connection,
+    "deleteUnapprovedReview",
     deleteUnapprovedReview({ reviewId }),
   );
   return result.affectedRows === 1;
@@ -148,6 +191,7 @@ async function createPaidOrder(pool: Pool): Promise<findOrderById_Output> {
 
     const orderResult = await executeMutation(
       connection,
+      "createOrder",
       createOrder({
         customerId: "1000",
         orderNumber: "BK-2000",
@@ -165,16 +209,24 @@ async function createPaidOrder(pool: Pool): Promise<findOrderById_Output> {
 
     await executeMutation(
       connection,
+      "createOrderItems",
       createOrderItems({
-        orderId,
-        firstBookId: "100",
-        firstQuantity: 1,
-        firstUnitPrice: "16.99",
-        firstDiscountAmount: null,
-        secondBookId: "102",
-        secondQuantity: 1,
-        secondUnitPrice: "18.00",
-        secondDiscountAmount: "2.00",
+        items: [
+          {
+            orderId,
+            bookId: "100",
+            quantity: 1,
+            unitPrice: 16.99,
+            discountAmount: null,
+          },
+          {
+            orderId,
+            bookId: "102",
+            quantity: 1,
+            unitPrice: 18,
+            discountAmount: 2,
+          },
+        ],
       }),
     );
 
@@ -202,16 +254,24 @@ Do not derive per-row IDs with `insertId + index` after a multi-row insert:
 ```ts
 const result = await executeMutation(
   connection,
+  "createOrderItems",
   createOrderItems({
-    orderId: "5004",
-    firstBookId: "100",
-    firstQuantity: 1,
-    firstUnitPrice: "16.99",
-    firstDiscountAmount: null,
-    secondBookId: "102",
-    secondQuantity: 1,
-    secondUnitPrice: "18.00",
-    secondDiscountAmount: "2.00",
+    items: [
+      {
+        orderId: "5004",
+        bookId: "100",
+        quantity: 1,
+        unitPrice: 16.99,
+        discountAmount: null,
+      },
+      {
+        orderId: "5004",
+        bookId: "102",
+        quantity: 1,
+        unitPrice: 18,
+        discountAmount: 2,
+      },
+    ],
   }),
 );
 
@@ -236,6 +296,7 @@ async function upsertOrderAndLoad(
 ): Promise<findOrderByNumber_Output> {
   await executeMutation(
     connection,
+    "upsertOrderStatus",
     upsertOrderStatus({
       customerId: "1000",
       orderNumber: "BK-2001",
@@ -260,6 +321,7 @@ foreign keys, triggers, auto-increment values, and affected row counts:
 ```ts
 await executeMutation(
   connection,
+  "replaceCategory",
   replaceCategory({
     categoryId: "13",
     slug: "staff-picks",
