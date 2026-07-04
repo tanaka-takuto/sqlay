@@ -5,6 +5,9 @@
     "typecheck:fixtures": "tsc --noEmit --project fixtures/sql/tsconfig.json"
   },
   "devDependencies": {
+    "@types/node": "^24.13.2",
+    "mysql2": "^3.22.5",
+    "tsx": "^4.23.0",
     "typescript": "6.0.3"
   }
 }

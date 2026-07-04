@@ -1,0 +1,16 @@
+{
+  "bookId": "100",
+  "isbn": "9780441478125",
+  "title": "The Left Hand of Darkness",
+  "description": "A classic novel of diplomacy and identity.",
+  "authorName": "Ursula K. Le Guin",
+  "authorCountryCode": "US",
+  "format": "paperback",
+  "price": 16.99,
+  "publishedOn": "1969-03-01",
+  "seriesName": "null",
+  "shelfCode": "A1",
+  "primaryCategory": "Science Fiction",
+  "approvedReviewCount": "1",
+  "averageRating": 5
+}

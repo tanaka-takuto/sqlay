@@ -2,11 +2,14 @@
   "compilerOptions": {
     "strict": true,
     "target": "ES2022",
+    "lib": ["ESNext"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "types": ["node"],
     "noEmit": true
   },
   "include": [
+    "assert-query-results.ts",
     "assert-generated-surface.ts",
     "generated/**/*.ts"
   ]

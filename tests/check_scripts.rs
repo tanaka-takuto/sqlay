@@ -17,6 +17,17 @@ fn example_check_typechecks_temporary_generated_project() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+
+    let npm_calls = std::fs::read_to_string(fixture.root.join("npm-calls.log"))
+        .expect("npm call log should be written");
+    assert!(
+        npm_calls.contains("exec -- tsx "),
+        "example check should execute bookstore result assertions, got: {npm_calls}"
+    );
+    assert!(
+        npm_calls.contains("assert-query-results.ts"),
+        "example check should run the query result assertion script, got: {npm_calls}"
+    );
 }
 
 #[test]
@@ -321,6 +332,22 @@ cat >/dev/null
             &self.fake_bin.join("npm"),
             r#"#!/bin/sh
 set -eu
+
+printf '%s\n' "$*" >> "$TMPDIR/npm-calls.log"
+
+if [ "$#" -eq 4 ] \
+  && [ "$1" = "exec" ] \
+  && [ "$2" = "--" ] \
+  && [ "$3" = "tsx" ]; then
+  case "$4" in
+    "$TMPDIR"/sqlay-examples.*/bookstore/assert-query-results.ts) ;;
+    *)
+      echo "expected npm to run a temporary bookstore result assertion, got: $*" >&2
+      exit 64
+      ;;
+  esac
+  exit 0
+fi
 
 if [ "$#" -ne 6 ] \
   || [ "$1" != "exec" ] \

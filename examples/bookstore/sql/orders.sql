@@ -39,6 +39,30 @@ ORDER BY o.placed_at DESC;
 /* @sqlay
 {
   type: query
+  id: listOrderLineItems
+}
+*/
+SELECT
+  o.order_number AS orderNumber,
+  oi.id AS orderItemId,
+  b.title AS bookTitle,
+  oi.quantity AS quantity,
+  oi.unit_price AS unitPrice,
+  oi.discount_amount AS discountAmount,
+  oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0) AS lineTotal
+FROM bookstore_orders AS o
+INNER JOIN bookstore_order_items AS oi
+  ON oi.order_id = o.id
+INNER JOIN bookstore_books AS b
+  ON b.id = oi.book_id
+WHERE o.order_number = /* @sqlay { type: param id: orderNumber } */
+  'BK-1000'
+  /* @sqlay { type: paramEnd } */
+ORDER BY oi.id;
+
+/* @sqlay
+{
+  type: query
   id: findLatestOrderForCustomer
 }
 */
@@ -113,3 +137,27 @@ INNER JOIN bookstore_order_items AS oi
 WHERE o.status IN ('paid', 'shipped', 'delivered')
 GROUP BY DATE_FORMAT(o.placed_at, '%Y-%m-01')
 ORDER BY salesMonth;
+
+/* @sqlay
+{
+  type: query
+  id: listRevenueByAuthor
+}
+*/
+SELECT
+  a.id AS authorId,
+  a.display_name AS authorName,
+  SUM(oi.quantity) AS booksSold,
+  SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)) AS revenue
+FROM bookstore_orders AS o
+INNER JOIN bookstore_order_items AS oi
+  ON oi.order_id = o.id
+INNER JOIN bookstore_books AS b
+  ON b.id = oi.book_id
+INNER JOIN bookstore_authors AS a
+  ON a.id = b.author_id
+WHERE o.status IN ('paid', 'shipped', 'delivered')
+GROUP BY
+  a.id,
+  a.display_name
+ORDER BY revenue DESC, a.display_name;

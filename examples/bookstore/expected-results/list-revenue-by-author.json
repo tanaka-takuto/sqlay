@@ -1,0 +1,26 @@
+[
+  {
+    "authorId": "1",
+    "authorName": "Ursula K. Le Guin",
+    "booksSold": 2,
+    "revenue": 39.49
+  },
+  {
+    "authorId": "4",
+    "authorName": "Italo Calvino",
+    "booksSold": 2,
+    "revenue": 28.9
+  },
+  {
+    "authorId": "2",
+    "authorName": "N. K. Jemisin",
+    "booksSold": 1,
+    "revenue": 16
+  },
+  {
+    "authorId": "3",
+    "authorName": "Octavia E. Butler",
+    "booksSold": 1,
+    "revenue": 14.99
+  }
+]
