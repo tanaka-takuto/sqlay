@@ -236,12 +236,8 @@ The canonical mutation annotation form is:
 */
 INSERT INTO users (email, name)
 VALUES (
-  /* @sqlay { type: param id: email } */
-  'ada@example.test'
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: name } */
-  'Ada'
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: email } */ 'ada@example.test' /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: name } */ 'Ada' /* @sqlay { type: paramEnd } */
 );
 ```
 

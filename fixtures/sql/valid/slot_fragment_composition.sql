@@ -4,9 +4,7 @@
   id: slotFixtureByState
 }
 */
-  AND p.char_16_nn_col = /* @sqlay { type: param id: state } */
-    'state_a'
-    /* @sqlay { type: paramEnd } */
+  AND p.char_16_nn_col = /* @sqlay { type: param id: state } */ 'state_a' /* @sqlay { type: paramEnd } */
 
 /* @sqlay
 {
@@ -18,9 +16,7 @@ SELECT
   p.bigint_nn_col AS bigintNnCol,
   p.varchar_320_nn_col AS varchar320NnCol
 FROM fixture_all_column_type AS p
-WHERE p.bigint_nn_col >= /* @sqlay { type: param id: minId } */
-  1
-  /* @sqlay { type: paramEnd } */
+WHERE p.bigint_nn_col >= /* @sqlay { type: param id: minId } */ 1 /* @sqlay { type: paramEnd } */
 /* @sqlay { type: slot id: filter targets: [slotFixtureActiveOnly, slotFixtureByText, slotFixtureByAmount, slotFixtureNullableCreated, slotFixtureByState] } */
   AND EXISTS (
     SELECT 1

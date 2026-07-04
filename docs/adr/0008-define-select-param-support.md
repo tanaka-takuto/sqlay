@@ -28,9 +28,7 @@ SQL source uses paired inline block comments around a sample SQL expression:
 ```sql
 SELECT id, email
 FROM users
-WHERE email = /* @sqlay { type: param id: email } */
-  'test@example.test'
-  /* @sqlay { type: paramEnd } */;
+WHERE email = /* @sqlay { type: param id: email } */ 'test@example.test' /* @sqlay { type: paramEnd } */;
 ```
 
 The SQL between `param` and `paramEnd` is a sample expression. It keeps the source

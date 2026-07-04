@@ -12,9 +12,7 @@
   id: slotFixtureByText
 }
 */
-  AND p.varchar_320_nn_col = /* @sqlay { type: param id: textFilter } */
-    'varchar-320-a'
-    /* @sqlay { type: paramEnd } */
+  AND p.varchar_320_nn_col = /* @sqlay { type: param id: textFilter } */ 'varchar-320-a' /* @sqlay { type: paramEnd } */
 
 /* @sqlay
 {
@@ -26,9 +24,7 @@
     SELECT 1
     FROM fixture_child AS c
     WHERE c.parent_bigint_nn_col = p.bigint_nn_col
-      AND c.decimal_12_2_nn_col >= /* @sqlay { type: param id: minAmount valueType: decimal } */
-        10.00
-        /* @sqlay { type: paramEnd } */
+      AND c.decimal_12_2_nn_col >= /* @sqlay { type: param id: minAmount valueType: decimal } */ 10.00 /* @sqlay { type: paramEnd } */
   )
 
 /* @sqlay
@@ -37,9 +33,7 @@
   id: slotFixtureNullableCreated
 }
 */
-  AND p.datetime_6_col >= /* @sqlay { type: param id: createdAfter nullable: true } */
-    '2026-01-02 03:04:05.123456'
-    /* @sqlay { type: paramEnd } */
+  AND p.datetime_6_col >= /* @sqlay { type: param id: createdAfter nullable: true } */ '2026-01-02 03:04:05.123456' /* @sqlay { type: paramEnd } */
 
 /* @sqlay
 {
@@ -47,7 +41,5 @@
   id: slotFixtureEqualsValue
 }
 */
-  = /* @sqlay { type: param id: value } */
-    'varchar-320-a'
-    /* @sqlay { type: paramEnd } */ THEN TRUE
+  = /* @sqlay { type: param id: value } */ 'varchar-320-a' /* @sqlay { type: paramEnd } */ THEN TRUE
   WHEN 1

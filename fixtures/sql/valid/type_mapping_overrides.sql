@@ -18,12 +18,8 @@ SELECT
 FROM fixture_all_column_type AS p
 INNER JOIN sqlay.fixture_child AS c
   ON c.parent_bigint_nn_col = p.bigint_nn_col
-WHERE p.decimal_18_4_nn_col >= /* @sqlay { type: param id: minimumAmount } */
-  10.5000
-  /* @sqlay { type: paramEnd } */
-  AND p.bigint_nn_col = /* @sqlay { type: param id: parentId } */
-  1
-  /* @sqlay { type: paramEnd } */
+WHERE p.decimal_18_4_nn_col >= /* @sqlay { type: param id: minimumAmount } */ 10.5000 /* @sqlay { type: paramEnd } */
+  AND p.bigint_nn_col = /* @sqlay { type: param id: parentId } */ 1 /* @sqlay { type: paramEnd } */
 LIMIT 1;
 
 /* @sqlay
@@ -40,18 +36,10 @@ INSERT INTO sqlay.fixture_child (
 ) VALUES
 /* @sqlay { type: repeat id: rows separator: "," } */
 (
-  /* @sqlay { type: param id: childId } */
-  700
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: parentId } */
-  1
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: childLabel } */
-  'child-type-mapping'
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: childAmount } */
-  12.34
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: childId } */ 700 /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: parentId } */ 1 /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: childLabel } */ 'child-type-mapping' /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: childAmount } */ 12.34 /* @sqlay { type: paramEnd } */
 )
 /* @sqlay { type: repeatEnd } */;
 
@@ -61,9 +49,7 @@ INSERT INTO sqlay.fixture_child (
   id: typeMappingFixtureLabel
 }
 */
-AND p.varchar_255_nn_col = /* @sqlay { type: param id: fixtureLabel } */
-  'varchar-255-nn-a'
-  /* @sqlay { type: paramEnd } */
+AND p.varchar_255_nn_col = /* @sqlay { type: param id: fixtureLabel } */ 'varchar-255-nn-a' /* @sqlay { type: paramEnd } */
 
 /* @sqlay
 {

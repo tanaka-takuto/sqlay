@@ -54,9 +54,7 @@ readable and executable in database tools:
 ```sql
 SELECT u.id, u.email
 FROM users AS u
-WHERE u.email = /* @sqlay { type: param id: email } */
-  'test@example.test'
-  /* @sqlay { type: paramEnd } */;
+WHERE u.email = /* @sqlay { type: param id: email } */ 'test@example.test' /* @sqlay { type: paramEnd } */;
 ```
 
 For compilation, each Param range is replaced with one MySQL `?` placeholder. Input
@@ -71,9 +69,7 @@ generated TypeScript input field is `string | null` because datetime values map 
 strings:
 
 ```sql
-WHERE u.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */
-  '2026-01-01 00:00:00'
-  /* @sqlay { type: paramEnd } */
+WHERE u.created_at < /* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */
 ```
 
 ```ts
@@ -93,14 +89,10 @@ site:
 
 ```sql
 WHERE (
-  /* @sqlay { type: param id: status valueType: string nullable: true } */
-  'paid'
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: status valueType: string nullable: true } */ 'paid' /* @sqlay { type: paramEnd } */
   IS NULL
   OR o.status =
-  /* @sqlay { type: param id: status valueType: string nullable: true } */
-  'paid'
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: status valueType: string nullable: true } */ 'paid' /* @sqlay { type: paramEnd } */
 )
 ```
 
@@ -128,12 +120,8 @@ The accepted mutation source unit is:
 */
 INSERT INTO users (email, name)
 VALUES (
-  /* @sqlay { type: param id: email } */
-  'ada@example.test'
-  /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: name } */
-  'Ada'
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: email } */ 'ada@example.test' /* @sqlay { type: paramEnd } */,
+  /* @sqlay { type: param id: name } */ 'Ada' /* @sqlay { type: paramEnd } */
 );
 ```
 
@@ -166,9 +154,7 @@ template. The surrounding list syntax remains ordinary SQL:
 ```sql
 AND u.id IN (
   /* @sqlay { type: repeat id: ids separator: "," } */
-  /* @sqlay { type: param id: id valueType: int64 } */
-  1
-  /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: id valueType: int64 } */ 1 /* @sqlay { type: paramEnd } */
   /* @sqlay { type: repeatEnd } */
 )
 ```
