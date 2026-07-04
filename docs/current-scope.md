@@ -60,6 +60,8 @@ WHERE u.email = /* @sqlay { type: param id: email } */ 'test@example.test' /* @s
 For compilation, each Param range is replaced with one MySQL `?` placeholder. Input
 types are inferred from supported direct MySQL column contexts when possible, or
 from an inline `valueType` override. `nullable: true` marks nullable input values.
+Non-null Param inputs are the default and omit `nullable`; `nullable: false` is not
+accepted.
 Repeated Param IDs are supported when all occurrences agree on type and
 nullability.
 

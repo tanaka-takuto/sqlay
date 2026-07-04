@@ -66,6 +66,12 @@ fn assert_param_marker_guidance(stdout: &str) {
     assert_optional_filter_guidance(stdout);
     assert!(
         stdout.contains(
+            "For non-null Param inputs, omit nullable; use only nullable: true for nullable inputs"
+        ),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains(
             "Use nullable: true for T | null inputs; optional input properties are not supported"
         ),
         "stdout: {stdout}"

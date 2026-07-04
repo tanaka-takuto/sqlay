@@ -169,7 +169,7 @@ pub(super) fn validate_param_nullable(
         Some(true) => Ok(true),
         None => Ok(false),
         Some(false) => Err(metadata_error(
-            "`nullable: false` is not supported for Param metadata; omit `nullable` for non-null inputs",
+            "`nullable: false` is not supported for Param metadata; non-null Param inputs are the default, so remove the `nullable` field",
             block.payload_range(),
         )),
     }

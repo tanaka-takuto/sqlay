@@ -561,7 +561,7 @@ WHERE email = /* @sqlay { type: param id: email nullable: false } */
   'test@example.test'
   /* @sqlay { type: paramEnd } */;
 ",
-            "`nullable: false` is not supported for Param metadata; omit `nullable` for non-null inputs",
+            "`nullable: false` is not supported for Param metadata; non-null Param inputs are the default, so remove the `nullable` field",
         ),
         (
             r"

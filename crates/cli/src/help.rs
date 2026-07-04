@@ -99,6 +99,7 @@ Param metadata:
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
   Use nullable: true for values that are semantically nullable in a stable SQL shape.
   Use nullable: true for T | null inputs; optional input properties are not supported.
+  For non-null Param inputs, omit nullable; use only nullable: true for nullable inputs.
   Repeated Param ids share one generated input field.
   Each marker occurrence appends one params entry in source order.
   All occurrences of a repeated Param id must use the same valueType and nullability.
@@ -169,6 +170,7 @@ Param metadata:
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
   Use nullable: true for values that are semantically nullable in a stable SQL shape.
   Use nullable: true for T | null inputs; optional input properties are not supported.
+  For non-null Param inputs, omit nullable; use only nullable: true for nullable inputs.
   Repeated Param ids share one generated input field.
   Each marker occurrence appends one params entry in source order.
   All occurrences of a repeated Param id must use the same valueType and nullability.
@@ -258,6 +260,7 @@ Param metadata:
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
   Use nullable: true for values that are semantically nullable in a stable SQL shape.
   Use nullable: true for T | null inputs; optional input properties are not supported.
+  For non-null Param inputs, omit nullable; use only nullable: true for nullable inputs.
   Repeated Param ids share one generated input field.
   Each marker occurrence appends one params entry in source order.
   All occurrences of a repeated Param id must use the same valueType and nullability.
