@@ -139,6 +139,20 @@ DATABASE_URL='mysql://user:password@host:3306/database' sqlay check --format jso
 DATABASE_URL='mysql://user:password@host:3306/database' sqlay compile --format=json
 ```
 
+For CI, prefer combining JSON output with the empty-source guard on `check`:
+
+```sh
+DATABASE_URL='mysql://user:password@host:3306/database' sqlay check --fail-on-empty --format json
+```
+
+`--fail-on-empty` turns a zero-file source match into a failing diagnostic, which
+prevents a moved SQL directory or broken glob from passing CI. `--format json`
+keeps the command result in a stable stdout envelope for status, summary, and
+diagnostics. JSON mode is available for `check` and `compile`; `check` is the
+normal CI validation command when generated files are committed or verified by a
+separate compile/diff step. Empty source sets can still be intentional during
+local setup, so the guard is recommended for CI rather than enabled by default.
+
 JSON mode prints one JSON result envelope to stdout and leaves stderr empty for
 successful and failed `check` or `compile` runs. The envelope includes the sqlay
 product version, normalized command options, status, exit code, either a success
