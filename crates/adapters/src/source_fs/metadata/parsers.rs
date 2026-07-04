@@ -234,7 +234,7 @@ fn parse_param_metadata_object(
             Value::Bool(true) => true,
             Value::Bool(false) => {
                 return Err(metadata_error(
-                    "`nullable: false` is not supported for Param metadata; omit `nullable` for non-null inputs",
+                    "`nullable: false` is not supported for Param metadata; non-null Param inputs are the default, so remove the `nullable` field",
                     block.payload_range(),
                 ));
             }
@@ -436,7 +436,7 @@ mod tests {
             ),
             (
                 raw_param(Some("param"), Some("email"), Some("string"), Some(false)),
-                "`nullable: false` is not supported for Param metadata; omit `nullable` for non-null inputs",
+                "`nullable: false` is not supported for Param metadata; non-null Param inputs are the default, so remove the `nullable` field",
             ),
         ] {
             let report = parse_param_metadata_raw(raw, &test_block())

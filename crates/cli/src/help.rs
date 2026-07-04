@@ -75,6 +75,7 @@ Generated TypeScript input:
 Param metadata:
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
   Use nullable: true for T | null inputs; optional input properties are not supported.
+  For non-null Param inputs, omit nullable; use only nullable: true for nullable inputs.
   Repeat the same Param id for optional filters; params follow marker occurrence order.
   Repeated Param ids share one generated input field.
   Each marker occurrence appends one params entry in source order.
@@ -142,6 +143,7 @@ Generated TypeScript input:
 Param metadata:
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
   Use nullable: true for T | null inputs; optional input properties are not supported.
+  For non-null Param inputs, omit nullable; use only nullable: true for nullable inputs.
   Repeat the same Param id for optional filters; params follow marker occurrence order.
   Repeated Param ids share one generated input field.
   Each marker occurrence appends one params entry in source order.
@@ -208,6 +210,7 @@ Generated TypeScript input:
 Param metadata:
   valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json.
   Use nullable: true for T | null inputs; optional input properties are not supported.
+  For non-null Param inputs, omit nullable; use only nullable: true for nullable inputs.
   Repeat the same Param id for optional filters; params follow marker occurrence order.
   Repeated Param ids share one generated input field.
   Each marker occurrence appends one params entry in source order.

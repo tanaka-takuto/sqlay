@@ -56,6 +56,12 @@ fn assert_param_marker_guidance(stdout: &str) {
     );
     assert!(
         stdout.contains(
+            "For non-null Param inputs, omit nullable; use only nullable: true for nullable inputs"
+        ),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains(
             "Repeat the same Param id for optional filters; params follow marker occurrence order"
         ),
         "stdout: {stdout}"

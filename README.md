@@ -174,6 +174,9 @@ input. Param type inference uses qualified column context such as `b.isbn`; add 
 For nullable inputs, keep `valueType` to a sqlay CoreType name and add
 `nullable: true` instead of writing a TypeScript union:
 
+For non-null Param inputs, omit `nullable`; use only `nullable: true` for nullable
+inputs. `nullable: false` is not accepted.
+
 ```sql
 WHERE b.published_at < /* @sqlay { type: param id: publishedBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */
 ```
