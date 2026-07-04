@@ -116,6 +116,13 @@ choosing the final representation. `--format human` renders diagnostics as human
 text on stderr. `--format json` renders diagnostics inside the stdout JSON result
 envelope and does not duplicate them on stderr.
 
+Database connection failures happen before per-source SQL metadata can be
+validated. They should be reported as connection-phase diagnostics without SQL
+source locations, identify the configured `database.urlEnv` environment variable
+name when known, and avoid printing the database URL value. Per-query describe and
+schema lookup failures after a connection is established may still include the
+relevant SQL source context.
+
 ## CLI Driver
 
 The CLI Driver owns command selection, configuration discovery, process environment

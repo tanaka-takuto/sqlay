@@ -204,9 +204,9 @@ impl<'a> LazySqlxMysqlMetadataProvider<'a> {
     }
 
     fn provider(self) -> core::DiagnosticResult<SqlxMysqlMetadataProvider> {
-        Ok(SqlxMysqlMetadataProvider::new(database_url_from_env(
-            self.database,
-        )?))
+        let database_url = database_url_from_env(self.database)?;
+        Ok(SqlxMysqlMetadataProvider::new(database_url)
+            .with_database_url_env(self.database.url_env().to_owned()))
     }
 }
 

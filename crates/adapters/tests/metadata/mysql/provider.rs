@@ -71,13 +71,21 @@ fn sqlx_mysql_metadata_provider_reports_connection_failures_as_diagnostics() {
         .describe(&query, &analysis)
         .expect_err("invalid database URL should fail before metadata lookup");
 
+    let diagnostic = &report.diagnostics()[0];
     assert!(
-        report.diagnostics()[0]
+        diagnostic
             .message()
-            .starts_with("failed to connect to MySQL database:"),
+            .starts_with("could not connect to MySQL database before validating SQL metadata:"),
         "{}",
-        report.diagnostics()[0].message()
+        diagnostic.message()
     );
+    assert!(
+        diagnostic.message().contains("error with configuration"),
+        "{}",
+        diagnostic.message()
+    );
+    assert_eq!(diagnostic.location(), None);
+    assert!(!diagnostic.message().contains("not-a-mysql-url"));
 }
 
 #[tokio::test]
@@ -90,13 +98,21 @@ async fn sqlx_mysql_metadata_provider_reports_connection_failures_inside_tokio_r
         .describe(&query, &analysis)
         .expect_err("invalid database URL should fail without panicking inside Tokio");
 
+    let diagnostic = &report.diagnostics()[0];
     assert!(
-        report.diagnostics()[0]
+        diagnostic
             .message()
-            .starts_with("failed to connect to MySQL database:"),
+            .starts_with("could not connect to MySQL database before validating SQL metadata:"),
         "{}",
-        report.diagnostics()[0].message()
+        diagnostic.message()
     );
+    assert!(
+        diagnostic.message().contains("error with configuration"),
+        "{}",
+        diagnostic.message()
+    );
+    assert_eq!(diagnostic.location(), None);
+    assert!(!diagnostic.message().contains("not-a-mysql-url"));
 }
 
 #[test]
