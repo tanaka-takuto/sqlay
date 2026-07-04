@@ -80,12 +80,39 @@ export type listUsers_Input = {
 
 Optional direct Param input properties are not currently supported because omitting
 a direct Param input would require changing the SQL structure. Current authors
-should either use a nullable sentinel pattern such as `param IS NULL OR column =
-param`, write separate builders for distinct shapes, or use Slot/Fragment
-selection for supported dynamic SQL composition slices.
+should use Slot/Fragment selection as the first-choice pattern when an input
+changes whether a predicate exists:
 
-The nullable sentinel pattern repeats the same nullable Param ID at each SQL value
-site:
+```sql
+/* @sqlay
+{
+  type: fragment
+  id: byStatus
+}
+*/
+  AND o.status = /* @sqlay { type: param id: status } */ 'paid' /* @sqlay { type: paramEnd } */
+
+/* @sqlay
+{
+  type: query
+  id: listOrders
+}
+*/
+SELECT o.id, o.status
+FROM orders AS o
+WHERE 1 = 1
+/* @sqlay { type: slot id: statusFilter targets: [byStatus] } */;
+```
+
+The generated Slot input property is optional. Callers omit `statusFilter` to keep
+the base SQL shape or select `{ $fragment: "byStatus", status: "paid" }` to emit
+the predicate. Authors may still write separate builders for distinct SQL shapes.
+
+`nullable: true` is for values that are semantically nullable in a stable SQL shape,
+not the preferred way to choose whether SQL branches exist. A nullable sentinel
+predicate such as `param IS NULL OR column = param` is a caveated fixed-shape
+fallback when that is intentional. It repeats the same nullable Param ID at each SQL
+value site:
 
 ```sql
 WHERE (

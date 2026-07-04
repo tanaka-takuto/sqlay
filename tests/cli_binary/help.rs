@@ -1,62 +1,72 @@
 use std::process::Command;
 
-fn assert_param_marker_guidance(stdout: &str) {
+fn assert_optional_filter_guidance(stdout: &str) {
     assert!(
-        stdout.contains("type: param id: emailFilter valueType: string nullable: true"),
+        stdout.contains("Optional filter Slot/Fragment example:"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("type: fragment"), "stdout: {stdout}");
+    assert!(stdout.contains("id: byStatus"), "stdout: {stdout}");
+    assert!(
+        stdout.contains(
+            "AND orders.status = /* @sqlay { type: param id: status } */ 'paid' /* @sqlay { type: paramEnd } */"
+        ),
+        "stdout should keep status Param range on one line: {stdout}"
+    );
+    assert!(stdout.contains("id: listOrders"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("type: slot id: statusFilter targets: [byStatus]"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("statusFilter?: {"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("$fragment: \"byStatus\";"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("status: string;"), "stdout: {stdout}");
+    assert!(
+        stdout.contains(
+            "For optional filters that change whether a predicate exists, prefer Slot/Fragment composition over nullable sentinel predicates"
+        ),
         "stdout: {stdout}"
     );
     assert!(
         stdout.contains(
-            "/* @sqlay { type: param id: emailFilter valueType: string nullable: true } */ 'ada@example.test' /* @sqlay { type: paramEnd } */"
+            "Use nullable: true for values that are semantically nullable in a stable SQL shape"
         ),
-        "stdout should keep scalar Param ranges on one line: {stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "/* @sqlay { type: param id: createdBefore valueType: datetime nullable: true } */ '2026-01-01 00:00:00' /* @sqlay { type: paramEnd } */"
-        ),
-        "stdout should keep datetime Param ranges on one line: {stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "/* @sqlay { type: param id: active valueType: bool nullable: true } */ TRUE /* @sqlay { type: paramEnd } */"
-        ),
-        "stdout should keep bool Param ranges on one line: {stdout}"
-    );
-    assert!(
-        stdout.contains("id: listCustomersByFilter"),
         "stdout: {stdout}"
     );
-    assert!(
-        stdout.contains("type: param id: createdBefore valueType: datetime nullable: true"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("type: param id: active valueType: bool nullable: true"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("createdBefore: string | null;"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("active: boolean | null;"),
-        "stdout: {stdout}"
-    );
-    assert!(stdout.contains("TRUE"), "stdout: {stdout}");
     assert!(
         stdout.contains("valueType values: bool, int32, int64, float64, decimal, string, bytes, date, time, datetime, json"),
         "stdout: {stdout}"
     );
     assert!(
-        stdout.contains(
-            "Use nullable: true for T | null inputs; optional input properties are not supported"
-        ),
-        "stdout: {stdout}"
+        !stdout.contains("Repeat the same Param id for optional filters"),
+        "stdout should not recommend repeated nullable Params as the optional-filter default: {stdout}"
     );
     assert!(
+        !stdout.contains("listCustomersByFilter"),
+        "stdout should not keep the old nullable-sentinel optional filter example: {stdout}"
+    );
+    assert!(
+        !stdout.contains("emailFilter"),
+        "stdout should not keep the old nullable-sentinel optional filter example: {stdout}"
+    );
+    assert!(
+        !stdout.contains("createdBefore"),
+        "stdout should not keep the old nullable-sentinel optional filter example: {stdout}"
+    );
+    assert!(
+        !stdout.contains("active: boolean | null;"),
+        "stdout should not keep the old nullable-sentinel optional filter example: {stdout}"
+    );
+}
+
+fn assert_param_marker_guidance(stdout: &str) {
+    assert_optional_filter_guidance(stdout);
+    assert!(
         stdout.contains(
-            "Repeat the same Param id for optional filters; params follow marker occurrence order"
+            "Use nullable: true for T | null inputs; optional input properties are not supported"
         ),
         "stdout: {stdout}"
     );
