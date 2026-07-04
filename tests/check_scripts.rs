@@ -360,7 +360,13 @@ if [ "$#" -ne 6 ] \
 fi
 
 case "$6" in
-  "$TMPDIR"/sqlay-examples.*/bookstore/tsconfig.json) ;;
+  "$TMPDIR"/sqlay-examples.*/bookstore/tsconfig.json)
+    project_dir=$(dirname "$6")
+    if [ ! -L "$project_dir/node_modules" ]; then
+      echo "expected temporary bookstore project to link repo node_modules" >&2
+      exit 64
+    fi
+    ;;
   "$TMPDIR"/sqlay-mysql-fixtures.*/sql/tsconfig.json) ;;
   "$TMPDIR"/sqlay-mysql-fixtures.*/sql-type-mapping/tsconfig.json) ;;
   *)

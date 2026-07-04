@@ -166,6 +166,7 @@ tmp_example=$tmp_root/bookstore
 
 cp -R "$example_root" "$tmp_example"
 rm -rf "$tmp_example/generated"
+ln -s "$repo_root/node_modules" "$tmp_example/node_modules"
 
 load_mysql_file "$example_root/schema.sql"
 load_mysql_file "$example_root/seed.sql"

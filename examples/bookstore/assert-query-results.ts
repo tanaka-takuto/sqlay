@@ -28,7 +28,7 @@ type SqlStatement = {
 type AssertionCase = {
   name: string;
   fixture: string;
-  run: (pool: Pool) => Promise<unknown>;
+  run: (pool: Pool, caseName: string) => Promise<unknown>;
 };
 
 const exampleRoot = dirname(fileURLToPath(import.meta.url));
@@ -38,8 +38,9 @@ const assertionCases: AssertionCase[] = [
   {
     name: "available paperback books",
     fixture: "list-available-books-paperback.json",
-    run: (pool) =>
+    run: (pool, caseName) =>
       executeMany(
+        caseName,
         pool,
         listAvailableBooks({
           discoveryFilter: { $fragment: "byBookFormat", format: "paperback" },
@@ -49,63 +50,74 @@ const assertionCases: AssertionCase[] = [
   {
     name: "left hand book detail",
     fixture: "find-book-detail-left-hand.json",
-    run: (pool) =>
-      executeOne(pool, findBookDetail({ isbn: "9780441478125" })),
+    run: (pool, caseName) =>
+      executeOne(caseName, pool, findBookDetail({ isbn: "9780441478125" })),
   },
   {
     name: "missing book detail",
     fixture: "find-book-detail-missing.json",
-    run: (pool) =>
-      executeOne(pool, findBookDetail({ isbn: "9780000000000" })),
+    run: (pool, caseName) =>
+      executeOne(caseName, pool, findBookDetail({ isbn: "9780000000000" })),
   },
   {
     name: "order line items with nullable discounts",
     fixture: "list-order-line-items-bk-1000.json",
-    run: (pool) =>
-      executeMany(pool, listOrderLineItems({ orderNumber: "BK-1000" })),
+    run: (pool, caseName) =>
+      executeMany(
+        caseName,
+        pool,
+        listOrderLineItems({ orderNumber: "BK-1000" }),
+      ),
   },
   {
     name: "books needing restock",
     fixture: "list-books-needing-restock.json",
-    run: (pool) => executeMany(pool, listBooksNeedingRestock()),
+    run: (pool, caseName) =>
+      executeMany(caseName, pool, listBooksNeedingRestock()),
   },
   {
     name: "revenue by author",
     fixture: "list-revenue-by-author.json",
-    run: (pool) => executeMany(pool, listRevenueByAuthor()),
+    run: (pool, caseName) =>
+      executeMany(caseName, pool, listRevenueByAuthor()),
   },
 ];
 
 async function executeMany(
+  caseName: string,
   pool: Pool,
   statement: SqlStatement,
 ): Promise<unknown> {
   const [rows] = await pool.execute<RowDataPacket[]>(
     statement.sql,
-    toExecuteValues(statement.params),
+    toExecuteValues(caseName, statement.params),
   );
   return normalizeValue(rows);
 }
 
 async function executeOne(
+  caseName: string,
   pool: Pool,
   statement: SqlStatement,
 ): Promise<unknown> {
   const [rows] = await pool.execute<RowDataPacket[]>(
     statement.sql,
-    toExecuteValues(statement.params),
+    toExecuteValues(caseName, statement.params),
   );
   return normalizeValue(rows[0] ?? null);
 }
 
-function toExecuteValues(params: readonly unknown[]): ExecuteValues[] {
-  return params.map((param) => {
+function toExecuteValues(
+  caseName: string,
+  params: readonly unknown[],
+): ExecuteValues[] {
+  return params.map((param, index) => {
     if (isExecuteValue(param)) {
       return param;
     }
 
     throw new Error(
-      `Generated query param is not supported by mysql2: ${typeof param}`,
+      `Generated query param for ${caseName} at index ${index} is not supported by mysql2: ${typeof param}`,
     );
   });
 }
@@ -190,7 +202,7 @@ async function main(): Promise<void> {
   try {
     for (const assertionCase of assertionCases) {
       const expected = await readExpectedResult(assertionCase.fixture);
-      const actual = await assertionCase.run(pool);
+      const actual = await assertionCase.run(pool, assertionCase.name);
 
       if (!isDeepStrictEqual(actual, expected)) {
         throw new Error(
