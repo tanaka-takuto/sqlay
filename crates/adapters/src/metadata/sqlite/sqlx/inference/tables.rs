@@ -15,6 +15,7 @@ enum TableResolution {
 pub(super) struct TableSources {
     by_qualifier: BTreeMap<String, TableResolution>,
     main_tables: BTreeSet<String>,
+    unsupported_schema_qualifiers: BTreeSet<String>,
 }
 
 impl TableSources {
@@ -84,6 +85,19 @@ impl TableSources {
         self.by_qualifier
             .contains_key(&normalized_identifier(qualifier))
     }
+
+    pub(super) fn unsupported_schema_qualifier(&self) -> Option<&str> {
+        self.unsupported_schema_qualifiers
+            .iter()
+            .next()
+            .map(String::as_str)
+    }
+
+    fn record_unsupported_schema_qualifier(&mut self, parts: &[String]) {
+        if let Some(qualifier) = unsupported_schema_qualifier(parts) {
+            self.unsupported_schema_qualifiers.insert(qualifier);
+        }
+    }
 }
 
 pub(super) fn select_from_query(query: &SqlQuery) -> Option<&Select> {
@@ -125,6 +139,7 @@ pub(super) fn named_table_sources(name: &ObjectName, alias: Option<&str>) -> Tab
     if let Some(table_name) = main_table_name(&parts) {
         sources.insert_main(table_name, alias);
     } else {
+        sources.record_unsupported_schema_qualifier(&parts);
         sources.insert_unsupported(parts.last().cloned(), alias);
     }
     sources
@@ -169,6 +184,7 @@ fn collect_table_factor(
             {
                 sources.insert_main(table_name, alias);
             } else {
+                sources.record_unsupported_schema_qualifier(&parts);
                 sources.insert_unsupported(parts.last().cloned(), alias);
             }
         }
@@ -209,9 +225,18 @@ pub(super) fn main_table_name(parts: &[String]) -> Option<String> {
     }
 }
 
+fn unsupported_schema_qualifier(parts: &[String]) -> Option<String> {
+    match parts {
+        [schema, _table] if !schema.eq_ignore_ascii_case("main") => Some(schema.clone()),
+        [schema, _table] if schema.eq_ignore_ascii_case("main") => None,
+        [qualifier @ .., _table] if qualifier.len() > 1 => Some(qualifier.join(".")),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::main_table_name;
+    use super::{main_table_name, unsupported_schema_qualifier};
 
     fn parts(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()
@@ -229,5 +254,22 @@ mod tests {
         );
         assert_eq!(main_table_name(&parts(&["temp", "users"])), None);
         assert_eq!(main_table_name(&parts(&["attached", "users"])), None);
+    }
+
+    #[test]
+    fn identifies_only_explicit_non_main_schema_qualifiers() {
+        assert_eq!(unsupported_schema_qualifier(&parts(&["users"])), None);
+        assert_eq!(
+            unsupported_schema_qualifier(&parts(&["main", "users"])),
+            None
+        );
+        assert_eq!(
+            unsupported_schema_qualifier(&parts(&["temp", "users"])),
+            Some("temp".to_owned())
+        );
+        assert_eq!(
+            unsupported_schema_qualifier(&parts(&["catalog", "schema", "users"])),
+            Some("catalog.schema".to_owned())
+        );
     }
 }

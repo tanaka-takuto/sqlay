@@ -154,3 +154,24 @@ async fn mutation_metadata_only_reads_schema_and_never_executes_delete()
 
     Ok(())
 }
+
+#[tokio::test]
+async fn mutation_metadata_rejects_non_main_schema_qualifiers_without_params()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let mutation = raw_mutation("DELETE FROM attached.users WHERE 1 = 0;", Vec::new());
+
+    let report = provider
+        .describe_mutation(
+            &mutation,
+            &core::AnalyzedMutation::new(core::MutationKind::Delete),
+        )
+        .expect_err("SQLite metadata must reject attached schema qualifiers");
+    let message = report.diagnostics()[0].message();
+
+    assert!(message.contains("attached"), "{message}");
+    assert!(message.contains("main schema"), "{message}");
+
+    Ok(())
+}

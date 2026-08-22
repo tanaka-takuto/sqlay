@@ -36,6 +36,7 @@ pub(in crate::metadata::sqlite::sqlx) fn infer_query(
         ));
     };
     let sources = select_table_sources(sql_query, select);
+    reject_unsupported_schema_qualifier(query, &sources)?;
     let result_columns: Vec<Option<SqliteSchemaColumn>> = select
         .projection
         .iter()
@@ -54,6 +55,22 @@ pub(in crate::metadata::sqlite::sqlx) fn infer_query(
         param_usages,
         requires_prepare_only,
     })
+}
+
+fn reject_unsupported_schema_qualifier(
+    query: &core::RawQuery,
+    sources: &TableSources,
+) -> core::DiagnosticResult<()> {
+    let Some(qualifier) = sources.unsupported_schema_qualifier() else {
+        return Ok(());
+    };
+
+    Err(query_error(
+        query,
+        format!(
+            "unsupported SQLite schema qualifier `{qualifier}`; only the main schema is supported, using `table` or `main.table` references"
+        ),
+    ))
 }
 
 fn resolve_projection<'a>(

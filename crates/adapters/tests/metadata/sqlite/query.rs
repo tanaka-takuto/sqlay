@@ -169,6 +169,27 @@ async fn query_metadata_does_not_trust_view_column_metadata()
 }
 
 #[tokio::test]
+async fn query_metadata_rejects_non_main_schema_qualifiers()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let query = raw_query(
+        "SELECT schema_entry.name FROM temp.sqlite_schema AS schema_entry;",
+        Vec::new(),
+    );
+
+    let report = provider
+        .describe(&query, &core::AnalyzedQuery::new(core::Cardinality::Many))
+        .expect_err("SQLite metadata must reject non-main schema qualifiers");
+    let message = report.diagnostics()[0].message();
+
+    assert!(message.contains("temp"), "{message}");
+    assert!(message.contains("main schema"), "{message}");
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn query_metadata_infers_qualified_comparison_params_and_honors_value_type()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = SqliteFixture::new(SCHEMA).await?;

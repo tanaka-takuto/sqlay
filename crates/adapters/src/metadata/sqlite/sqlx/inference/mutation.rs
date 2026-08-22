@@ -29,8 +29,25 @@ pub(in crate::metadata::sqlite::sqlx) fn infer_mutation_params(
         ));
     };
     let (sources, contexts) = mutation_contexts(statement, mutation.param_usages().len());
+    reject_unsupported_schema_qualifier(mutation, &sources)?;
 
     resolve_mutation_params(mutation, contexts, &sources, schema)
+}
+
+fn reject_unsupported_schema_qualifier(
+    mutation: &core::RawMutation,
+    sources: &TableSources,
+) -> core::DiagnosticResult<()> {
+    let Some(qualifier) = sources.unsupported_schema_qualifier() else {
+        return Ok(());
+    };
+
+    Err(mutation_error(
+        mutation,
+        format!(
+            "unsupported SQLite schema qualifier `{qualifier}`; only the main schema is supported, using `table` or `main.table` references"
+        ),
+    ))
 }
 
 fn mutation_contexts(
