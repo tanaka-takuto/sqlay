@@ -66,6 +66,19 @@ Config path boundary:
   Place sqlay.config.json at the project root when SQL lives in sibling directories.
   Generated TypeScript preserves each input SQL path relative to the config directory under output.dir.
 
+Database and generated-code boundary:
+  database.dialect values: mysql | sqlite. database.urlEnv names the process environment variable containing the database URL.
+  SQLite 3.35+ accepts sqlite://relative/path.db (relative to the process working directory) or sqlite:///absolute/path.db.
+  SQLite URL query parameters are unsupported.
+  The SQLite URL must identify an existing regular file; only the SQLite main schema is inspected.
+  In-memory, temporary, attached, and encrypted SQLite databases are unsupported.
+  sqlay check validates without writing generated files.
+  Generated TypeScript builders are database-driver-independent and return SQL plus params only.
+
+SQLite mutation boundary:
+  SQLite mutations support INSERT ... VALUES, UPDATE ... WHERE, DELETE ... WHERE, and REPLACE ... VALUES.
+  RETURNING and ON CONFLICT UPSERT, INSERT/REPLACE ... SELECT, top-level CTE mutations, and UPDATE ... FROM are unsupported for SQLite.
+
 Optional filter Slot/Fragment example:
   /* @sqlay
   {
@@ -127,7 +140,7 @@ Usage:
   sqlay check [options]
 
 Behavior:
-  Loads sqlay.config.json, reads SQL files, validates MySQL queries and mutations, and renders generated TypeScript output in memory.
+  Loads sqlay.config.json, reads SQL files, validates MySQL or SQLite queries and mutations, and renders generated TypeScript output in memory.
   When --config is omitted, searches from the current working directory upward for sqlay.config.json.
   Reads the database URL from the environment variable named by database.urlEnv.
   No files are written.
@@ -136,6 +149,19 @@ Behavior:
   Place sqlay.config.json at the project root when SQL lives in sibling directories.
   The success summary reports matched SQL files, compiled builders with query and mutation counts, Fragment, Slot, Repeat, validation case counts, output.dir, and per-query/per-mutation Param, Slot, Repeat, and validation case counts.
   Empty source matches are reported as warnings unless --fail-on-empty is provided.
+
+Database and generated-code boundary:
+  database.dialect values: mysql | sqlite. database.urlEnv names the process environment variable containing the database URL.
+  SQLite 3.35+ accepts sqlite://relative/path.db (relative to the process working directory) or sqlite:///absolute/path.db.
+  SQLite URL query parameters are unsupported.
+  The SQLite URL must identify an existing regular file; only the SQLite main schema is inspected.
+  In-memory, temporary, attached, and encrypted SQLite databases are unsupported.
+  sqlay check validates without writing generated files.
+  Generated TypeScript builders are database-driver-independent and return SQL plus params only.
+
+SQLite mutation boundary:
+  SQLite mutations support INSERT ... VALUES, UPDATE ... WHERE, DELETE ... WHERE, and REPLACE ... VALUES.
+  RETURNING and ON CONFLICT UPSERT, INSERT/REPLACE ... SELECT, top-level CTE mutations, and UPDATE ... FROM are unsupported for SQLite.
 
 Optional filter Slot/Fragment example:
   /* @sqlay
@@ -216,7 +242,7 @@ Usage:
   sqlay compile [options]
 
 Behavior:
-  Loads sqlay.config.json, validates SQL sources, and writes generated TypeScript files under output.dir.
+  Loads sqlay.config.json, validates MySQL or SQLite SQL sources, and writes generated TypeScript files under output.dir.
   When --config is omitted, searches from the current working directory upward for sqlay.config.json.
   Reads the database URL from the environment variable named by database.urlEnv.
   Generated TypeScript preserves each input SQL path relative to the config directory under output.dir.
@@ -226,6 +252,19 @@ Behavior:
   Empty source matches are reported as warnings unless --fail-on-empty is provided.
   compile --clean skips stale generated file cleanup when no SQL files match unless --allow-empty-clean is also provided.
   TypeScript type mapping is conservative: BIGINT, DECIMAL, date/time, and enum values map conservatively to string; bytes map to Uint8Array; JSON and unknown types map to unknown; nullable metadata adds | null.
+
+Database and generated-code boundary:
+  database.dialect values: mysql | sqlite. database.urlEnv names the process environment variable containing the database URL.
+  SQLite 3.35+ accepts sqlite://relative/path.db (relative to the process working directory) or sqlite:///absolute/path.db.
+  SQLite URL query parameters are unsupported.
+  The SQLite URL must identify an existing regular file; only the SQLite main schema is inspected.
+  In-memory, temporary, attached, and encrypted SQLite databases are unsupported.
+  sqlay check validates without writing generated files.
+  Generated TypeScript builders are database-driver-independent and return SQL plus params only.
+
+SQLite mutation boundary:
+  SQLite mutations support INSERT ... VALUES, UPDATE ... WHERE, DELETE ... WHERE, and REPLACE ... VALUES.
+  RETURNING and ON CONFLICT UPSERT, INSERT/REPLACE ... SELECT, top-level CTE mutations, and UPDATE ... FROM are unsupported for SQLite.
 
 Optional filter Slot/Fragment example:
   /* @sqlay
@@ -311,9 +350,21 @@ Next:
 Or run one command with the environment variable set:
   DATABASE_URL=... sqlay check
 
-The starter config uses database.urlEnv = DATABASE_URL. If you change
-database.urlEnv, export that variable instead. sqlay reads the URL from the
-process environment. sqlay does not load .env files automatically.
+The starter config remains MySQL and uses database.dialect = mysql with
+database.urlEnv = DATABASE_URL. If you change database.urlEnv, export that
+variable instead. sqlay reads the URL from the process environment.
+sqlay does not load .env files automatically.
+
+database.dialect values: mysql | sqlite. database.urlEnv names the process environment variable containing the database URL.
+SQLite 3.35+ accepts sqlite://relative/path.db (relative to the process working directory) or sqlite:///absolute/path.db.
+SQLite URL query parameters are unsupported.
+The SQLite URL must identify an existing regular file; only the SQLite main schema is inspected.
+In-memory, temporary, attached, and encrypted SQLite databases are unsupported.
+sqlay check validates without writing generated files.
+Generated TypeScript builders are database-driver-independent and return SQL plus params only.
+
+SQLite mutations support INSERT ... VALUES, UPDATE ... WHERE, DELETE ... WHERE, and REPLACE ... VALUES.
+RETURNING and ON CONFLICT UPSERT, INSERT/REPLACE ... SELECT, top-level CTE mutations, and UPDATE ... FROM are unsupported for SQLite.
 
 Run check and compile from your project directory. When --config is omitted,
 sqlay searches from the current working directory upward for sqlay.config.json.

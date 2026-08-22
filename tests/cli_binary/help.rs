@@ -1,5 +1,76 @@
 use std::process::Command;
 
+use crate::support::unique_temp_dir;
+
+fn assert_sqlite_project_guidance(stdout: &str) {
+    assert!(stdout.contains("SQLite 3.35+"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("database.dialect values: mysql | sqlite"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("database.urlEnv names the process environment variable"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("sqlite://relative/path.db"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("relative to the process working directory"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("sqlite:///absolute/path.db"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("SQLite URL query parameters are unsupported"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("existing regular file"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("only the SQLite main schema is inspected"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "In-memory, temporary, attached, and encrypted SQLite databases are unsupported"
+        ),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("sqlay check validates without writing generated files"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("Generated TypeScript builders are database-driver-independent"),
+        "stdout: {stdout}"
+    );
+}
+
+fn assert_sqlite_mutation_guidance(stdout: &str) {
+    assert!(
+        stdout.contains(
+            "SQLite mutations support INSERT ... VALUES, UPDATE ... WHERE, DELETE ... WHERE, and REPLACE ... VALUES"
+        ),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("RETURNING and ON CONFLICT UPSERT"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("INSERT/REPLACE ... SELECT"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("top-level CTE mutations"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("UPDATE ... FROM"), "stdout: {stdout}");
+}
+
 fn assert_optional_filter_guidance(stdout: &str) {
     assert!(
         stdout.contains("Optional filter Slot/Fragment example:"),
@@ -185,6 +256,8 @@ fn no_args_prints_top_level_help() {
     );
     assert_param_marker_guidance(&stdout);
     assert_mutation_guidance(&stdout);
+    assert_sqlite_project_guidance(&stdout);
+    assert_sqlite_mutation_guidance(&stdout);
     assert!(
         !stdout.contains("MVP query metadata"),
         "stdout should not describe current help as MVP-only: {stdout}"
@@ -233,6 +306,33 @@ fn init_help_describes_init_behavior() {
         "stdout: {stdout}"
     );
     assert!(stdout.contains("refuses to overwrite"), "stdout: {stdout}");
+}
+
+#[test]
+fn init_next_steps_describe_mysql_starter_and_sqlite_alternative() {
+    let config_dir = unique_temp_dir("sqlay-cli-help-init-next-steps");
+    std::fs::create_dir_all(&config_dir).expect("temp config dir should be created");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sqlay"))
+        .arg("init")
+        .current_dir(&config_dir)
+        .output()
+        .expect("sqlay init should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("The starter config remains MySQL"),
+        "stdout: {stdout}"
+    );
+    assert_sqlite_project_guidance(&stdout);
+    assert_sqlite_mutation_guidance(&stdout);
+
+    std::fs::remove_dir_all(config_dir).expect("temp config tree should be removed");
 }
 
 #[test]
@@ -301,6 +401,8 @@ fn check_help_describes_config_discovery_and_database_url() {
     );
     assert_param_marker_guidance(&stdout);
     assert_mutation_guidance(&stdout);
+    assert_sqlite_project_guidance(&stdout);
+    assert_sqlite_mutation_guidance(&stdout);
 }
 
 #[test]
@@ -378,6 +480,8 @@ fn compile_help_describes_output_writing_and_clean() {
     );
     assert_param_marker_guidance(&stdout);
     assert_mutation_guidance(&stdout);
+    assert_sqlite_project_guidance(&stdout);
+    assert_sqlite_mutation_guidance(&stdout);
     assert!(
         stdout.contains("BIGINT, DECIMAL, date/time, and enum values map conservatively"),
         "stdout: {stdout}"

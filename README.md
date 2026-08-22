@@ -3,9 +3,10 @@
 SQL Inlay.
 
 `sqlay` is a Rust CLI for writing plain SQL files while generating typed target
-language builders. The current supported workflow focuses on MySQL 8.x `SELECT`
-queries, MySQL mutation builders, inline `Param` value binding, Slot/Fragment
-composition, Repeat list expansion, and TypeScript SQL builder generation.
+language builders. The current supported workflow covers MySQL 8.x and SQLite
+3.35+ `SELECT` queries, their supported mutation subsets, inline `Param` value
+binding, Slot/Fragment composition, Repeat list expansion, and TypeScript SQL
+builder generation.
 
 ## Why sqlay?
 
@@ -44,7 +45,8 @@ sqlay init
 ```
 
 `sqlay init` writes a starter `sqlay.config.json` and refuses to overwrite an
-existing config file. The starter config uses the supported project shape:
+existing config file. The starter deliberately remains a MySQL project and uses
+this supported project shape:
 
 ```json
 {
@@ -74,18 +76,64 @@ directories such as `sql/` next to `configs/`. For `check` and `compile`, when
 `--config` is omitted, sqlay starts from the current working directory and searches
 upward for `sqlay.config.json`.
 
-Run a database-backed dry run with:
+### SQLite Setup
+
+To use an existing SQLite database with the same TypeScript target, change the
+database dialect and environment variable name:
+
+```json
+{
+  "source": {
+    "include": ["sql/**/*.sql"],
+    "exclude": []
+  },
+  "output": {
+    "dir": "src/generated/sqlay"
+  },
+  "database": {
+    "dialect": "sqlite",
+    "urlEnv": "SQLITE_DATABASE_URL"
+  },
+  "target": {
+    "language": "typescript"
+  }
+}
+```
+
+`database.urlEnv` names the process environment variable containing the database
+URL. The `sqlite://relative/path.db` form resolves from the process working
+directory, not from the config directory. Absolute paths use the
+`sqlite:///absolute/path.db` form. URL query parameters are not accepted. The path
+must already be an existing regular SQLite database file; sqlay does not create the
+file or its parent directories. Only the `main` schema is inspected. In-memory,
+temporary, attached, non-`main`, SQLCipher, and other encrypted databases are
+outside the initial SQLite boundary.
+
+Create and migrate the database with your normal SQLite tooling first, then run:
+
+```sh
+SQLITE_DATABASE_URL='sqlite://data/app.db' sqlay check
+SQLITE_DATABASE_URL='sqlite://data/app.db' sqlay compile
+```
+
+`check` validates and renders generated TypeScript in memory without writing
+generated files. Both dialects use the same database-driver-independent TypeScript
+builders, which return SQL and ordered params but do not execute SQL or import a
+database driver.
+
+For the MySQL starter, run a database-backed dry run with:
 
 ```sh
 DATABASE_URL='mysql://user:password@host:3306/database' sqlay check
 ```
 
-`sqlay check` loads the config, reads SQL files, validates MySQL 8.x `SELECT`
-queries, resolves inline `Param` inputs, looks up MySQL metadata, and builds
-generated TypeScript in memory without writing files. The database URL is read from
-the process environment variable named by `database.urlEnv`; the CLI does not
-implicitly load `.env` files. With the starter config, either export
-`DATABASE_URL` before running sqlay commands or prefix a single command with
+`sqlay check` loads the config, reads SQL files, validates the configured MySQL or
+SQLite query and mutation surface, resolves inline `Param` inputs, looks up database
+metadata, and builds generated TypeScript in memory without writing files. The
+database URL is read from the process environment variable named by
+`database.urlEnv`; the CLI does not implicitly load `.env` files. With the MySQL
+starter config, either export `DATABASE_URL` before running sqlay commands or prefix
+a single command with
 `DATABASE_URL='mysql://user:password@host:3306/database'`.
 
 Write generated TypeScript with:
@@ -119,11 +167,17 @@ Core types, schema-backed columns, builder result fields, direct Param inputs, a
 Repeat item fields. This is useful for schema-backed enum literal unions, custom
 project types, and explicit `decimal` or `int64` to `number` opt-ins.
 
-Overrides affect generated TypeScript annotations only. They do not configure
-`mysql2`, parse SELECT results, validate inputs at runtime, or change generated SQL.
-When a nullable field is overridden, generated code preserves nullability as
-`CustomType | null`. Inline Param `valueType` remains a sqlay Core type hint such
-as `decimal` or `datetime`; it is not a TypeScript type override.
+SQLite metadata is intentionally conservative. Missing, ambiguous, conflicting, or
+unrecognized declared and expression types become Core `Unknown`, which generates
+TypeScript `unknown`; unknown nullability remains nullable. When your application's
+runtime driver contract is more specific, use `target.typescript.typeMapping` to
+override the generated annotation explicitly.
+
+Overrides affect generated TypeScript annotations only. They do not configure a
+database driver, parse SELECT results, validate inputs at runtime, or change
+generated SQL. When a nullable field is overridden, generated code preserves
+nullability as `CustomType | null`. Inline Param `valueType` remains a sqlay
+Core type hint such as `decimal` or `datetime`; it is not a TypeScript type override.
 
 See [`docs/typescript-type-mapping.md`](./docs/typescript-type-mapping.md) for the
 full config shape, override priority, import rules, precision-risk notes,
@@ -261,8 +315,13 @@ SQL boolean sample such as `TRUE` or `FALSE`.
 ## Mutation Builders
 
 Use `type: mutation` for MySQL `INSERT`, `UPDATE`, `DELETE`, and `REPLACE` builders.
-Mutation builders return SQL text and params only, keeping transaction handling,
-execution result interpretation, and database driver choice in application code:
+SQLite initially supports `INSERT ... VALUES`, single-table `UPDATE ... WHERE`,
+single-table `DELETE ... WHERE`, and `REPLACE ... VALUES`. The initial SQLite
+boundary excludes `RETURNING`, UPSERT with `ON CONFLICT`, `INSERT ... SELECT`,
+`REPLACE ... SELECT`, top-level CTE mutations, and `UPDATE ... FROM`; sqlay does not
+translate between dialects. Mutation builders return SQL text and params only,
+keeping transaction handling, execution result interpretation, and database driver
+choice in application code:
 
 ```sql
 /* @sqlay
