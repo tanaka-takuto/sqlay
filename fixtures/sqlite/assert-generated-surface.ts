@@ -88,7 +88,13 @@ type UpdateOrderInputContract = Assert<
   IsExact<sqliteUpdateOrder_Input, { status: string; id: string }>
 >;
 type DeleteOrderItemInputContract = Assert<
-  IsExact<sqliteDeleteOrderItem_Input, { id: string }>
+  IsExact<
+    sqliteDeleteOrderItem_Input,
+    {
+      id: string;
+      orderFilter?: { $fragment: "sqliteByOrderId"; orderId: string };
+    }
+  >
 >;
 type ReplaceOrderInputContract = Assert<
   IsExact<sqliteReplaceOrder_Input, sqliteInsertOrder_Input>
@@ -123,7 +129,7 @@ type UpdateOrderReturnContract = Assert<
 type DeleteOrderItemReturnContract = Assert<
   IsExact<
     ReturnType<typeof sqliteDeleteOrderItem>,
-    { sql: string; params: readonly [string] }
+    { sql: string; params: readonly unknown[] }
   >
 >;
 type ReplaceOrderReturnContract = Assert<

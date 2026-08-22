@@ -8,6 +8,14 @@
 
 /* @sqlay
 {
+  type: fragment
+  id: sqliteByOrderId
+}
+*/
+  AND fixture_order_items.order_id = /* @sqlay { type: param id: orderId } */ 10 /* @sqlay { type: paramEnd } */
+
+/* @sqlay
+{
   type: query
   id: sqliteListOrders
 }
@@ -17,7 +25,7 @@ SELECT
   o.status AS status,
   o.note AS note,
   o.total AS total
-FROM sqlite_fixture_orders AS o
+FROM fixture_orders AS o
 WHERE o.id >= /* @sqlay { type: param id: minId } */ 1 /* @sqlay { type: paramEnd } */
 /* @sqlay { type: slot id: statusFilter targets: [sqliteByStatus] } */
 ORDER BY o.id;
@@ -32,7 +40,7 @@ SELECT
   o.id AS id,
   o.customer_email AS customerEmail,
   o.active AS active
-FROM sqlite_fixture_orders AS o
+FROM fixture_orders AS o
 WHERE o.id IN (
   /* @sqlay { type: repeat id: ids separator: ", " } */
   /* @sqlay { type: param id: id valueType: int64 } */ 1 /* @sqlay { type: paramEnd } */
@@ -46,7 +54,7 @@ ORDER BY o.id;
   id: sqliteInsertOrder
 }
 */
-INSERT INTO sqlite_fixture_orders (
+INSERT INTO fixture_orders (
   id,
   customer_email,
   status,
@@ -68,9 +76,9 @@ INSERT INTO sqlite_fixture_orders (
   id: sqliteUpdateOrder
 }
 */
-UPDATE sqlite_fixture_orders
+UPDATE fixture_orders
 SET status = /* @sqlay { type: param id: status } */ 'shipped' /* @sqlay { type: paramEnd } */
-WHERE sqlite_fixture_orders.id = /* @sqlay { type: param id: id } */ 10 /* @sqlay { type: paramEnd } */;
+WHERE fixture_orders.id = /* @sqlay { type: param id: id } */ 10 /* @sqlay { type: paramEnd } */;
 
 /* @sqlay
 {
@@ -78,8 +86,9 @@ WHERE sqlite_fixture_orders.id = /* @sqlay { type: param id: id } */ 10 /* @sqla
   id: sqliteDeleteOrderItem
 }
 */
-DELETE FROM sqlite_fixture_order_items
-WHERE sqlite_fixture_order_items.id = /* @sqlay { type: param id: id } */ 100 /* @sqlay { type: paramEnd } */;
+DELETE FROM fixture_order_items
+WHERE fixture_order_items.id = /* @sqlay { type: param id: id } */ 100 /* @sqlay { type: paramEnd } */
+/* @sqlay { type: slot id: orderFilter targets: [sqliteByOrderId] } */;
 
 /* @sqlay
 {
@@ -87,7 +96,7 @@ WHERE sqlite_fixture_order_items.id = /* @sqlay { type: param id: id } */ 100 /*
   id: sqliteReplaceOrder
 }
 */
-REPLACE INTO sqlite_fixture_orders (
+REPLACE INTO fixture_orders (
   id,
   customer_email,
   status,
@@ -109,7 +118,7 @@ REPLACE INTO sqlite_fixture_orders (
   id: sqliteBulkInsertOrderItems
 }
 */
-INSERT INTO sqlite_fixture_order_items (
+INSERT INTO fixture_order_items (
   id,
   order_id,
   sku,

@@ -95,4 +95,8 @@ SQLITE_DATABASE_URL=$sqlite_database_url \
   compile --config "$tmp_fixture/sqlay.config.json"
 
 compare_directories "$fixture_root/generated" "$tmp_fixture/generated"
-npm exec -- tsc --noEmit --project "$tmp_fixture/tsconfig.json"
+(
+  cd "$repo_root"
+  npm exec -- tsc --noEmit --project "$tmp_fixture/tsconfig.json"
+  npm exec -- tsx "$tmp_fixture/assert-builder-runtime.ts"
+)

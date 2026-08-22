@@ -124,6 +124,17 @@ fn sqlite_fixture_check_uses_existing_database_and_typechecks_generated_project(
         npm_calls.contains("exec -- tsc --noEmit --project "),
         "SQLite fixture check should typecheck the generated project: {npm_calls}"
     );
+    assert!(
+        npm_calls.contains("exec -- tsx ") && npm_calls.contains("assert-builder-runtime.ts"),
+        "SQLite fixture check should execute generated builder assertions: {npm_calls}"
+    );
+    let npm_cwds = std::fs::read_to_string(fixture.root.join("npm-cwds.log"))
+        .expect("npm cwd log should be written");
+    let expected_npm_cwd = fixture_repo.display().to_string();
+    assert!(
+        npm_cwds.lines().all(|cwd| cwd == expected_npm_cwd),
+        "SQLite npm checks should run from the repository root: {npm_cwds}"
+    );
 }
 
 #[test]
@@ -490,7 +501,7 @@ fi
 database_file=$1
 schema=$(cat)
 case "$schema" in
-  *"CREATE TABLE sqlite_fixture_orders"*) ;;
+  *"CREATE TABLE fixture_orders"*) ;;
   *)
     echo "expected SQLite fixture schema on stdin" >&2
     exit 64
@@ -531,6 +542,7 @@ cat >/dev/null
 set -eu
 
 printf '%s\n' "$*" >> "$TMPDIR/npm-calls.log"
+pwd >> "$TMPDIR/npm-cwds.log"
 
 if [ "$#" -eq 4 ] \
   && [ "$1" = "exec" ] \
@@ -540,6 +552,13 @@ if [ "$#" -eq 4 ] \
     "$TMPDIR"/sqlay-examples.*/bookstore/assert-query-results.ts)
       if ! grep -q 'rows.length > 1' "$4"; then
         echo "expected result assertion script to reject multi-row single-result queries" >&2
+        exit 64
+      fi
+      ;;
+    "$TMPDIR"/sqlay-sqlite-fixtures.*/sqlite/assert-builder-runtime.ts)
+      if ! grep -q 'sqliteBulkInsertOrderItems' "$4" \
+        || ! grep -q 'sqliteDeleteOrderItem' "$4"; then
+        echo "expected SQLite runtime assertions for Repeat and mutation Slot builders" >&2
         exit 64
       fi
       ;;
@@ -613,7 +632,7 @@ fn write_structure_baseline(repo_root: &Path, content: &str) {
 fn write_sqlite_fixture_contract_repo(repo_root: &Path) {
     write_file(
         &repo_root.join("fixtures/sqlite/schema.sql"),
-        "CREATE TABLE sqlite_fixture_orders (id INTEGER PRIMARY KEY);\n",
+        "CREATE TABLE fixture_orders (id INTEGER PRIMARY KEY);\n",
     );
     write_file(
         &repo_root.join("fixtures/sqlite/sqlay.config.json"),
@@ -627,19 +646,23 @@ fn write_sqlite_fixture_contract_repo(repo_root: &Path) {
     );
     write_file(
         &repo_root.join("fixtures/sqlite/valid/sqlite_builders.sql"),
-        "/* @sqlay { type: query id: sqliteFixtureQuery } */\nSELECT id FROM sqlite_fixture_orders;\n",
+        "/* @sqlay { type: query id: sqliteFixtureQuery } */\nSELECT id FROM fixture_orders;\n",
     );
     write_file(
         &repo_root.join("fixtures/sqlite/tsconfig.json"),
         r#"{
   "compilerOptions": { "strict": true, "noEmit": true },
-  "include": ["assert-generated-surface.ts", "generated/**/*.ts"]
+        "include": ["assert-builder-runtime.ts", "assert-generated-surface.ts", "generated/**/*.ts"]
 }
 "#,
     );
     write_file(
         &repo_root.join("fixtures/sqlite/assert-generated-surface.ts"),
         "import { sqliteFixtureQuery } from \"./generated/valid/sqlite_builders\";\nvoid sqliteFixtureQuery;\n",
+    );
+    write_file(
+        &repo_root.join("fixtures/sqlite/assert-builder-runtime.ts"),
+        "import { sqliteFixtureQuery } from \"./generated/valid/sqlite_builders\";\nvoid sqliteFixtureQuery;\n// sqliteBulkInsertOrderItems\n// sqliteDeleteOrderItem\n",
     );
     write_file(
         &repo_root.join("fixtures/sqlite/generated/valid/sqlite_builders.ts"),

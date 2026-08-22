@@ -7,6 +7,7 @@
     "noEmit": true
   },
   "include": [
+    "assert-builder-runtime.ts",
     "assert-generated-surface.ts",
     "generated/**/*.ts"
   ]
