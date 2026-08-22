@@ -2,7 +2,8 @@
   "private": true,
   "scripts": {
     "typecheck:examples": "tsc --noEmit --project examples/bookstore/tsconfig.json",
-    "typecheck:fixtures": "tsc --noEmit --project fixtures/sql/tsconfig.json",
+    "typecheck:fixtures": "npm run typecheck:mysql-fixtures && npm run typecheck:sqlite-fixtures",
+    "typecheck:mysql-fixtures": "tsc --noEmit --project fixtures/sql/tsconfig.json",
     "typecheck:sqlite-fixtures": "tsc --noEmit --project fixtures/sqlite/tsconfig.json"
   },
   "devDependencies": {
