@@ -139,6 +139,8 @@ impl DatabaseConfig {
 pub enum DatabaseDialect {
     /// Official `MySQL` 8.x.
     MySql,
+    /// `SQLite`.
+    Sqlite,
 }
 
 impl DatabaseDialect {
@@ -147,6 +149,7 @@ impl DatabaseDialect {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::MySql => "mysql",
+            Self::Sqlite => "sqlite",
         }
     }
 }
@@ -548,5 +551,15 @@ impl TypeScriptTypeImport {
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DatabaseDialect;
+
+    #[test]
+    fn sqlite_dialect_has_stable_config_spelling() {
+        assert_eq!(DatabaseDialect::Sqlite.as_str(), "sqlite");
     }
 }

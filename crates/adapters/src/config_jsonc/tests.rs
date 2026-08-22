@@ -45,6 +45,15 @@ mod parser {
     }
 
     #[test]
+    fn parses_sqlite_database_dialect() {
+        let config = JsoncConfigLoader::parse_str(&VALID_CONFIG.replace("mysql", "sqlite"))
+            .expect("SQLite config should parse");
+
+        assert_eq!(config.database().dialect(), core::DatabaseDialect::Sqlite);
+        assert_eq!(config.database().dialect().as_str(), "sqlite");
+    }
+
+    #[test]
     fn accepts_comments_and_trailing_commas() {
         let config = JsoncConfigLoader::parse_str(
             r#"
@@ -303,7 +312,7 @@ mod validation {
         let messages = diagnostic_messages(&report);
 
         assert!(
-            messages.contains("unsupported config field `database.dialect` value `postgres`; supported value is `mysql`")
+            messages.contains("unsupported config field `database.dialect` value `postgres`; supported values are `mysql` and `sqlite`")
         );
         assert!(messages.contains(
             "unsupported config field `target.language` value `go`; supported value is `typescript`"
