@@ -16,6 +16,12 @@ where near-term work should point. The original MVP remains documented in
 - MySQL 8.x analysis for mutation blocks that contain exactly one supported
   `INSERT`, `UPDATE`, `DELETE`, or `REPLACE` statement as defined by
   [ADR 0010](./adr/0010-define-initial-mysql-mutation-builder-support.md).
+- SQLite 3.35 and later analysis for query blocks that contain exactly one `SELECT`
+  statement as defined by
+  [ADR 0014](./adr/0014-support-sqlite-with-the-typescript-target.md).
+- SQLite 3.35 and later analysis for mutation blocks that contain exactly one
+  supported `INSERT ... VALUES`, `UPDATE ... WHERE`, `DELETE ... WHERE`, or
+  `REPLACE ... VALUES` statement as defined by ADR 0014.
 - TypeScript SQL builder generation that preserves SQL source paths under
   `output.dir`.
 - `sqlay.config.json` project configuration, discovered from the working
@@ -46,6 +52,12 @@ execute queries or mutations and do not depend on a database driver. See
 [Mutation Execution with mysql2](./mutation-execution.md) for user-facing
 execution examples that keep generated builders driver-independent.
 
+SQLite keeps the existing `database.urlEnv` contract. The environment value is a
+file URL: `sqlite://relative/path.db` resolves from the process working directory,
+and `sqlite:///absolute/path.db` is absolute. The database file must already exist.
+Initial SQLite support uses only its `main` schema and excludes in-memory,
+temporary, attached, and encrypted databases.
+
 ## Param Support
 
 Inline `Param` markers wrap a sample SQL expression so source SQL remains directly
@@ -57,11 +69,11 @@ FROM users AS u
 WHERE u.email = /* @sqlay { type: param id: email } */ 'test@example.test' /* @sqlay { type: paramEnd } */;
 ```
 
-For compilation, each Param range is replaced with one MySQL `?` placeholder. Input
-types are inferred from supported direct MySQL column contexts when possible, or
-from an inline `valueType` override. `nullable: true` marks nullable input values.
-Non-null Param inputs are the default and omit `nullable`; `nullable: false` is not
-accepted.
+For compilation, each Param range is replaced with one positional `?` placeholder
+for the configured MySQL or SQLite dialect. Input types are inferred from supported
+direct schema column contexts when possible, or from an inline `valueType` override.
+`nullable: true` marks nullable input values. Non-null Param inputs are the default
+and omit `nullable`; `nullable: false` is not accepted.
 Repeated Param IDs are supported when all occurrences agree on type and
 nullability.
 
@@ -159,6 +171,12 @@ builders. Generated mutation builders return SQL text and params only. They do n
 generate result row types, output types, execution functions, transaction helpers,
 or driver-specific result wrappers.
 
+ADR 0014 adds the initial SQLite mutation subset: `INSERT ... VALUES`, single-table
+`UPDATE ... WHERE`, single-table `DELETE ... WHERE`, and `REPLACE ... VALUES`.
+SQLite `RETURNING`, UPSERT with `ON CONFLICT`, `INSERT ... SELECT`, top-level CTE
+mutations, `UPDATE ... FROM`, and dialect translation remain unsupported. As with
+MySQL, SQLite mutation SQL is never executed during `check` or `compile`.
+
 See [Mutation Execution with mysql2](./mutation-execution.md) for user-facing
 execution examples that keep generated builders driver-independent.
 
@@ -235,9 +253,10 @@ the initial design because TypeScript MySQL drivers return SET values as strings
 including comma-separated combinations and the empty string.
 
 Column overrides support both current-database `table.column` references and
-explicit `database.table.column` references. SQL table-source resolution for this
-feature should therefore support current-database tables and explicit MySQL
-`database.table` references as schema-backed sources.
+explicit three-part references. For MySQL, `database.table.column` names a table in
+an explicit database. For SQLite, only `main.table.column` is accepted as the
+explicit form; attached and temporary schemas are outside ADR 0014. SQL table-source
+resolution preserves the dialect-specific schema identity in Core metadata.
 
 ## Accepted Machine-Readable CLI Output Direction
 
@@ -262,13 +281,14 @@ JSON runs use `summary: null`; diagnostics are the stable failure contract.
 
 ## Near-Term Direction
 
-The near-term direction is to stabilize the current SELECT builder workflow while
-implementing ADR 0010, ADR 0011, ADR 0012, and ADR 0013 in focused slices:
+The near-term direction is to stabilize the current builder workflow while adding
+SQLite through the dialect-neutral architecture defined by ADR 0014:
 
 - keep contributor and user documentation aligned with the supported and accepted
   post-MVP scope.
-- keep diagnostics and CLI help explicit about supported dialects, statement
-  kinds, target languages, and Param syntax.
+- keep diagnostics and CLI help explicit about the supported MySQL and SQLite
+  dialects, statement kinds, target languages, Param syntax, and connection URL
+  boundaries.
 - preserve generated-code driver independence while documenting practical
   `mysql2/promise` execution patterns for mutation builders.
 - preserve the annotation-only boundary for TypeScript type mapping overrides:
@@ -302,6 +322,7 @@ The current scope is defined by these accepted ADRs:
 - [ADR 0011: Define Repeat for Variable-Length SQL Repetition](./adr/0011-define-repeat-for-variable-length-sql-repetition.md)
 - [ADR 0012: Define Configurable TypeScript Type Mapping Overrides](./adr/0012-define-configurable-typescript-type-mapping-overrides.md)
 - [ADR 0013: Define Machine-Readable CLI Format Output](./adr/0013-define-machine-readable-cli-format-output.md)
+- [ADR 0014: Support SQLite with the TypeScript Target](./adr/0014-support-sqlite-with-the-typescript-target.md)
 
 ## Out Of Scope
 
@@ -324,13 +345,17 @@ The following remain intentionally unsupported:
   `init` or help, a `--json` alias, YAML output, partial success summaries for
   failed runs, duplicate human diagnostics on stderr during JSON output, and a
   schema version separate from the `sqlay` product version.
-- mutation forms outside ADR 0010, including multi-table `UPDATE` and `DELETE`,
-  `INSERT ... SELECT`, `REPLACE ... SELECT`, top-level CTE mutations, `CALL`,
-  `LOAD DATA`, `TRUNCATE`, DDL, transaction control, and administrative
+- MySQL mutation forms outside ADR 0010, including multi-table `UPDATE` and
+  `DELETE`, `INSERT ... SELECT`, `REPLACE ... SELECT`, top-level CTE mutations,
+  `CALL`, `LOAD DATA`, `TRUNCATE`, DDL, transaction control, and administrative
   statements.
+- SQLite behavior outside ADR 0014, including missing-file creation, in-memory,
+  temporary, attached, encrypted, or non-`main` databases, `RETURNING`, UPSERT,
+  `INSERT ... SELECT`, top-level CTE mutations, `UPDATE ... FROM`, and automatic
+  dialect translation.
 - multi-statement source units.
 - generated database execution functions.
-- non-MySQL dialects.
+- database dialects other than MySQL 8.x and SQLite 3.35 or later.
 - non-TypeScript target generators.
 - automatic naming transformation.
 - implicit `.env` loading.

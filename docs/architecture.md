@@ -44,11 +44,12 @@ sqlay-core
 Only `sqlay-cli` may depend on both `sqlay-app` and `sqlay-adapters`.
 `sqlay-cli` is the composition root: it wires concrete adapters into application
 ports. `sqlay-adapters` groups infrastructure adapters as modules such as
-`config_jsonc`, `source_fs`, `dialect_mysql`, `metadata/<database>/<driver>`,
-`target`, and `output_fs`. The current sqlx-backed MySQL metadata adapter lives
-under `metadata/mysql/sqlx`. Target-language adapters live under
-`target/<language>` directories, such as `target/typescript`, with shared target
-helpers owned by `target`.
+`config_jsonc`, `source_fs`, `dialect_mysql`, `dialect_sqlite`,
+`metadata/<database>/<driver>`, `target`, and `output_fs`. The sqlx-backed MySQL and
+SQLite metadata adapters live under `metadata/mysql/sqlx` and
+`metadata/sqlite/sqlx`. Target-language adapters live under `target/<language>`
+directories, such as `target/typescript`, with shared target helpers owned by
+`target`.
 
 Adapter modules implement ports from `sqlay-app` and exchange only `sqlay-core`
 types. `sqlay-app` owns use cases and port traits. `sqlay-core` owns shared domain
@@ -172,6 +173,12 @@ Responsibilities:
 
 The CLI does not implicitly load `.env` files.
 
+Database URLs keep dialect-specific connection semantics. In particular,
+`sqlite://relative/path.db` is relative to the process working directory, not the
+configuration directory, while `sqlite:///absolute/path.db` is absolute. SQLite
+connection setup accepts only an existing regular database file and does not create
+one.
+
 ## Compilation Plan
 
 The Compilation Plan is the resolved work order produced from configuration. It is
@@ -259,8 +266,9 @@ For mutation annotations:
 
 For `Param` intake, inline `type: param` and `type: paramEnd` annotations are
 recognized inside query, mutation, and fragment bodies. For analysis and
-generation, each Param range is replaced with one MySQL positional placeholder.
-Raw `?` placeholders are rejected in source SQL.
+generation, each Param range is replaced with one positional `?` placeholder for
+the configured MySQL or SQLite dialect. Raw `?` placeholders are rejected in source
+SQL.
 
 For `Fragment` intake, `type: fragment` starts a global source unit with an
 explicit `id` and a body that ends before the next global `query`, `mutation`, or
@@ -301,7 +309,7 @@ The Dialect Analyzer interprets a `RawQuery` as SQL for one configured database
 dialect. The Mutation Analyzer interprets a `RawMutation` under the same dialect
 boundary.
 
-The currently supported dialect is MySQL 8.x.
+The supported dialects are MySQL 8.x and SQLite 3.35 or later.
 
 Query analyzer responsibilities:
 
@@ -317,45 +325,53 @@ Mutation analyzer responsibilities:
 - reject unsupported statement forms.
 - verify that each mutation block contains exactly one supported mutation
   statement.
-- accept initial `INSERT`, `UPDATE`, `DELETE`, and `REPLACE` forms defined by
+- accept the MySQL `INSERT`, `UPDATE`, `DELETE`, and `REPLACE` forms defined by
   [ADR 0010](./adr/0010-define-initial-mysql-mutation-builder-support.md).
-- reject multi-table `UPDATE` and `DELETE`, `INSERT ... SELECT`,
-  `REPLACE ... SELECT`, top-level CTE mutations, `CALL`, `LOAD DATA`, `TRUNCATE`,
-  DDL, transaction control, administrative statements, and multi-statement units.
+- accept the SQLite `INSERT ... VALUES`, single-table `UPDATE ... WHERE`,
+  single-table `DELETE ... WHERE`, and `REPLACE ... VALUES` forms defined by
+  [ADR 0014](./adr/0014-support-sqlite-with-the-typescript-target.md).
+- reject forms outside the configured dialect's accepted ADR, including
+  multi-statement units and unsupported dialect-specific extensions.
 - require `WHERE` on `UPDATE` and `DELETE` without attempting semantic predicate
   safety analysis.
 - expose mutation facts such as statement kind and target table information for
   application validation and Param inference.
 
-Future PostgreSQL or SQLite support should add new dialect analyzers rather than
-branching inside target generators.
+Future PostgreSQL or other dialect support should add new dialect analyzers rather
+than branching inside target generators.
 
 ## Metadata Provider
 
-The Metadata Provider obtains database metadata for analyzed source units.
-
-For SELECT queries, the provider connects to MySQL 8.x and derives result column
-metadata without fetching user data. The Rust database client is `sqlx`.
+The Metadata Provider obtains database metadata for analyzed source units. The Rust
+database client is `sqlx`. MySQL uses an official MySQL 8.x server. SQLite uses the
+SQLite implementation bundled by `sqlx`, an existing file-backed database, and the
+file's `main` schema only.
 
 Query metadata responsibilities:
 
 - connect to the configured database.
 - describe a SELECT query without fetching user data rows.
 - return database-native column names, database types, and nullability metadata.
-- read `information_schema.columns` metadata used for direct column-context input
-  type inference and schema-backed type mapping.
+- read schema column metadata used for direct column-context input type inference
+  and schema-backed type mapping. MySQL uses `information_schema.columns`; SQLite
+  inspects real tables and columns in `main`.
 - preserve enough schema identity to distinguish current-database `table.column`
-  references from explicit MySQL `database.table.column` references.
+  references from the configured dialect's explicit three-part reference. MySQL
+  uses `database.table.column`; SQLite accepts only `main.table.column`.
 - read native column declarations such as `COLUMN_TYPE` when Core type metadata
   needs details beyond a broad database type name, including MySQL `ENUM` values.
+- map SQLite declared and expression types conservatively. Missing, ambiguous, or
+  conflicting SQLite type metadata becomes `CoreType::Unknown`.
+- report unknown or conflicting SQLite result nullability as nullable. Schema
+  `NOT NULL` alone must not overstate nullability through an outer join.
 
 Mutation metadata responsibilities:
 
 - connect to the configured database only for schema metadata.
-- read `information_schema.columns` metadata used for supported direct
+- read the configured dialect's schema column metadata used for supported direct
   column-context input type inference and schema-backed type mapping.
-- preserve enough schema identity to distinguish current-database `table.column`
-  references from explicit MySQL `database.table.column` references.
+- preserve the same MySQL database or SQLite `main` schema identity used by query
+  metadata.
 - never execute mutation SQL.
 - never rely on rollback-based execution to infer mutation behavior.
 
@@ -363,6 +379,7 @@ See also:
 
 - [ADR 0001: Use MySQL 8.x as the MVP dialect](./adr/0001-use-mysql-8-for-mvp.md)
 - [ADR 0010: Define Initial MySQL Mutation Builder Support](./adr/0010-define-initial-mysql-mutation-builder-support.md)
+- [ADR 0014: Support SQLite with the TypeScript Target](./adr/0014-support-sqlite-with-the-typescript-target.md)
 
 ## Application Use Cases and Ports
 
@@ -444,6 +461,9 @@ Database-specific type mapping should stop at Core IR:
 MySQL BIGINT -> CoreType::Int64
 PostgreSQL int8 -> CoreType::Int64
 MySQL ENUM('draft', 'paid') -> Enum value type ['draft', 'paid']
+SQLite INTEGER -> CoreType::Int64
+SQLite TEXT -> CoreType::String
+ambiguous SQLite NUMERIC expression -> CoreType::Unknown
 ```
 
 Target-language type mapping should start from Core IR:
@@ -454,8 +474,8 @@ CoreType::Int64 -> Go int64
 Enum value type ['draft', 'paid'] -> TypeScript "draft" | "paid"
 ```
 
-This keeps MySQL-to-TypeScript, PostgreSQL-to-TypeScript, MySQL-to-Go, and
-PostgreSQL-to-Go from becoming separate hard-coded paths.
+This keeps MySQL-to-TypeScript, SQLite-to-TypeScript, PostgreSQL-to-TypeScript,
+MySQL-to-Go, and PostgreSQL-to-Go from becoming separate hard-coded paths.
 
 Core metadata should be conservative:
 
@@ -465,13 +485,15 @@ Core metadata should be conservative:
   should avoid lossy JavaScript conversions in the TypeScript target generator.
 - schema-backed MySQL `ENUM` values should be represented in language-neutral Core
   metadata, not as TypeScript-only generator state.
+- ambiguous SQLite declared types, expression types, and nullability should stay
+  unknown or nullable in language-neutral Core metadata.
 
 ## Target Generator
 
 Target Generators convert Core IR into generated files for a target language. They
 should not parse or reinterpret database-specific SQL syntax. The SQL text inside a
-generated file may be MySQL or another dialect, but the generator treats that SQL
-as validated text carried by the Core IR.
+generated file may be MySQL, SQLite, or another future dialect, but the generator
+treats that SQL as validated text carried by the Core IR.
 
 The supported target generator emits TypeScript SQL builder code. Generated code
 returns SQL text and parameter arrays, not database execution behavior.
@@ -570,10 +592,10 @@ when that branch is selected.
 
 Generated SQL must be emitted as a valid JavaScript string literal. The TypeScript
 target generator should escape the SQL text rather than embedding raw SQL in an
-unescaped template literal, because MySQL backtick identifiers and SQL text
-containing `${...}` must not break generated TypeScript. Examples use ordinary
-double-quoted string literals; multiline SQL may use any representation that is
-semantically equivalent after JavaScript string escaping.
+unescaped template literal, because quoted identifiers and SQL text containing
+`${...}` must not break generated TypeScript. Examples use ordinary double-quoted
+string literals; multiline SQL may use any representation that is semantically
+equivalent after JavaScript string escaping.
 
 Generated files include a generated-code header. `compile` treats the configured
 output directory as generated output and overwrites same-path files. Stale generated
@@ -584,7 +606,9 @@ files are removed only when `compile --clean` is used.
 The project should keep local and CI checks aligned. Rust formatting, linting, and
 unit tests remain the external-service-free baseline checks. MySQL-backed checks are
 separate because they require a running MySQL 8.x database and prefix-scoped schema
-reset.
+reset. SQLite-backed checks use existing file databases created in temporary fixture
+or example copies before invoking `sqlay`; they do not require an external database
+service and must not rely on sqlay to create a missing database.
 
 Examples and fixtures have different responsibilities. `examples/` contains
 user-facing sample projects with generated TypeScript output that is actual compiler
@@ -633,3 +657,4 @@ See also:
 - [ADR 0007: Use examples and fixtures as generated E2E artifacts](./adr/0007-use-examples-and-fixtures-as-generated-e2e-artifacts.md)
 - [ADR 0010: Define Initial MySQL Mutation Builder Support](./adr/0010-define-initial-mysql-mutation-builder-support.md)
 - [ADR 0013: Define Machine-Readable CLI Format Output](./adr/0013-define-machine-readable-cli-format-output.md)
+- [ADR 0014: Support SQLite with the TypeScript Target](./adr/0014-support-sqlite-with-the-typescript-target.md)

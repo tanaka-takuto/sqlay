@@ -40,6 +40,10 @@ overconfident. For example, unknown nullability should be treated as nullable.
 When schema-backed metadata is precise, generated types may be more specific, such
 as inline literal unions for MySQL `ENUM` values.
 
+This conservative rule also applies to SQLite's dynamic type system. An ambiguous
+SQLite declared type, expression type, or nullability result must remain unknown or
+nullable instead of being promoted to a more confident TypeScript annotation.
+
 Projects may explicitly override generated TypeScript type annotations when the
 default conservative mapping does not match their domain model or driver
 configuration. Those overrides are still static type annotations. They must not
@@ -101,8 +105,13 @@ type mappings.
 accepted direction for machine-readable `check` and `compile` result output through
 `--format json`.
 
-Additional SQL dialects and additional target generators require separate design
-decisions before implementation.
+[ADR 0014](./adr/0014-support-sqlite-with-the-typescript-target.md) defines SQLite
+3.35 and later support for existing file-backed `main` databases. SQLite uses its own
+query, mutation, and metadata adapters while reusing language-neutral Core IR and
+the driver-independent TypeScript target generator.
+
+Additional SQL dialects beyond MySQL and SQLite, and additional target generators,
+require separate design decisions before implementation.
 
 `Slot` design uses `targets: [...]` rather than a single `target`, so exclusive
 choices and single choices share one representation.
