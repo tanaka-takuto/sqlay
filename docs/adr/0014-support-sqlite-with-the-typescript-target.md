@@ -119,8 +119,10 @@ SQL normalization.
 
 SQLite query metadata uses `sqlx` prepare/describe behavior backed by its bundled
 SQLite implementation. It does not fetch application rows. Schema-backed metadata
-uses inspection of real tables and columns in the `main` schema. Mutation metadata
-uses only that schema inspection and never executes mutation SQL.
+uses inspection of real tables and columns in the `main` schema. SQLite mutation
+metadata prepares every expanded statement on the existing read-only connection so
+SQLite itself validates syntax and name resolution. Preparing a mutation does not
+step or execute it. Param inference continues to use only `main` schema inspection.
 
 Direct schema column identity may drive existing Param inference and TypeScript type
 mapping overrides. The SQLite forms are:
@@ -178,7 +180,8 @@ driver contract is known, but they do not add runtime conversion or validation.
 - Add a SQLite query and mutation analyzer rather than branching in the TypeScript
   generator.
 - Add a SQLite `sqlx` metadata adapter for query describe, `main` schema inspection,
-  direct-column Param inference, declared-type mapping, and conservative nullability.
+  non-executing mutation prepare, direct-column Param inference, declared-type
+  mapping, and conservative nullability.
 - Select the analyzer and metadata provider from `database.dialect` at the CLI
   composition root while keeping application ports dialect-neutral.
 - Configuration validation and CLI help must describe both `mysql` and `sqlite` and

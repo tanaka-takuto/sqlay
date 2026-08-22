@@ -79,8 +79,8 @@ Metadata Provider
   RawQuery + database connection
   -> DbQueryMetadata
 
-Schema Metadata Provider
-  RawMutation + information_schema
+Mutation Metadata Provider
+  RawMutation + dialect schema metadata + non-executing validation
   -> DbMutationMetadata
 
 Application Use Case + Core IR
@@ -98,8 +98,9 @@ generators map Core IR into language-specific code.
 
 Mutation analysis is intentionally separate from SELECT query analysis. SELECT
 queries can use database describe metadata for result columns. Mutations must never
-be executed during `check` or `compile`, so their metadata path is limited to schema
-metadata needed for Param type inference.
+be executed during `check` or `compile`. Their metadata path uses schema metadata
+for Param type inference and may prepare a statement without stepping it when the
+database adapter needs native syntax and name-resolution validation.
 
 ## Diagnostics and Errors
 
@@ -367,11 +368,14 @@ Query metadata responsibilities:
 
 Mutation metadata responsibilities:
 
-- connect to the configured database only for schema metadata.
+- connect to the configured database for schema metadata and non-executing native
+  validation when required by the dialect.
 - read the configured dialect's schema column metadata used for supported direct
   column-context input type inference and schema-backed type mapping.
 - preserve the same MySQL database or SQLite `main` schema identity used by query
   metadata.
+- prepare every expanded SQLite mutation statement on the read-only connection so
+  SQLite validates syntax and name resolution without stepping the statement.
 - never execute mutation SQL.
 - never rely on rollback-based execution to infer mutation behavior.
 

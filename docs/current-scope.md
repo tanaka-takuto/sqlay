@@ -182,7 +182,9 @@ execution examples that keep generated builders driver-independent.
 
 Mutation `Param` inference is schema-backed and limited to supported direct column
 contexts such as `INSERT` column lists, `SET column = param`, and qualified
-predicate columns. Mutation SQL is never executed during `check` or `compile`.
+predicate columns. Each expanded SQLite mutation is prepared on a read-only
+connection for native syntax and name-resolution validation, but it is never stepped
+or executed during `check` or `compile`.
 
 Mutation Slot/Fragment composition uses the same optional single-select Slot model
 as SELECT queries, but validation is mutation-specific: every variant must remain a
