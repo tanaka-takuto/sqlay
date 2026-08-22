@@ -20,6 +20,17 @@ See [`docs/current-scope.md`](./docs/current-scope.md),
 and architecture. The completed initial MVP baseline remains in
 [`docs/mvp.md`](./docs/mvp.md).
 
+## Examples
+
+User-facing projects are grouped by database dialect:
+
+- [`examples/mysql/bookstore/`](./examples/mysql/bookstore/) is a MySQL online
+  bookstore with realistic queries, mutations, Param binding, Slot/Fragment
+  composition, Repeat lists, and generated TypeScript builders.
+- [`examples/sqlite/field-journal/`](./examples/sqlite/field-journal/) is a SQLite
+  field journal that demonstrates the same driver-independent builder workflow
+  against an existing file database.
+
 ## Usage
 
 Make the `sqlay` command available before starting a project. From a local
@@ -119,7 +130,9 @@ SQLITE_DATABASE_URL='sqlite://data/app.db' sqlay compile
 `check` validates and renders generated TypeScript in memory without writing
 generated files. Both dialects use the same database-driver-independent TypeScript
 builders, which return SQL and ordered params but do not execute SQL or import a
-database driver.
+database driver. See the
+[`examples/sqlite/field-journal/`](./examples/sqlite/field-journal/) project for a
+complete SQLite example.
 
 For the MySQL starter, run a database-backed dry run with:
 
@@ -495,9 +508,9 @@ Use this connection URL for local checks:
 export DATABASE_URL='mysql://sqlay:sqlay@127.0.0.1:3306/sqlay'
 ```
 
-The local MySQL service starts an empty development database. Example and fixture
-checks load their own prefix-scoped schema and seed data each time they run. Reset
-the database volume with:
+The local MySQL service starts an empty development database. MySQL example and
+fixture checks load their own prefix-scoped schema and seed data each time they run.
+Reset the database volume with:
 
 ```sh
 script/mysql-reset.sh
@@ -525,11 +538,20 @@ npm run typecheck:examples
 npm run typecheck:fixtures
 ```
 
-Run the MySQL-backed example E2E check against a running MySQL service with:
+Run the MySQL and SQLite example E2E checks against a running MySQL service and a
+local `sqlite3` command with:
 
 ```sh
 DATABASE_URL='mysql://sqlay:sqlay@127.0.0.1:3306/sqlay' script/check-examples.sh
 ```
+
+The examples check validates
+[`examples/mysql/bookstore/`](./examples/mysql/bookstore/) against MySQL and creates
+the database for
+[`examples/sqlite/field-journal/`](./examples/sqlite/field-journal/) only inside a
+temporary project copy. It regenerates and compares both projects' committed
+TypeScript artifacts without leaving database or generated-file changes in the
+working examples.
 
 Run the MySQL-backed fixture checks with:
 

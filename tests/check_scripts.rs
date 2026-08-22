@@ -44,7 +44,40 @@ fn pre_push_accepts_issue_scoped_stack_branch() {
 }
 
 #[test]
-fn example_check_typechecks_temporary_generated_project() {
+fn examples_are_grouped_by_database_dialect() {
+    let repo_root = repo_root();
+    let mysql_example = repo_root.join("examples/mysql/bookstore/sqlay.config.json");
+    let sqlite_example = repo_root.join("examples/sqlite/field-journal/sqlay.config.json");
+
+    assert!(
+        mysql_example.is_file(),
+        "the bookstore example should be grouped under examples/mysql"
+    );
+    assert!(
+        sqlite_example.is_file(),
+        "the field-journal example should be grouped under examples/sqlite"
+    );
+    assert!(
+        !repo_root.join("examples/bookstore").exists(),
+        "examples should not leave the database dialect implicit"
+    );
+
+    let mysql_config = std::fs::read_to_string(mysql_example)
+        .expect("the MySQL example config should be readable");
+    let sqlite_config = std::fs::read_to_string(sqlite_example)
+        .expect("the SQLite example config should be readable");
+    assert!(
+        mysql_config.contains(r#""dialect": "mysql""#),
+        "the MySQL directory should contain a MySQL project"
+    );
+    assert!(
+        sqlite_config.contains(r#""dialect": "sqlite""#),
+        "the SQLite directory should contain a SQLite project"
+    );
+}
+
+#[test]
+fn example_check_regenerates_and_typechecks_mysql_and_sqlite_projects() {
     let fixture = ScriptFixture::new("sqlay-check-examples");
 
     let output = fixture.run_script("script/check-examples.sh");
@@ -56,6 +89,34 @@ fn example_check_typechecks_temporary_generated_project() {
         String::from_utf8_lossy(&output.stderr)
     );
 
+    let cargo_calls = std::fs::read_to_string(fixture.root.join("cargo-calls.log"))
+        .expect("cargo call log should be written");
+    assert!(
+        cargo_calls.contains("/mysql/bookstore/sqlay.config.json"),
+        "example check should compile the MySQL bookstore project: {cargo_calls}"
+    );
+    let sqlite_cargo_calls = cargo_calls
+        .lines()
+        .filter(|call| call.contains("/sqlite/field-journal/sqlay.config.json"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sqlite_cargo_calls.len(),
+        2,
+        "example check should check and compile the SQLite field journal project: {cargo_calls}"
+    );
+    assert!(
+        sqlite_cargo_calls[0].contains(" -- check --config ")
+            && sqlite_cargo_calls[1].contains(" -- compile --config "),
+        "SQLite check should run before compile: {cargo_calls}"
+    );
+
+    let sqlite_calls = std::fs::read_to_string(fixture.root.join("sqlite3-calls.log"))
+        .expect("sqlite3 call log should be written");
+    assert!(
+        sqlite_calls.contains("/sqlite/field-journal/field-journal.sqlite3"),
+        "SQLite example check should create a temporary field journal database: {sqlite_calls}"
+    );
+
     let npm_calls = std::fs::read_to_string(fixture.root.join("npm-calls.log"))
         .expect("npm call log should be written");
     assert!(
@@ -65,6 +126,10 @@ fn example_check_typechecks_temporary_generated_project() {
     assert!(
         npm_calls.contains("assert-query-results.ts"),
         "example check should run the query result assertion script, got: {npm_calls}"
+    );
+    assert!(
+        npm_calls.contains("assert-builder-runtime.ts"),
+        "example check should run SQLite builder assertions, got: {npm_calls}"
     );
 }
 
@@ -392,6 +457,8 @@ impl ScriptFixture {
         command
     }
 
+    // Keep the executable shell fixture contiguous so its command dispatch remains readable.
+    #[allow(clippy::too_many_lines)]
     fn write_fake_cargo(&self) {
         write_executable(
             &self.fake_bin.join("cargo"),
@@ -434,6 +501,29 @@ case "$1" in
     if [ -n "$config_path" ]; then
       project_dir=$(CDPATH= cd "$(dirname "$config_path")" && pwd)
       case "$config_path" in
+        "$TMPDIR"/sqlay-examples.*/mysql/bookstore/sqlay.config.json)
+          case "$sqlay_command" in
+            compile)
+              copy_generated "$SQLAY_REPO_ROOT/examples/mysql/bookstore/generated" "$project_dir/generated"
+              ;;
+            *)
+              echo "unexpected sqlay command for MySQL example: $sqlay_command" >&2
+              exit 64
+              ;;
+          esac
+          ;;
+        "$TMPDIR"/sqlay-examples.*/sqlite/field-journal/sqlay.config.json)
+          case "$sqlay_command" in
+            check) ;;
+            compile)
+              copy_generated "$SQLAY_REPO_ROOT/examples/sqlite/field-journal/generated" "$project_dir/generated"
+              ;;
+            *)
+              echo "unexpected sqlay command for SQLite example: $sqlay_command" >&2
+              exit 64
+              ;;
+          esac
+          ;;
         "$TMPDIR"/sqlay-sqlite-fixtures.*/sqlite/sqlay.config.json)
           case "$sqlay_command" in
             check)
@@ -452,7 +542,8 @@ case "$1" in
           esac
           ;;
         *)
-          copy_generated "$SQLAY_REPO_ROOT/examples/bookstore/generated" "$project_dir/generated"
+          echo "unexpected sqlay config path: $config_path" >&2
+          exit 64
           ;;
       esac
       exit 0
@@ -499,18 +590,37 @@ if [ "$#" -ne 1 ]; then
 fi
 
 database_file=$1
-schema=$(cat)
-case "$schema" in
-  *"CREATE TABLE fixture_orders"*) ;;
+sql=$(cat)
+case "$database_file" in
+  "$TMPDIR"/sqlay-sqlite-fixtures.*/sqlite/fixture.sqlite3)
+    case "$sql" in
+      *"CREATE TABLE fixture_orders"*) ;;
+      *)
+        echo "expected SQLite fixture schema on stdin" >&2
+        exit 64
+        ;;
+    esac
+    ;;
+  "$TMPDIR"/sqlay-examples.*/sqlite/field-journal/field-journal.sqlite3)
+    case "$sql" in
+      *"CREATE TABLE field_journal_sites"*|*"INSERT INTO field_journal_sites"*) ;;
+      *)
+        echo "expected field journal schema or seed data on stdin" >&2
+        exit 64
+        ;;
+    esac
+    ;;
   *)
-    echo "expected SQLite fixture schema on stdin" >&2
+    echo "unexpected sqlite3 database path: $database_file" >&2
     exit 64
     ;;
 esac
 
 printf '%s\n' "$database_file" >> "$TMPDIR/sqlite3-calls.log"
 mkdir -p "$(dirname "$database_file")"
-: > "$database_file"
+if [ ! -f "$database_file" ]; then
+  : > "$database_file"
+fi
 "#,
         );
     }
@@ -549,9 +659,16 @@ if [ "$#" -eq 4 ] \
   && [ "$2" = "--" ] \
   && [ "$3" = "tsx" ]; then
   case "$4" in
-    "$TMPDIR"/sqlay-examples.*/bookstore/assert-query-results.ts)
+    "$TMPDIR"/sqlay-examples.*/mysql/bookstore/assert-query-results.ts)
       if ! grep -q 'rows.length > 1' "$4"; then
         echo "expected result assertion script to reject multi-row single-result queries" >&2
+        exit 64
+      fi
+      ;;
+    "$TMPDIR"/sqlay-examples.*/sqlite/field-journal/assert-builder-runtime.ts)
+      if ! grep -q 'listSiteObservations' "$4" \
+        || ! grep -q 'addObservationTags' "$4"; then
+        echo "expected field journal runtime assertions for Slot and Repeat builders" >&2
         exit 64
       fi
       ;;
@@ -573,7 +690,7 @@ if [ "$#" -eq 4 ] \
       fi
       ;;
     *)
-      echo "expected npm to run a temporary bookstore result assertion, got: $*" >&2
+      echo "expected npm to run a temporary example assertion, got: $*" >&2
       exit 64
       ;;
   esac
@@ -591,10 +708,17 @@ if [ "$#" -ne 6 ] \
 fi
 
 case "$6" in
-  "$TMPDIR"/sqlay-examples.*/bookstore/tsconfig.json)
+  "$TMPDIR"/sqlay-examples.*/mysql/bookstore/tsconfig.json)
     project_dir=$(dirname "$6")
     if [ ! -L "$project_dir/node_modules" ]; then
       echo "expected temporary bookstore project to link repo node_modules" >&2
+      exit 64
+    fi
+    ;;
+  "$TMPDIR"/sqlay-examples.*/sqlite/field-journal/tsconfig.json)
+    project_dir=$(dirname "$6")
+    if [ ! -L "$project_dir/node_modules" ]; then
+      echo "expected temporary field journal project to link repo node_modules" >&2
       exit 64
     fi
     ;;

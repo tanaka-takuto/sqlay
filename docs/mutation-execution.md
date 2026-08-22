@@ -5,7 +5,7 @@ manage transactions, or wrap driver result objects. Application code chooses a
 driver and executes the builder output.
 
 The examples below use generated builders from
-[`examples/bookstore/sql/mutations.sql`](../examples/bookstore/sql/mutations.sql)
+[`examples/mysql/bookstore/sql/mutations.sql`](../examples/mysql/bookstore/sql/mutations.sql)
 with `mysql2/promise`.
 
 ## Pool Runtime Options
@@ -57,7 +57,7 @@ import {
   markOrderPaid,
   replaceCategory,
   upsertOrderStatus,
-} from "../examples/bookstore/generated/sql/mutations";
+} from "../examples/mysql/bookstore/generated/sql/mutations";
 
 type BuiltStatement = {
   sql: string;

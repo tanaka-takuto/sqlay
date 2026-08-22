@@ -10,7 +10,8 @@ reviews:
   path_filters:
     - "!Cargo.lock"
     - "!package-lock.json"
-    - "!examples/bookstore/generated/**"
+    - "!examples/mysql/bookstore/generated/**"
+    - "!examples/sqlite/field-journal/generated/**"
     - "!fixtures/sql/generated/**"
   auto_review:
     enabled: true
@@ -36,9 +37,9 @@ reviews:
     - path: "**/*.sql"
       instructions: >-
         Review SQL fixtures and examples against the current supported scope:
-        MySQL 8.x, query-only SELECT statements, inline Param markers for value
-        binding, no raw placeholders, no multi-statement blocks, and no
-        unsupported Slot or Fragment end-to-end behavior.
+        MySQL 8.x or SQLite 3.35+, the dialect-specific query and mutation surface,
+        inline Param markers for value binding, no raw placeholders, no
+        multi-statement blocks, and supported Slot/Fragment and Repeat behavior.
     - path: "examples/**"
       instructions: >-
         Examples are executable user-facing coverage. When SQL, config, or
@@ -53,7 +54,7 @@ reviews:
       instructions: >-
         Shell scripts should remain portable, explicit, and consistent with
         CONTRIBUTING.md. Check quoting, exit handling, environment variable use,
-        and MySQL setup assumptions.
+        and database setup assumptions for both MySQL and SQLite.
     - path: ".github/workflows/**"
       instructions: >-
         Workflows should preserve the trigger, reusable workflow, and composite
@@ -84,9 +85,10 @@ reviews:
         mode: warning
         instructions: >-
           Pass only when changes that affect generated TypeScript output also
-          update the committed generated artifacts under examples/bookstore/generated
-          or fixtures/sql/generated, or clearly explain why no generated artifact
-          update is required.
+          update the committed generated artifacts under
+          examples/mysql/bookstore/generated,
+          examples/sqlite/field-journal/generated, or fixtures, or clearly explain
+          why no generated artifact update is required.
       - name: Relevant checks documented
         mode: warning
         instructions: >-

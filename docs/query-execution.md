@@ -7,7 +7,8 @@ builder output.
 
 The example below uses the generated `findBookDetail` and `listAvailableBooks`
 builders from
-[`examples/bookstore/sql/books.sql`](../examples/bookstore/sql/books.sql) with
+[`examples/mysql/bookstore/sql/books.sql`](../examples/mysql/bookstore/sql/books.sql)
+with
 `mysql2/promise`.
 
 ## SELECT Execution
@@ -31,7 +32,7 @@ import {
   listAvailableBooks,
   type listAvailableBooks_Output,
   type listAvailableBooks_Row,
-} from "../examples/bookstore/generated/sql/books";
+} from "../examples/mysql/bookstore/generated/sql/books";
 
 type FindBookDetailMysqlRow = findBookDetail_Row & RowDataPacket;
 type ListAvailableBooksMysqlRow = listAvailableBooks_Row & RowDataPacket;

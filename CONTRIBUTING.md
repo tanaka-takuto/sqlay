@@ -26,7 +26,7 @@ Install Node.js and the pinned TypeScript dependency used by generated-code chec
 npm ci
 ```
 
-Install the SQLite command-line tool used by the SQLite fixture check:
+Install the SQLite command-line tool used by the SQLite example and fixture checks:
 
 ```sh
 brew install sqlite
@@ -56,7 +56,7 @@ The Compose service uses deterministic development-only credentials:
 export DATABASE_URL='mysql://sqlay:sqlay@127.0.0.1:3306/sqlay'
 ```
 
-The Compose service starts an empty development database. Example and fixture
+The Compose service starts an empty development database. MySQL example and fixture
 checks load their own prefix-scoped schema and seed data each time they run. To
 rebuild the local database volume from scratch:
 
@@ -85,11 +85,17 @@ npm run typecheck:examples
 npm run typecheck:fixtures
 ```
 
-Run the MySQL-backed example E2E check against a running MySQL service:
+Run the MySQL and SQLite example E2E checks against a running MySQL service and the
+local `sqlite3` command:
 
 ```sh
 DATABASE_URL='mysql://sqlay:sqlay@127.0.0.1:3306/sqlay' script/check-examples.sh
 ```
+
+The examples check exercises `examples/mysql/bookstore/` against MySQL and creates
+the database for `examples/sqlite/field-journal/` only inside a temporary project
+copy. It regenerates and compares both committed outputs, type-checks them, and runs
+their generated-builder assertions without changing either working example.
 
 Run the MySQL-backed fixture checks against a running MySQL service:
 
@@ -224,7 +230,8 @@ Examples CI follows the same trigger and reusable workflow split:
 - Trigger layer: `.github/workflows/on_pull_request_examples-check.yml` and `.github/workflows/on_push_examples-check.yml`
 - Reusable Workflow layer: `.github/workflows/_examples-check.yml`
 
-The examples workflow starts a MySQL 8.4 service and runs:
+The examples workflow starts a MySQL 8.4 service, installs the SQLite command-line
+tool, and runs both dialect-specific example projects through:
 
 ```sh
 script/check-examples.sh
