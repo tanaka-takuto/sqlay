@@ -4,9 +4,7 @@ use std::ops::ControlFlow;
 use sqlparser::ast::{BinaryOperator, Expr, Query as SqlQuery, Select, Statement, Visit, Visitor};
 
 use super::expressions::{ColumnRef, is_placeholder, qualified_column_ref};
-use super::tables::{
-    TableSources, direct_select_query, select_table_sources, select_table_sources_with_cte_names,
-};
+use super::tables::{TableSources, direct_select_query, select_table_sources_with_cte_names};
 
 pub(super) type PendingParamColumns = BTreeMap<usize, ColumnRef>;
 
@@ -106,18 +104,16 @@ impl Visitor for ParamContextCollector {
     type Break = ();
 
     fn pre_visit_query(&mut self, query: &SqlQuery) -> ControlFlow<Self::Break> {
-        let cte_names = query
-            .with
-            .as_ref()
-            .map(|with| {
+        let mut cte_names = self.query_cte_names.last().cloned().unwrap_or_default();
+        if let Some(with) = query.with.as_ref() {
+            cte_names.extend(
                 with.cte_tables
                     .iter()
-                    .map(|cte| cte.alias.name.value.to_ascii_lowercase())
-                    .collect()
-            })
-            .unwrap_or_default();
+                    .map(|cte| cte.alias.name.value.to_ascii_lowercase()),
+            );
+        }
         let query_sources = direct_select_query(query)
-            .map(|(direct_query, select)| select_table_sources(direct_query, select));
+            .map(|(_direct_query, select)| select_table_sources_with_cte_names(select, &cte_names));
         self.query_cte_names.push(cte_names);
         self.query_sources.push(query_sources);
         ControlFlow::Continue(())

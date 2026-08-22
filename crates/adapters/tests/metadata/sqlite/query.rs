@@ -348,6 +348,30 @@ async fn query_metadata_infers_correlated_params_from_outer_query_scope()
 }
 
 #[tokio::test]
+async fn query_metadata_keeps_outer_ctes_visible_in_nested_query_scopes()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let query = raw_query(
+        "WITH values_by_affinity AS (SELECT 'shadow' AS id) \
+         SELECT 1 AS one \
+         WHERE EXISTS (\
+             SELECT 1 FROM values_by_affinity AS v WHERE v.id = ?\
+         );",
+        vec![param("id")],
+    );
+
+    let report = provider
+        .describe(&query, &core::AnalyzedQuery::new(core::Cardinality::Many))
+        .expect_err("a visible outer CTE must not resolve as a same-named main table");
+    let message = report.diagnostics()[0].message();
+
+    assert!(message.contains("valueType"), "{message}");
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn query_metadata_requires_value_type_for_ambiguous_declared_param_column()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = SqliteFixture::new(SCHEMA).await?;
