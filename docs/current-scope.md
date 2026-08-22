@@ -77,6 +77,12 @@ and omit `nullable`; `nullable: false` is not accepted.
 Repeated Param IDs are supported when all occurrences agree on type and
 nullability.
 
+SQLite `BOOL` and `BOOLEAN` declarations are not precise result types and therefore
+map to `unknown`. To expose a logical boolean Param input, add `valueType: bool` to
+the marker. The generated TypeScript input is `boolean`, while the builder converts
+`false` to `0` and `true` to `1` in the params array before caller-managed SQLite
+execution. Nullable boolean Params preserve `null`.
+
 `valueType` uses lower-case sqlay CoreType names, not TypeScript union syntax. For
 a nullable datetime input, write `valueType: datetime` with `nullable: true`; the
 generated TypeScript input field is `string | null` because datetime values map to
@@ -294,7 +300,8 @@ SQLite through the dialect-neutral architecture defined by ADR 0014:
 - preserve generated-code driver independence while documenting practical
   `mysql2/promise` execution patterns for mutation builders.
 - preserve the annotation-only boundary for TypeScript type mapping overrides:
-  runtime conversion and driver configuration remain user responsibilities.
+  result conversion and driver configuration remain user responsibilities, while
+  database Param encodings carried by Core IR remain part of generated binding.
 - keep machine-readable CLI output focused on `check` and `compile` result
   reporting without changing generated TypeScript or database behavior.
 - maintain examples, fixtures, and generated TypeScript artifacts as executable

@@ -138,7 +138,8 @@ SQLite declared types are mapped conservatively into Core metadata:
 - real, float, and double declarations map to `CoreType::Float64`.
 - text, character, CLOB, and varchar declarations map to `CoreType::String`.
 - blob declarations map to `CoreType::Bytes`.
-- explicit boolean declarations map to `CoreType::Bool`.
+- explicit boolean declarations map to `CoreType::Unknown` for result columns
+  because SQLite stores them as integers and does not enforce `0` or `1`.
 - declarations with numeric or decimal affinity, date/time declarations, JSON
   declarations, missing declarations, and unrecognized declarations map to
   `CoreType::Unknown` initially because SQLite does not guarantee one compatible
@@ -150,22 +151,33 @@ expression type maps to `CoreType::Unknown`; sqlay does not guess from a sample 
 literal. Params without supported direct-column inference require an explicit inline
 `valueType` as in the existing workflow.
 
+SQLite boolean Params use an explicit inline `valueType: bool`. Their generated
+TypeScript input remains `boolean`, while Core IR carries a language-neutral
+boolean-to-integer Param encoding. The TypeScript builder applies that encoding at
+runtime and returns `0 | 1` in the ordered params array (`null` is preserved for a
+nullable Param). This is SQLite value binding normalization, not a driver-specific
+execution dependency. The same rule applies to direct, Slot/Fragment, and Repeat
+Params. MySQL Bool Params keep their existing identity encoding.
+
 Result nullability is non-null only when describe and schema context establish it
 for the expanded query. Unknown or conflicting nullability is nullable. In
 particular, schema `NOT NULL` alone must not make an outer-join result overconfident.
 SQLite primary-key and expression nullability are treated as unknown unless the
 metadata path proves the result is non-null.
 
-SQLite-specific declared types, affinity rules, schema lookup results, and
-nullability decisions stop at the database adapter and Core IR. The TypeScript target
-generator consumes the same language-neutral Core metadata used for MySQL.
+SQLite-specific declared types, affinity rules, schema lookup results, nullability
+decisions, and Param value encodings stop at the database adapter and Core IR. The
+TypeScript target generator consumes the same language-neutral Core metadata used
+for MySQL and does not branch on SQLite itself.
 
 ### Generated TypeScript
 
 SQLite uses the existing TypeScript target generator without SQLite-specific SQL
 parsing or metadata branches. Generated builders return SQL text and ordered params
 only. They do not execute SQLite, import a SQLite package, create database files,
-manage transactions, or parse result values.
+manage transactions, or parse result values. The target generator renders the
+language-neutral Param encoding from Core IR; for SQLite boolean Params this keeps
+the public input as `boolean` while binding `false` as `0` and `true` as `1`.
 
 Generated SQL preserves the accepted source SQL semantics and existing Param,
 Slot/Fragment, and Repeat emission order. Generated names use source IDs exactly as
@@ -173,7 +185,8 @@ written and receive no automatic dialect or naming transformation.
 
 Configured TypeScript type mapping overrides remain annotations only. They may
 narrow an intentionally conservative SQLite Core type for a project whose runtime
-driver contract is known, but they do not add runtime conversion or validation.
+driver contract is known, but they do not add result conversion or validation and
+do not change a Param encoding already carried by Core IR.
 
 ## Consequences
 

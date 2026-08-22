@@ -44,11 +44,18 @@ This conservative rule also applies to SQLite's dynamic type system. An ambiguou
 SQLite declared type, expression type, or nullability result must remain unknown or
 nullable instead of being promoted to a more confident TypeScript annotation.
 
+SQLite `BOOL` and `BOOLEAN` declarations remain unknown on result rows because the
+database exposes their stored integer representation and does not enforce `0` or
+`1`. Callers may still declare an input Param as `valueType: bool`; generated
+TypeScript accepts `boolean` and normalizes it to SQLite's integer binding
+representation before returning the params array.
+
 Projects may explicitly override generated TypeScript type annotations when the
 default conservative mapping does not match their domain model or driver
 configuration. Those overrides are still static type annotations. They must not
 imply runtime result parsing, input validation, generated driver configuration, or
-SQL execution behavior.
+SQL execution behavior, and they do not replace a database Param encoding already
+represented in Core IR.
 
 For mutation builders, sqlay should generate typed inputs and parameter arrays, but
 it should not claim to know driver execution results such as affected row counts,

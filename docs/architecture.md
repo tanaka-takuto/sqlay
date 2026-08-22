@@ -451,6 +451,11 @@ struct CompiledMutation {
     input: Vec<InputField>,
     params: Vec<ParamBinding>,
 }
+
+enum ParamEncoding {
+    Identity,
+    BooleanAsInteger,
+}
 ```
 
 Dynamic Core IR should represent Slot and Repeat emission without merging SELECT
@@ -468,6 +473,7 @@ MySQL ENUM('draft', 'paid') -> Enum value type ['draft', 'paid']
 SQLite INTEGER -> CoreType::Int64
 SQLite TEXT -> CoreType::String
 ambiguous SQLite NUMERIC expression -> CoreType::Unknown
+SQLite valueType bool Param -> CoreType::Bool + ParamEncoding::BooleanAsInteger
 ```
 
 Target-language type mapping should start from Core IR:
@@ -491,6 +497,9 @@ Core metadata should be conservative:
   metadata, not as TypeScript-only generator state.
 - ambiguous SQLite declared types, expression types, and nullability should stay
   unknown or nullable in language-neutral Core metadata.
+- database-specific bound-value representations should be carried as
+  language-neutral Param encodings. In particular, SQLite logical boolean Params
+  use integer encoding while boolean result declarations stay unknown.
 
 ## Target Generator
 
@@ -507,6 +516,13 @@ not add runtime result parsing, input validation, driver configuration, or SQL
 rewrites. The generator resolves the configured TypeScript type surface from Core
 metadata, schema-backed enum defaults, and ordered override rules defined by
 [ADR 0012](./adr/0012-define-configurable-typescript-type-mapping-overrides.md).
+An override does not replace a Param encoding carried by Core IR.
+
+The TypeScript generator renders Core Param encodings without inspecting the
+database dialect. `ParamEncoding::BooleanAsInteger` keeps a logical TypeScript
+boolean input and emits `0 | 1` in the returned params array, preserving `null` for
+nullable inputs. This normalization does not import or configure a database driver
+and does not execute SQL.
 
 Generated TypeScript is emitted per SQL file while preserving the input path
 relative to the directory containing `sqlay.config.json`. If one SQL file contains
@@ -582,6 +598,8 @@ name so multiple Repeat inputs may reuse the same item field names. Overrides
 preserve nullability and do not make dynamic Slot or Repeat params arrays more
 precise: builders with dynamic params continue to return `readonly SqlParam[]` with
 a private `type SqlParam = unknown`.
+For an encoded Param, the override controls the public input annotation; the fixed
+params tuple describes the encoded value returned by the builder.
 
 Custom project types may be imported with type-only imports from non-relative
 module specifiers. The generator de-duplicates identical imports per generated
