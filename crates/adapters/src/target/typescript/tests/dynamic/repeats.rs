@@ -74,6 +74,41 @@ export function findUsersByIds(
 }
 
 #[test]
+fn renders_boolean_integer_encoding_for_repeat_params() {
+    let encoded_param = core::ParamBinding::new("active".to_owned(), core::CoreType::Bool, false)
+        .with_encoding(core::ParamEncoding::BooleanAsInteger);
+    let dynamic_body = core::CompiledDynamicQuery::new_with_bodies(
+        vec![core::CompiledSqlBody::new(
+            vec![
+                sql_segment("SELECT id FROM users WHERE active IN (", Vec::new()),
+                sql_segment(");", Vec::new()),
+            ],
+            vec![core::CompiledRepeatOccurrence::new(
+                "states".to_owned(),
+                ",".to_owned(),
+                sql_segment("?", vec![encoded_param.clone()]),
+            )],
+        )],
+        Vec::new(),
+        Vec::new(),
+        vec![core::CompiledRepeatDefinition::new(
+            "states".to_owned(),
+            vec![encoded_param],
+        )],
+    );
+    let query = compiled_query(
+        "findUsersByStates",
+        "SELECT id FROM users WHERE active IN (?);",
+    )
+    .with_dynamic_body(dynamic_body);
+
+    let rendered = render_query(&query);
+
+    assert!(rendered.contains("states: readonly [{ active: boolean },"));
+    assert!(rendered.contains("params.push(repeatItem.active ? 1 : 0);"));
+}
+
+#[test]
 fn renders_mutation_repeat_item_fields_and_params_in_occurrence_order() {
     let dynamic_body = core::CompiledDynamicQuery::new_with_bodies(
         vec![core::CompiledSqlBody::new(

@@ -6,7 +6,7 @@ use super::literals::typescript_string_literal;
 use super::type_mapping::BuilderTypeMappingResolution;
 use super::types::{
     input_param_access, nested_slot_param_access, render_param_binding_input_field,
-    render_slot_branch_repeat_input_field, typescript_property_name,
+    render_slot_branch_repeat_input_field, typescript_param_expression, typescript_property_name,
 };
 
 pub(super) const fn is_slot_query(query: &core::CompiledQuery) -> bool {
@@ -95,8 +95,13 @@ pub(super) fn render_dynamic_sql_segment<F>(
     }
 
     for param in segment.params() {
-        writeln!(output, "{indent}params.push({});", param_access(param))
-            .expect("writing to String cannot fail");
+        let access = param_access(param);
+        writeln!(
+            output,
+            "{indent}params.push({});",
+            typescript_param_expression(param, &access)
+        )
+        .expect("writing to String cannot fail");
     }
 }
 

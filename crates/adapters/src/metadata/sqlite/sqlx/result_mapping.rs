@@ -22,14 +22,10 @@ pub(super) fn map_unknown_result_column(name: &str) -> core::DbResultColumn {
 pub(super) fn sqlite_declared_type_to_core_type(declared_type: &str) -> core::CoreType {
     let normalized = declared_type.trim().to_ascii_uppercase();
 
-    if ["NUMERIC", "DECIMAL", "DATE", "TIME", "JSON"]
+    if ["NUMERIC", "DECIMAL", "DATE", "TIME", "JSON", "BOOL"]
         .iter()
         .any(|ambiguous| normalized.contains(ambiguous))
     {
-        core::CoreType::Unknown
-    } else if matches!(normalized.as_str(), "BOOL" | "BOOLEAN") {
-        core::CoreType::Bool
-    } else if normalized.contains("BOOL") {
         core::CoreType::Unknown
     } else if normalized.contains("INT") {
         core::CoreType::Int64
@@ -75,8 +71,6 @@ mod tests {
             ("TEXT", core::CoreType::String),
             ("VARCHAR(80)", core::CoreType::String),
             ("BLOB", core::CoreType::Bytes),
-            ("BOOL", core::CoreType::Bool),
-            ("BOOLEAN", core::CoreType::Bool),
         ];
 
         for (declared_type, expected) in cases {
@@ -104,6 +98,8 @@ mod tests {
             "DECIMAL INT",
             "TIMESTAMP INTEGER",
             "BOOL TEXT",
+            "BOOL",
+            "BOOLEAN",
             "BOOLEAN INT",
             "UUID",
         ] {

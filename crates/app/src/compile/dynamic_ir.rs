@@ -412,7 +412,8 @@ fn compiled_param_binding(
         usage.id().to_owned(),
         binding.type_ref.clone(),
         binding.nullable,
-    );
+    )
+    .with_encoding(binding.encoding);
     if let Some(reference) = binding.schema_column_reference.clone() {
         param = param.with_schema_column_reference(reference);
     }
@@ -443,7 +444,8 @@ fn compiled_mutation_param_binding(
         usage.id().to_owned(),
         binding.type_ref.clone(),
         binding.nullable,
-    );
+    )
+    .with_encoding(binding.encoding);
     if let Some(reference) = binding.schema_column_reference.clone() {
         param = param.with_schema_column_reference(reference);
     }

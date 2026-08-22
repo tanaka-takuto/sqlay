@@ -31,7 +31,11 @@ async fn mutation_metadata_infers_insert_values_target_columns()
     let provider = SqlxSqliteMetadataProvider::new(fixture.url());
     let mutation = raw_mutation(
         "INSERT INTO users (email, score, active) VALUES (?, ?, ?);",
-        vec![param("email"), param("score"), param("active")],
+        vec![
+            param("email"),
+            param("score"),
+            typed_param("active", core::CoreType::Bool),
+        ],
     );
 
     let metadata = provider.describe_mutation(
@@ -50,6 +54,10 @@ async fn mutation_metadata_infers_insert_values_target_columns()
             core::CoreType::Float64,
             core::CoreType::Bool,
         ]
+    );
+    assert_eq!(
+        metadata.param_usages()[2].encoding(),
+        core::ParamEncoding::BooleanAsInteger
     );
     assert_eq!(
         metadata.param_usages()[0].schema_column_reference(),

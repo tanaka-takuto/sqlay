@@ -83,6 +83,53 @@ export type listOrders_Input"
 }
 
 #[test]
+fn generator_keeps_encoded_params_tuple_separate_from_input_override() {
+    let mapping = core::TypeScriptTypeMappingConfig::new(
+        Vec::new(),
+        Vec::new(),
+        vec![core::BuilderTypeOverrides::new(
+            "findActiveUsers".to_owned(),
+            Vec::new(),
+            vec![named_override("active", "boolean", None)],
+            Vec::new(),
+        )],
+    );
+    let plan = compilation_plan_with_mapping(mapping);
+    let query = core::CompiledQuery::new(
+        core::QueryId::new("findActiveUsers".to_owned()),
+        "SELECT id FROM users WHERE active = ?;".to_owned(),
+        core::Cardinality::Many,
+        vec![core::InputField::new(
+            "active".to_owned(),
+            core::CoreType::Bool,
+            false,
+        )],
+        vec![core::ResultColumn::new(
+            "id".to_owned(),
+            core::CoreType::Int64,
+            false,
+        )],
+    )
+    .with_params(vec![
+        core::ParamBinding::new("active".to_owned(), core::CoreType::Bool, false)
+            .with_encoding(core::ParamEncoding::BooleanAsInteger),
+    ])
+    .with_source_path("sql/users.sql");
+
+    let files = TypeScriptTargetGenerator
+        .generate(&plan, &[core::CompiledBuilder::Query(query)])
+        .expect("encoded Param query should generate with a public input override");
+    let contents = file_contents(
+        &files,
+        Path::new("/tmp/sqlay-project/src/generated/sqlay/sql/users.ts"),
+    );
+
+    assert!(contents.contains("  active: boolean;\n"));
+    assert!(contents.contains("params: readonly [0 | 1]"));
+    assert!(contents.contains("params: [input.active ? 1 : 0] as const"));
+}
+
+#[test]
 fn generator_renders_dynamic_input_type_mapping_without_narrowing_params_array() {
     let user_email = column_ref(None, "users", "email");
     let mapping = core::TypeScriptTypeMappingConfig::new(

@@ -73,7 +73,7 @@ async fn query_metadata_uses_main_table_declarations_conservatively()
             ("real_value", core::CoreType::Float64),
             ("text_value", core::CoreType::String),
             ("blob_value", core::CoreType::Bytes),
-            ("bool_value", core::CoreType::Bool),
+            ("bool_value", core::CoreType::Unknown),
             ("numeric_value", core::CoreType::Unknown),
             ("decimal_value", core::CoreType::Unknown),
             ("date_value", core::CoreType::Unknown),

@@ -125,6 +125,9 @@ fn resolve_query_params(
                 ));
             };
             let mut param = core::DbParamUsage::new(usage.id().to_owned(), ty);
+            if ty == core::CoreType::Bool {
+                param = param.with_encoding(core::ParamEncoding::BooleanAsInteger);
+            }
             if let Some(column) = schema_column.as_ref() {
                 param = param.with_schema_column_reference(column.reference());
             }

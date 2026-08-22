@@ -4,7 +4,7 @@ use sqlay_core::{
     Cardinality, CompiledBuilder, CompiledDynamicQuery, CompiledMutation, CompiledQuery,
     CompiledRepeatOccurrence, CompiledSlotBranch, CompiledSlotDefinition, CompiledSlotOccurrence,
     CompiledSqlBody, CompiledSqlSegment, CoreType, CoreTypeRef, InputField, MutationId,
-    MutationKind, ParamBinding, QueryId, ResultColumn,
+    MutationKind, ParamBinding, ParamEncoding, QueryId, ResultColumn,
 };
 
 #[test]
@@ -33,6 +33,14 @@ fn compiled_query_represents_empty_paramless_input_and_result_columns() {
     assert_eq!(query.row()[1].name(), "name");
     assert_eq!(query.row()[1].ty(), CoreType::String);
     assert!(query.row()[1].is_nullable());
+}
+
+#[test]
+fn param_binding_carries_database_value_encoding() {
+    let param = ParamBinding::new("active".to_owned(), CoreType::Bool, false)
+        .with_encoding(ParamEncoding::BooleanAsInteger);
+
+    assert_eq!(param.encoding(), ParamEncoding::BooleanAsInteger);
 }
 
 #[test]

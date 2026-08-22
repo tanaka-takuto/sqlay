@@ -34,6 +34,7 @@ pub(super) struct ScopedParamBinding {
     pub(super) id: String,
     pub(super) type_ref: core::CoreTypeRef,
     pub(super) nullable: bool,
+    pub(super) encoding: core::ParamEncoding,
     pub(super) schema_column_reference: Option<core::ColumnTypeReference>,
     pub(super) first_occurrence: ExpandedParamOccurrence,
 }
@@ -117,6 +118,7 @@ pub(super) fn validate_expanded_variant_param_bindings(
                     occurrence,
                 ));
             }
+            validate_query_encoding(query, source_usage, existing, resolved_usage)?;
             if existing.schema_column_reference.as_ref() != resolved_usage.schema_column_reference()
             {
                 return Err(param_schema_column_reference_conflict_error(
@@ -133,6 +135,7 @@ pub(super) fn validate_expanded_variant_param_bindings(
                 id: source_usage.id().to_owned(),
                 type_ref: resolved_usage.type_ref().clone(),
                 nullable,
+                encoding: resolved_usage.encoding(),
                 schema_column_reference: resolved_usage.schema_column_reference().cloned(),
                 first_occurrence: occurrence.clone(),
             });
@@ -140,6 +143,28 @@ pub(super) fn validate_expanded_variant_param_bindings(
     }
 
     Ok(())
+}
+
+fn validate_query_encoding(
+    query: &core::RawQuery,
+    source_usage: &core::ParamUsage,
+    existing: &ScopedParamBinding,
+    resolved_usage: &core::DbParamUsage,
+) -> core::DiagnosticResult<()> {
+    if existing.encoding == resolved_usage.encoding() {
+        return Ok(());
+    }
+
+    Err(param_usage_error(
+        query,
+        source_usage,
+        format!(
+            "conflicting Param `{}` encodings: first occurrence resolved to {:?} but later occurrence resolved to {:?}",
+            source_usage.id(),
+            existing.encoding,
+            resolved_usage.encoding()
+        ),
+    ))
 }
 
 pub(super) fn validate_expanded_mutation_variant_param_bindings(
@@ -221,6 +246,7 @@ pub(super) fn validate_expanded_mutation_variant_param_bindings(
                     occurrence,
                 ));
             }
+            validate_mutation_encoding(mutation, source_usage, existing, resolved_usage)?;
             if existing.schema_column_reference.as_ref() != resolved_usage.schema_column_reference()
             {
                 return Err(mutation_param_schema_column_reference_conflict_error(
@@ -237,6 +263,7 @@ pub(super) fn validate_expanded_mutation_variant_param_bindings(
                 id: source_usage.id().to_owned(),
                 type_ref: resolved_usage.type_ref().clone(),
                 nullable,
+                encoding: resolved_usage.encoding(),
                 schema_column_reference: resolved_usage.schema_column_reference().cloned(),
                 first_occurrence: occurrence.clone(),
             });
@@ -244,4 +271,26 @@ pub(super) fn validate_expanded_mutation_variant_param_bindings(
     }
 
     Ok(())
+}
+
+fn validate_mutation_encoding(
+    mutation: &core::RawMutation,
+    source_usage: &core::ParamUsage,
+    existing: &ScopedParamBinding,
+    resolved_usage: &core::DbParamUsage,
+) -> core::DiagnosticResult<()> {
+    if existing.encoding == resolved_usage.encoding() {
+        return Ok(());
+    }
+
+    Err(mutation_param_usage_error(
+        mutation,
+        source_usage,
+        format!(
+            "conflicting Param `{}` encodings: first occurrence resolved to {:?} but later occurrence resolved to {:?}",
+            source_usage.id(),
+            existing.encoding,
+            resolved_usage.encoding()
+        ),
+    ))
 }

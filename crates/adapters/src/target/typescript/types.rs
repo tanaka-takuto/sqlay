@@ -137,6 +137,19 @@ pub(super) fn typescript_param_binding_type(param: &core::ParamBinding) -> Strin
     typescript_nullable_type_ref(param.type_ref(), param.is_nullable())
 }
 
+fn typescript_encoded_param_binding_type(param: &core::ParamBinding) -> String {
+    match param.encoding() {
+        core::ParamEncoding::Identity => typescript_param_binding_type(param),
+        core::ParamEncoding::BooleanAsInteger => {
+            if param.is_nullable() {
+                "0 | 1 | null".to_owned()
+            } else {
+                "0 | 1".to_owned()
+            }
+        }
+    }
+}
+
 pub(super) fn render_repeat_input_field(
     output: &mut String,
     indent: &str,
@@ -456,9 +469,13 @@ pub(super) fn typescript_params_tuple_type(
                 .iter()
                 .enumerate()
                 .map(|(index, param)| {
-                    type_mapping
-                        .and_then(|mapping| mapping.fixed_param(index))
-                        .map_or_else(|| typescript_param_binding_type(param), str::to_owned)
+                    if param.encoding() == core::ParamEncoding::Identity {
+                        type_mapping
+                            .and_then(|mapping| mapping.fixed_param(index))
+                            .map_or_else(|| typescript_param_binding_type(param), str::to_owned)
+                    } else {
+                        typescript_encoded_param_binding_type(param)
+                    }
                 })
                 .collect::<Vec<_>>()
                 .join(", ")
@@ -496,10 +513,23 @@ pub(super) fn typescript_params_expression(params: &[core::ParamBinding]) -> Str
             "[{}]",
             params
                 .iter()
-                .map(|param| input_param_access("input", param.input_name()))
+                .map(|param| {
+                    let access = input_param_access("input", param.input_name());
+                    typescript_param_expression(param, &access)
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         )
+    }
+}
+
+pub(super) fn typescript_param_expression(param: &core::ParamBinding, access: &str) -> String {
+    match param.encoding() {
+        core::ParamEncoding::Identity => access.to_owned(),
+        core::ParamEncoding::BooleanAsInteger if param.is_nullable() => {
+            format!("{access} === null ? null : {access} ? 1 : 0")
+        }
+        core::ParamEncoding::BooleanAsInteger => format!("{access} ? 1 : 0"),
     }
 }
 

@@ -103,6 +103,35 @@ fn query_compiler_builds_input_fields_and_param_bindings_from_resolved_param_met
 }
 
 #[test]
+fn query_compiler_preserves_param_value_encoding_in_core_ir() {
+    let query = core::RawQuery::new(
+        core::QueryMetadata::new("findActiveUsers".to_owned(), None),
+        "SELECT id FROM users WHERE active = ?;".to_owned(),
+    )
+    .with_param_usages(vec![core::ParamUsage::new(
+        "active".to_owned(),
+        Some(core::CoreType::Bool),
+        false,
+        core::SourceLocation::unknown(),
+    )]);
+    let analysis = core::AnalyzedQuery::new(core::Cardinality::Many);
+    let metadata = core::DbQueryMetadata::new(Vec::new()).with_param_usages(vec![
+        core::DbParamUsage::new("active".to_owned(), core::CoreType::Bool)
+            .with_encoding(core::ParamEncoding::BooleanAsInteger),
+    ]);
+
+    let compiled = DefaultQueryCompiler
+        .compile(&query, &analysis, &metadata)
+        .expect("encoded Param query should compile into Core IR");
+
+    assert_eq!(compiled.input()[0].ty(), core::CoreType::Bool);
+    assert_eq!(
+        compiled.params()[0].encoding(),
+        core::ParamEncoding::BooleanAsInteger
+    );
+}
+
+#[test]
 fn mutation_compiler_builds_core_ir_with_input_fields_and_param_bindings() {
     let mutation = core::RawMutation::new(
         core::MutationMetadata::new("createUser".to_owned()),

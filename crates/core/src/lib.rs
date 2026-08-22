@@ -22,7 +22,7 @@ pub use ir::{
     CompiledBuilder, CompiledDynamicQuery, CompiledMutation, CompiledQuery,
     CompiledRepeatDefinition, CompiledRepeatOccurrence, CompiledSlotBranch, CompiledSlotDefinition,
     CompiledSlotOccurrence, CompiledSqlBody, CompiledSqlSegment, CoreEnumType, CoreType,
-    CoreTypeRef, InputField, MutationKind, ParamBinding, ResultColumn,
+    CoreTypeRef, InputField, MutationKind, ParamBinding, ParamEncoding, ResultColumn,
 };
 pub use metadata::{DbMutationMetadata, DbParamUsage, DbQueryMetadata, DbResultColumn};
 pub use plan::CompilationPlan;
