@@ -269,6 +269,16 @@ async fn describe_mutation_metadata(
         )
     })?;
     let param_usages = infer_mutation_params(mutation, &schema)?;
+    let sql = AssertSqlSafe(mutation.analysis_sql().to_owned()).into_sql_str();
+    connection.prepare_with(sql, &[]).await.map_err(|error| {
+        mutation_database_error(
+            mutation,
+            "prepare mutation",
+            database_url_env,
+            database_url,
+            &error,
+        )
+    })?;
 
     Ok(core::DbMutationMetadata::new().with_param_usages(param_usages))
 }

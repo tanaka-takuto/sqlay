@@ -182,6 +182,62 @@ async fn query_metadata_combines_describe_and_schema_nullability_conservatively(
 }
 
 #[tokio::test]
+async fn query_metadata_tracks_right_and_full_outer_join_nullability()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let right_join = raw_query(
+        "SELECT parent.id AS parent_id, child.label \
+         FROM values_by_affinity AS parent \
+         RIGHT JOIN child_values AS child ON child.parent_id = parent.id;",
+        Vec::new(),
+    );
+
+    let right_metadata = provider.describe(
+        &right_join,
+        &core::AnalyzedQuery::new(core::Cardinality::Many),
+    )?;
+
+    assert_eq!(right_metadata.columns()[0].nullable(), None);
+    assert_eq!(right_metadata.columns()[1].nullable(), Some(false));
+
+    let comma_right_join = raw_query(
+        "SELECT parent.id AS parent_id, left_child.label AS left_label, \
+         right_child.label AS right_label \
+         FROM values_by_affinity AS parent, child_values AS left_child \
+         RIGHT JOIN child_values AS right_child \
+         ON right_child.parent_id = left_child.parent_id;",
+        Vec::new(),
+    );
+
+    let comma_right_metadata = provider.describe(
+        &comma_right_join,
+        &core::AnalyzedQuery::new(core::Cardinality::Many),
+    )?;
+
+    assert_eq!(comma_right_metadata.columns()[0].nullable(), None);
+    assert_eq!(comma_right_metadata.columns()[1].nullable(), None);
+    assert_eq!(comma_right_metadata.columns()[2].nullable(), Some(false));
+
+    let full_join = raw_query(
+        "SELECT parent.id AS parent_id, child.label \
+         FROM values_by_affinity AS parent \
+         FULL OUTER JOIN child_values AS child ON child.parent_id = parent.id;",
+        Vec::new(),
+    );
+
+    let full_metadata = provider.describe(
+        &full_join,
+        &core::AnalyzedQuery::new(core::Cardinality::Many),
+    )?;
+
+    assert_eq!(full_metadata.columns()[0].nullable(), None);
+    assert_eq!(full_metadata.columns()[1].nullable(), None);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn query_metadata_does_not_treat_ordinary_text_primary_key_as_non_null()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = SqliteFixture::new(SCHEMA).await?;

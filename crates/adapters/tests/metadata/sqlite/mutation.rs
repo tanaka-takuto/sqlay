@@ -238,6 +238,46 @@ async fn mutation_metadata_only_reads_schema_and_never_executes_delete()
 }
 
 #[tokio::test]
+async fn mutation_metadata_rejects_statements_sqlite_cannot_prepare()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let cases = [
+        (
+            raw_mutation(
+                "UPDATE users AS u SET email = ? WHERE users.id = ?;",
+                vec![
+                    typed_param("email", core::CoreType::String),
+                    typed_param("id", core::CoreType::Int64),
+                ],
+            ),
+            core::MutationKind::Update,
+            "no such column",
+        ),
+        (
+            raw_mutation(
+                "UPDATE missing_table SET status = 'paid' WHERE id = 1;",
+                Vec::new(),
+            ),
+            core::MutationKind::Update,
+            "no such table",
+        ),
+    ];
+
+    for (mutation, kind, expected_detail) in cases {
+        let report = provider
+            .describe_mutation(&mutation, &core::AnalyzedMutation::new(kind))
+            .expect_err("SQLite-native mutation validation must reject invalid names");
+        let message = report.diagnostics()[0].message();
+
+        assert!(message.contains("prepare mutation"), "{message}");
+        assert!(message.contains(expected_detail), "{message}");
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn mutation_metadata_rejects_non_main_schema_qualifiers_without_params()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = SqliteFixture::new(SCHEMA).await?;

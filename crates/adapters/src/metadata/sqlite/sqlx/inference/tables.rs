@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 
-use sqlparser::ast::{ObjectName, Query as SqlQuery, Select, SetExpr, TableFactor, TableWithJoins};
+use sqlparser::ast::{
+    JoinOperator, ObjectName, Query as SqlQuery, Select, SetExpr, TableFactor, TableWithJoins,
+};
 
 use super::super::schema::{SqliteSchema, SqliteSchemaColumn, normalized_identifier};
 use super::expressions::ColumnRef;
@@ -10,6 +12,7 @@ enum TableResolution {
     Main {
         table_name: String,
         explicit_main: bool,
+        outer_join_nullable: bool,
     },
     Unsupported,
 }
@@ -17,7 +20,7 @@ enum TableResolution {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct TableSources {
     by_qualifier: BTreeMap<String, TableResolution>,
-    main_tables: BTreeSet<(String, bool)>,
+    main_tables: BTreeMap<(String, bool), bool>,
 }
 
 impl TableSources {
@@ -26,24 +29,67 @@ impl TableSources {
             Entry::Vacant(entry) => {
                 entry.insert(resolution);
             }
-            Entry::Occupied(mut entry) if entry.get() != &resolution => {
-                entry.insert(TableResolution::Unsupported);
-            }
-            Entry::Occupied(_) => {}
+            Entry::Occupied(mut entry) => match (entry.get_mut(), resolution) {
+                (
+                    TableResolution::Main {
+                        table_name,
+                        explicit_main,
+                        outer_join_nullable,
+                    },
+                    TableResolution::Main {
+                        table_name: new_table_name,
+                        explicit_main: new_explicit_main,
+                        outer_join_nullable: new_outer_join_nullable,
+                    },
+                ) if table_name == &new_table_name && *explicit_main == new_explicit_main => {
+                    *outer_join_nullable |= new_outer_join_nullable;
+                }
+                (existing, new) if existing == &new => {}
+                (existing, _) => *existing = TableResolution::Unsupported,
+            },
         }
     }
 
     fn insert_main(&mut self, table_name: &str, alias: Option<String>, explicit_main: bool) {
         self.main_tables
-            .insert((normalized_identifier(table_name), explicit_main));
+            .entry((normalized_identifier(table_name), explicit_main))
+            .or_insert(false);
         let resolution = TableResolution::Main {
             table_name: table_name.to_owned(),
             explicit_main,
+            outer_join_nullable: false,
         };
         self.insert_resolution(table_name, resolution.clone());
         self.insert_resolution(&format!("main.{table_name}"), resolution.clone());
         if let Some(alias) = alias {
             self.insert_resolution(&alias, resolution);
+        }
+    }
+
+    fn mark_outer_join_nullable(&mut self) {
+        for resolution in self.by_qualifier.values_mut() {
+            if let TableResolution::Main {
+                outer_join_nullable,
+                ..
+            } = resolution
+            {
+                *outer_join_nullable = true;
+            }
+        }
+        for outer_join_nullable in self.main_tables.values_mut() {
+            *outer_join_nullable = true;
+        }
+    }
+
+    fn extend(&mut self, other: Self) {
+        for (qualifier, resolution) in other.by_qualifier {
+            self.insert_resolution(&qualifier, resolution);
+        }
+        for (table, outer_join_nullable) in other.main_tables {
+            self.main_tables
+                .entry(table)
+                .and_modify(|existing| *existing |= outer_join_nullable)
+                .or_insert(outer_join_nullable);
         }
     }
 
@@ -64,6 +110,7 @@ impl TableSources {
         let TableResolution::Main {
             table_name,
             explicit_main,
+            outer_join_nullable,
         } = self
             .by_qualifier
             .get(&normalized_identifier(&column.qualifier))?
@@ -71,12 +118,14 @@ impl TableSources {
             return None;
         };
         let column_qualifies_main = column_uses_explicit_main(&column.qualifier);
-        let schema_column = schema.column(table_name, &column.column)?.clone();
+        let mut schema_column = schema.column(table_name, &column.column)?.clone();
         if *explicit_main || column_qualifies_main {
-            Some(schema_column.with_explicit_main())
-        } else {
-            Some(schema_column)
+            schema_column = schema_column.with_explicit_main();
         }
+        if *outer_join_nullable {
+            schema_column = schema_column.with_unknown_nullability();
+        }
+        Some(schema_column)
     }
 
     pub(super) fn resolve_unqualified_column(
@@ -84,23 +133,24 @@ impl TableSources {
         schema: &SqliteSchema,
         column_name: &str,
     ) -> Option<SqliteSchemaColumn> {
-        let mut matches = self
-            .main_tables
-            .iter()
-            .filter_map(|(table_name, explicit_main)| {
+        let mut matches = self.main_tables.iter().filter_map(
+            |((table_name, explicit_main), outer_join_nullable)| {
                 schema
                     .has_table(table_name)
                     .then(|| schema.column(table_name, column_name))
                     .flatten()
                     .cloned()
-                    .map(|column| {
+                    .map(|mut column| {
                         if *explicit_main {
-                            column.with_explicit_main()
-                        } else {
-                            column
+                            column = column.with_explicit_main();
                         }
+                        if *outer_join_nullable {
+                            column = column.with_unknown_nullability();
+                        }
+                        column
                     })
-            });
+            },
+        );
         let column = matches.next()?;
         matches.next().is_none().then_some(column)
     }
@@ -179,7 +229,22 @@ fn collect_table_with_joins(
 ) {
     collect_table_factor(&table.relation, sources, cte_names);
     for join in &table.joins {
-        collect_table_factor(&join.relation, sources, cte_names);
+        let mut right_sources = TableSources::default();
+        collect_table_factor(&join.relation, &mut right_sources, cte_names);
+        match &join.join_operator {
+            JoinOperator::Left(_) | JoinOperator::LeftOuter(_) => {
+                right_sources.mark_outer_join_nullable();
+            }
+            JoinOperator::Right(_) | JoinOperator::RightOuter(_) => {
+                sources.mark_outer_join_nullable();
+            }
+            JoinOperator::FullOuter(_) => {
+                sources.mark_outer_join_nullable();
+                right_sources.mark_outer_join_nullable();
+            }
+            _ => {}
+        }
+        sources.extend(right_sources);
     }
 }
 
@@ -208,7 +273,9 @@ fn collect_table_factor(
             table_with_joins,
             alias,
         } => {
-            collect_table_with_joins(table_with_joins, sources, cte_names);
+            let mut nested_sources = TableSources::default();
+            collect_table_with_joins(table_with_joins, &mut nested_sources, cte_names);
+            sources.extend(nested_sources);
             if let Some(alias) = alias {
                 sources.insert_unsupported(None, Some(alias.name.value.clone()));
             }

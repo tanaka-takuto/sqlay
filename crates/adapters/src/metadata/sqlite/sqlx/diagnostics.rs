@@ -1,4 +1,7 @@
+use std::str::FromStr;
+
 use sqlay_core as core;
+use sqlx::sqlite::SqliteConnectOptions;
 
 pub(super) use crate::diagnostics::{
     mutation_error, mutation_param_usage_error, param_usage_error, query_error,
@@ -80,5 +83,34 @@ fn redacted_driver_message(error: &sqlx::Error, database_url: &str) -> String {
         message = message.replace(sqlite_path, "<redacted database path>");
     }
 
+    if let Ok(options) = SqliteConnectOptions::from_str(database_url) {
+        let decoded_path = options.get_filename();
+        if decoded_path.is_relative()
+            && let Ok(current_dir) = std::env::current_dir()
+            && let Some(resolved_path) = current_dir.join(decoded_path).to_str()
+        {
+            message = message.replace(resolved_path, "<redacted database path>");
+        }
+        if let Some(decoded_path) = decoded_path.to_str().filter(|path| !path.is_empty()) {
+            message = message.replace(decoded_path, "<redacted database path>");
+        }
+    }
+
     message
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redacted_driver_message;
+
+    #[test]
+    fn redacts_percent_decoded_database_path() {
+        let database_url = "sqlite:///private/decoded%20secret.sqlite";
+        let decoded_path = "/private/decoded secret.sqlite";
+        let error = sqlx::Error::InvalidArgument(format!("could not open {decoded_path}"));
+
+        let message = redacted_driver_message(&error, database_url);
+
+        assert!(!message.contains(decoded_path), "{message}");
+    }
 }

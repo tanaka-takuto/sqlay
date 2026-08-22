@@ -39,6 +39,11 @@ impl SqliteSchemaColumn {
         self.database_name = Some("main".to_owned());
         self
     }
+
+    pub(super) const fn with_unknown_nullability(mut self) -> Self {
+        self.nullable = None;
+        self
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
