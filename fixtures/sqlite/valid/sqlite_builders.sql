@@ -50,6 +50,32 @@ ORDER BY o.id;
 
 /* @sqlay
 {
+  type: query
+  id: sqliteFindOrderByMainId
+}
+*/
+SELECT
+  o.id AS id,
+  o.status AS status
+FROM main.fixture_orders AS o
+WHERE o.id = /* @sqlay { type: param id: id } */ 1 /* @sqlay { type: paramEnd } */;
+
+/* @sqlay
+{
+  type: query
+  id: sqliteListOrderIdsAcrossStatuses
+}
+*/
+SELECT o.id AS id
+FROM fixture_orders AS o
+WHERE o.status = /* @sqlay { type: param id: primaryStatus } */ 'paid' /* @sqlay { type: paramEnd } */
+UNION ALL
+SELECT o.id AS id
+FROM fixture_orders AS o
+WHERE o.status = /* @sqlay { type: param id: fallbackStatus } */ 'shipped' /* @sqlay { type: paramEnd } */;
+
+/* @sqlay
+{
   type: mutation
   id: sqliteInsertOrder
 }

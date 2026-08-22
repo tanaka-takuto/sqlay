@@ -11,6 +11,13 @@
     "urlEnv": "SQLITE_DATABASE_URL"
   },
   "target": {
-    "language": "typescript"
+    "language": "typescript",
+    "typescript": {
+      "typeMapping": {
+        "columns": {
+          "main.fixture_orders.id": "number"
+        }
+      }
+    }
   }
 }

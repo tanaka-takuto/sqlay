@@ -83,6 +83,46 @@ export function sqliteFindOrdersByIds(
   };
 }
 
+export type sqliteFindOrderByMainId_Input = {
+  id: number;
+};
+
+export type sqliteFindOrderByMainId_Row = {
+  id: number;
+  status: string;
+};
+
+export type sqliteFindOrderByMainId_Output = sqliteFindOrderByMainId_Row[];
+
+export function sqliteFindOrderByMainId(
+  input: sqliteFindOrderByMainId_Input,
+): { sql: string; params: readonly [number] } {
+  return {
+    sql: "\nSELECT\n  o.id AS id,\n  o.status AS status\nFROM main.fixture_orders AS o\nWHERE o.id = ?;\n\n",
+    params: [input.id] as const,
+  };
+}
+
+export type sqliteListOrderIdsAcrossStatuses_Input = {
+  primaryStatus: string;
+  fallbackStatus: string;
+};
+
+export type sqliteListOrderIdsAcrossStatuses_Row = {
+  id: unknown | null;
+};
+
+export type sqliteListOrderIdsAcrossStatuses_Output = sqliteListOrderIdsAcrossStatuses_Row[];
+
+export function sqliteListOrderIdsAcrossStatuses(
+  input: sqliteListOrderIdsAcrossStatuses_Input,
+): { sql: string; params: readonly [string, string] } {
+  return {
+    sql: "\nSELECT o.id AS id\nFROM fixture_orders AS o\nWHERE o.status = ?\nUNION ALL\nSELECT o.id AS id\nFROM fixture_orders AS o\nWHERE o.status = ?;\n\n",
+    params: [input.primaryStatus, input.fallbackStatus] as const,
+  };
+}
+
 export type sqliteInsertOrder_Input = {
   id: string;
   customerEmail: string;

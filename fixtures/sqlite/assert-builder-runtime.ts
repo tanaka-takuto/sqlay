@@ -1,8 +1,10 @@
 import {
   sqliteBulkInsertOrderItems,
   sqliteDeleteOrderItem,
+  sqliteFindOrderByMainId,
   sqliteFindOrdersByIds,
   sqliteInsertOrder,
+  sqliteListOrderIdsAcrossStatuses,
   sqliteListOrders,
 } from "./generated/valid/sqlite_builders";
 
@@ -31,6 +33,23 @@ assertEqual(
   "SELECT o.id AS id, o.customer_email AS customerEmail, o.active AS active FROM fixture_orders AS o WHERE o.id IN ( ? , ? ) ORDER BY o.id;",
 );
 assertDeepEqual(repeatedQuery.params, ["10", "20"]);
+
+const explicitlyMainQualifiedQuery = sqliteFindOrderByMainId({ id: 10 });
+assertEqual(
+  normalizeSql(explicitlyMainQualifiedQuery.sql),
+  "SELECT o.id AS id, o.status AS status FROM main.fixture_orders AS o WHERE o.id = ?;",
+);
+assertDeepEqual(explicitlyMainQualifiedQuery.params, [10]);
+
+const compoundQuery = sqliteListOrderIdsAcrossStatuses({
+  primaryStatus: "paid",
+  fallbackStatus: "shipped",
+});
+assertEqual(
+  normalizeSql(compoundQuery.sql),
+  "SELECT o.id AS id FROM fixture_orders AS o WHERE o.status = ? UNION ALL SELECT o.id AS id FROM fixture_orders AS o WHERE o.status = ?;",
+);
+assertDeepEqual(compoundQuery.params, ["paid", "shipped"]);
 
 const fixedMutation = sqliteInsertOrder({
   id: "10",

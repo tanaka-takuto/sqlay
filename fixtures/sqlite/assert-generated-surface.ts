@@ -3,6 +3,9 @@ import {
   sqliteBulkInsertOrderItems,
   type sqliteDeleteOrderItem_Input,
   sqliteDeleteOrderItem,
+  type sqliteFindOrderByMainId_Input,
+  type sqliteFindOrderByMainId_Output,
+  sqliteFindOrderByMainId,
   type sqliteFindOrdersByIds_Input,
   type sqliteFindOrdersByIds_Output,
   sqliteFindOrdersByIds,
@@ -11,6 +14,9 @@ import {
   type sqliteListOrders_Input,
   type sqliteListOrders_Output,
   sqliteListOrders,
+  type sqliteListOrderIdsAcrossStatuses_Input,
+  type sqliteListOrderIdsAcrossStatuses_Output,
+  sqliteListOrderIdsAcrossStatuses,
   type sqliteReplaceOrder_Input,
   sqliteReplaceOrder,
   type sqliteUpdateOrder_Input,
@@ -68,6 +74,38 @@ type FindOrdersByIdsReturnContract = Assert<
   IsExact<
     ReturnType<typeof sqliteFindOrdersByIds>,
     { sql: string; params: readonly unknown[] }
+  >
+>;
+
+type FindOrderByMainIdInputContract = Assert<
+  IsExact<sqliteFindOrderByMainId_Input, { id: number }>
+>;
+type FindOrderByMainIdOutputContract = Assert<
+  IsExact<
+    sqliteFindOrderByMainId_Output,
+    { id: number; status: string }[]
+  >
+>;
+type FindOrderByMainIdReturnContract = Assert<
+  IsExact<
+    ReturnType<typeof sqliteFindOrderByMainId>,
+    { sql: string; params: readonly [number] }
+  >
+>;
+
+type ListOrderIdsAcrossStatusesInputContract = Assert<
+  IsExact<
+    sqliteListOrderIdsAcrossStatuses_Input,
+    { primaryStatus: string; fallbackStatus: string }
+  >
+>;
+type ListOrderIdsAcrossStatusesOutputContract = Assert<
+  IsExact<sqliteListOrderIdsAcrossStatuses_Output, { id: unknown | null }[]>
+>;
+type ListOrderIdsAcrossStatusesReturnContract = Assert<
+  IsExact<
+    ReturnType<typeof sqliteListOrderIdsAcrossStatuses>,
+    { sql: string; params: readonly [string, string] }
   >
 >;
 
@@ -154,6 +192,12 @@ export type SQLiteFixtureSurfaceContracts = [
   FindOrdersByIdsInputContract,
   FindOrdersByIdsOutputContract,
   FindOrdersByIdsReturnContract,
+  FindOrderByMainIdInputContract,
+  FindOrderByMainIdOutputContract,
+  FindOrderByMainIdReturnContract,
+  ListOrderIdsAcrossStatusesInputContract,
+  ListOrderIdsAcrossStatusesOutputContract,
+  ListOrderIdsAcrossStatusesReturnContract,
   InsertOrderInputContract,
   UpdateOrderInputContract,
   DeleteOrderItemInputContract,
