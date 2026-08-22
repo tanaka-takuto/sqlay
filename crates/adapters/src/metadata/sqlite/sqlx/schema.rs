@@ -81,7 +81,7 @@ pub(super) async fn fetch_main_schema(
 
     for row in rows {
         let hidden: i64 = row.try_get("hidden")?;
-        if hidden != 0 {
+        if !is_schema_backed_column(hidden) {
             continue;
         }
 
@@ -132,6 +132,12 @@ pub(super) async fn fetch_main_schema(
     Ok(schema)
 }
 
+const fn is_schema_backed_column(hidden: i64) -> bool {
+    // PRAGMA table_xinfo: 0 is ordinary, 1 is virtual-table hidden,
+    // and 2/3 are VIRTUAL/STORED generated columns.
+    matches!(hidden, 0 | 2 | 3)
+}
+
 struct RawSqliteSchemaColumn {
     table_name: String,
     column_name: String,
@@ -156,4 +162,17 @@ fn column_is_proven_non_null(column: &RawSqliteSchemaColumn, primary_key_count: 
 
 pub(super) fn normalized_identifier(identifier: &str) -> String {
     identifier.to_ascii_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_schema_backed_column;
+
+    #[test]
+    fn includes_generated_columns_but_not_virtual_table_hidden_columns() {
+        assert!(is_schema_backed_column(0));
+        assert!(!is_schema_backed_column(1));
+        assert!(is_schema_backed_column(2));
+        assert!(is_schema_backed_column(3));
+    }
 }

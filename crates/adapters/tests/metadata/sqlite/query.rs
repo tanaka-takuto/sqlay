@@ -37,6 +37,12 @@ CREATE TABLE text_primary_keys (
 CREATE TABLE sqliteUsers (
     id INTEGER NOT NULL
 );
+CREATE TABLE generated_values (
+    id INTEGER PRIMARY KEY,
+    base_value INTEGER NOT NULL,
+    virtual_value INTEGER GENERATED ALWAYS AS (base_value + 1) VIRTUAL,
+    stored_value TEXT GENERATED ALWAYS AS (CAST(base_value AS TEXT)) STORED
+);
 ";
 
 #[tokio::test]
@@ -292,6 +298,44 @@ async fn query_metadata_includes_non_reserved_table_names_that_begin_with_sqlite
     assert_eq!(
         metadata.param_usages()[0].schema_column_reference(),
         Some(&column_reference("sqliteUsers", "id"))
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn query_metadata_infers_virtual_and_stored_generated_columns()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let query = raw_query(
+        "SELECT g.virtual_value, g.stored_value \
+         FROM generated_values AS g \
+         WHERE g.virtual_value = ? AND g.stored_value = ?;",
+        vec![param("virtual_value"), param("stored_value")],
+    );
+
+    let metadata = provider.describe(&query, &core::AnalyzedQuery::new(core::Cardinality::Many))?;
+
+    assert_eq!(metadata.columns()[0].ty(), core::CoreType::Int64);
+    assert_eq!(metadata.columns()[1].ty(), core::CoreType::String);
+    assert_eq!(
+        metadata.columns()[0].schema_column_reference(),
+        Some(&column_reference("generated_values", "virtual_value"))
+    );
+    assert_eq!(
+        metadata.columns()[1].schema_column_reference(),
+        Some(&column_reference("generated_values", "stored_value"))
+    );
+    assert_eq!(metadata.param_usages()[0].ty(), core::CoreType::Int64);
+    assert_eq!(metadata.param_usages()[1].ty(), core::CoreType::String);
+    assert_eq!(
+        metadata.param_usages()[0].schema_column_reference(),
+        Some(&column_reference("generated_values", "virtual_value"))
+    );
+    assert_eq!(
+        metadata.param_usages()[1].schema_column_reference(),
+        Some(&column_reference("generated_values", "stored_value"))
     );
 
     Ok(())
