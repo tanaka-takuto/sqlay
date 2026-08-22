@@ -1,3 +1,5 @@
+import { DatabaseSync } from "node:sqlite";
+
 import {
   sqliteBulkInsertOrderItems,
   sqliteDeleteOrderItem,
@@ -6,6 +8,7 @@ import {
   sqliteInsertOrder,
   sqliteListOrderIdsAcrossStatuses,
   sqliteListOrders,
+  sqliteReplaceOrder,
 } from "./generated/valid/sqlite_builders";
 
 const listWithoutSlot = sqliteListOrders({ minId: "10" });
@@ -69,7 +72,28 @@ assertDeepEqual(fixedMutation.params, [
   "paid",
   null,
   42.5,
-  true,
+  1,
+]);
+
+const replacementMutation = sqliteReplaceOrder({
+  id: "10",
+  customerEmail: "replacement@example.test",
+  status: "paid",
+  note: "replacement",
+  total: 84.5,
+  active: false,
+});
+assertEqual(
+  normalizeSql(replacementMutation.sql),
+  "REPLACE INTO fixture_orders ( id, customer_email, status, note, total, active ) VALUES ( ?, ?, ?, ?, ?, ? );",
+);
+assertDeepEqual(replacementMutation.params, [
+  "10",
+  "replacement@example.test",
+  "paid",
+  "replacement",
+  84.5,
+  0,
 ]);
 
 const mutationWithSlot = sqliteDeleteOrderItem({
@@ -102,6 +126,36 @@ assertDeepEqual(repeatedMutation.params, [
   "SKU-002",
   "3",
 ]);
+
+const databaseFile = process.env.SQLAY_SQLITE_TEST_DATABASE_FILE;
+if (databaseFile === undefined) {
+  throw new Error("SQLAY_SQLITE_TEST_DATABASE_FILE is required");
+}
+
+const database = new DatabaseSync(databaseFile);
+try {
+  database.prepare(fixedMutation.sql).run(...fixedMutation.params);
+  assertDeepEqual(
+    database
+      .prepare(
+        "SELECT active, typeof(active) AS storageType FROM fixture_orders WHERE id = ?",
+      )
+      .get(10),
+    { active: 1, storageType: "integer" },
+  );
+
+  database.prepare(replacementMutation.sql).run(...replacementMutation.params);
+  assertDeepEqual(
+    database
+      .prepare(
+        "SELECT active, typeof(active) AS storageType FROM fixture_orders WHERE id = ?",
+      )
+      .get(10),
+    { active: 0, storageType: "integer" },
+  );
+} finally {
+  database.close();
+}
 
 function normalizeSql(sql: string): string {
   return sql.replace(/\s+/g, " ").trim();

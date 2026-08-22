@@ -557,8 +557,18 @@ if [ "$#" -eq 4 ] \
       ;;
     "$TMPDIR"/sqlay-sqlite-fixtures.*/sqlite/assert-builder-runtime.ts)
       if ! grep -q 'sqliteBulkInsertOrderItems' "$4" \
-        || ! grep -q 'sqliteDeleteOrderItem' "$4"; then
-        echo "expected SQLite runtime assertions for Repeat and mutation Slot builders" >&2
+        || ! grep -q 'sqliteDeleteOrderItem' "$4" \
+        || ! grep -q 'node:sqlite' "$4"; then
+        echo "expected SQLite runtime assertions for Repeat, mutation Slot, and database binding" >&2
+        exit 64
+      fi
+      project_dir=$(dirname "$4")
+      if [ ! -L "$project_dir/node_modules" ]; then
+        echo "expected temporary SQLite fixture project to link repo node_modules" >&2
+        exit 64
+      fi
+      if [ ! -f "$SQLAY_SQLITE_TEST_DATABASE_FILE" ]; then
+        echo "expected SQLite runtime assertions to receive the temporary database path" >&2
         exit 64
       fi
       ;;
@@ -662,7 +672,7 @@ fn write_sqlite_fixture_contract_repo(repo_root: &Path) {
     );
     write_file(
         &repo_root.join("fixtures/sqlite/assert-builder-runtime.ts"),
-        "import { sqliteFixtureQuery } from \"./generated/valid/sqlite_builders\";\nvoid sqliteFixtureQuery;\n// sqliteBulkInsertOrderItems\n// sqliteDeleteOrderItem\n",
+        "import { sqliteFixtureQuery } from \"./generated/valid/sqlite_builders\";\nvoid sqliteFixtureQuery;\n// sqliteBulkInsertOrderItems\n// sqliteDeleteOrderItem\n// node:sqlite\n",
     );
     write_file(
         &repo_root.join("fixtures/sqlite/generated/valid/sqlite_builders.ts"),

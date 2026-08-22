@@ -67,7 +67,11 @@ type FindOrdersByIdsInputContract = Assert<
 type FindOrdersByIdsOutputContract = Assert<
   IsExact<
     sqliteFindOrdersByIds_Output,
-    { id: string; customerEmail: string; active: boolean }[]
+    {
+      id: string | null;
+      customerEmail: string | null;
+      active: unknown | null;
+    }[]
   >
 >;
 type FindOrdersByIdsReturnContract = Assert<
@@ -154,7 +158,7 @@ type InsertOrderReturnContract = Assert<
     ReturnType<typeof sqliteInsertOrder>,
     {
       sql: string;
-      params: readonly [string, string, string, string | null, number, boolean];
+      params: readonly [string, string, string, string | null, number, 0 | 1];
     }
   >
 >;

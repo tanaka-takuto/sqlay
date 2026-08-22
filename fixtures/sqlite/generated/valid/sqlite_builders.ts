@@ -46,9 +46,9 @@ export type sqliteFindOrdersByIds_Input = {
 };
 
 export type sqliteFindOrdersByIds_Row = {
-  id: string;
-  customerEmail: string;
-  active: boolean;
+  id: string | null;
+  customerEmail: string | null;
+  active: unknown | null;
 };
 
 export type sqliteFindOrdersByIds_Output = sqliteFindOrdersByIds_Row[];
@@ -134,10 +134,10 @@ export type sqliteInsertOrder_Input = {
 
 export function sqliteInsertOrder(
   input: sqliteInsertOrder_Input,
-): { sql: string; params: readonly [string, string, string, string | null, number, boolean] } {
+): { sql: string; params: readonly [string, string, string, string | null, number, 0 | 1] } {
   return {
     sql: "\nINSERT INTO fixture_orders (\n  id,\n  customer_email,\n  status,\n  note,\n  total,\n  active\n) VALUES (\n  ?,\n  ?,\n  ?,\n  ?,\n  ?,\n  ?\n);\n\n",
-    params: [input.id, input.customerEmail, input.status, input.note, input.total, input.active] as const,
+    params: [input.id, input.customerEmail, input.status, input.note, input.total, input.active ? 1 : 0] as const,
   };
 }
 
@@ -196,10 +196,10 @@ export type sqliteReplaceOrder_Input = {
 
 export function sqliteReplaceOrder(
   input: sqliteReplaceOrder_Input,
-): { sql: string; params: readonly [string, string, string, string | null, number, boolean] } {
+): { sql: string; params: readonly [string, string, string, string | null, number, 0 | 1] } {
   return {
     sql: "\nREPLACE INTO fixture_orders (\n  id,\n  customer_email,\n  status,\n  note,\n  total,\n  active\n) VALUES (\n  ?,\n  ?,\n  ?,\n  ?,\n  ?,\n  ?\n);\n\n",
-    params: [input.id, input.customerEmail, input.status, input.note, input.total, input.active] as const,
+    params: [input.id, input.customerEmail, input.status, input.note, input.total, input.active ? 1 : 0] as const,
   };
 }
 

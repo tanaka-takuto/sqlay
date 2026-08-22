@@ -72,6 +72,7 @@ database_file=$tmp_fixture/fixture.sqlite3
 
 cp -R "$fixture_root" "$tmp_fixture"
 rm -rf "$tmp_fixture/generated"
+ln -s "$repo_root/node_modules" "$tmp_fixture/node_modules"
 
 sqlite3 "$database_file" < "$fixture_root/schema.sql"
 if [ ! -f "$database_file" ]; then
@@ -98,5 +99,6 @@ compare_directories "$fixture_root/generated" "$tmp_fixture/generated"
 (
   cd "$repo_root"
   npm exec -- tsc --noEmit --project "$tmp_fixture/tsconfig.json"
-  npm exec -- tsx "$tmp_fixture/assert-builder-runtime.ts"
+  SQLAY_SQLITE_TEST_DATABASE_FILE=$database_file \
+    npm exec -- tsx "$tmp_fixture/assert-builder-runtime.ts"
 )

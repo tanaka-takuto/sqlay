@@ -93,7 +93,7 @@ INSERT INTO fixture_orders (
   /* @sqlay { type: param id: status } */ 'paid' /* @sqlay { type: paramEnd } */,
   /* @sqlay { type: param id: note nullable: true } */ 'gift' /* @sqlay { type: paramEnd } */,
   /* @sqlay { type: param id: total } */ 42.5 /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: active } */ TRUE /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: active valueType: bool } */ TRUE /* @sqlay { type: paramEnd } */
 );
 
 /* @sqlay
@@ -135,7 +135,7 @@ REPLACE INTO fixture_orders (
   /* @sqlay { type: param id: status } */ 'paid' /* @sqlay { type: paramEnd } */,
   /* @sqlay { type: param id: note nullable: true } */ 'replacement' /* @sqlay { type: paramEnd } */,
   /* @sqlay { type: param id: total } */ 84.5 /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: active } */ TRUE /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: active valueType: bool } */ TRUE /* @sqlay { type: paramEnd } */
 );
 
 /* @sqlay
