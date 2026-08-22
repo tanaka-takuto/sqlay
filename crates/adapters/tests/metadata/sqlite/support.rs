@@ -69,6 +69,13 @@ pub(super) fn column_reference(table: &str, column: &str) -> core::ColumnTypeRef
     core::ColumnTypeReference::new(None, table.to_owned(), column.to_owned())
 }
 
+pub(super) fn explicit_main_column_reference(
+    table: &str,
+    column: &str,
+) -> core::ColumnTypeReference {
+    core::ColumnTypeReference::new(Some("main".to_owned()), table.to_owned(), column.to_owned())
+}
+
 pub(super) fn unique_database_path() -> PathBuf {
     static NEXT_DATABASE_ID: AtomicU64 = AtomicU64::new(0);
 

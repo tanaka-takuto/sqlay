@@ -1,14 +1,14 @@
 use sqlay_core as core;
-use sqlparser::ast::{
-    Expr, JoinConstraint, JoinOperator, Select, SelectItem, Statement, TableWithJoins,
-};
+use sqlparser::ast::{Expr, SelectItem, Statement};
 use sqlparser::dialect::SQLiteDialect;
 use sqlparser::parser::Parser;
 
 use super::super::diagnostics::{param_usage_error, query_error};
 use super::super::schema::{SqliteSchema, SqliteSchemaColumn};
-use super::expressions::{ColumnRef, collect_expr_param_contexts, qualified_column_ref};
-use super::tables::{TableSources, select_from_query, select_table_sources};
+use super::expressions::qualified_column_ref;
+use super::param_contexts::{ParamContext, collect_query_param_contexts};
+use super::schema_qualifiers::unsupported_schema_qualifier;
+use super::tables::{TableSources, direct_select_query, select_table_sources};
 
 pub(in crate::metadata::sqlite::sqlx) struct QueryInference {
     pub(in crate::metadata::sqlite::sqlx) result_columns: Vec<Option<SqliteSchemaColumn>>,
@@ -29,26 +29,27 @@ pub(in crate::metadata::sqlite::sqlx) fn infer_query(
             "SQLite metadata inference requires exactly one query statement",
         ));
     };
-    let Some(select) = select_from_query(sql_query) else {
-        return Err(query_error(
-            query,
-            "SQLite metadata inference requires one direct SELECT body",
-        ));
-    };
-    let sources = select_table_sources(sql_query, select);
-    reject_unsupported_schema_qualifier(query, &sources)?;
-    let result_columns: Vec<Option<SqliteSchemaColumn>> = select
-        .projection
-        .iter()
-        .map(|item| resolve_projection(item, &sources, schema).cloned())
-        .collect();
-    let requires_prepare_only = result_columns.iter().any(|column| {
-        column
-            .as_ref()
-            .is_none_or(|column| column.ty == core::CoreType::Unknown)
+    if let Some(qualifier) = unsupported_schema_qualifier(sql_query) {
+        return Err(unsupported_schema_qualifier_error(query, &qualifier));
+    }
+
+    let direct_select = direct_select_query(sql_query);
+    let result_columns = direct_select.map_or_else(Vec::new, |(direct_query, select)| {
+        let sources = select_table_sources(direct_query, select);
+        select
+            .projection
+            .iter()
+            .map(|item| resolve_projection(item, &sources, schema))
+            .collect()
     });
-    let contexts = collect_query_param_contexts(select, query.param_usages().len());
-    let param_usages = resolve_query_params(query, contexts, &sources, schema)?;
+    let requires_prepare_only = direct_select.is_none()
+        || result_columns.iter().any(|column| {
+            column
+                .as_ref()
+                .is_none_or(|column| column.ty == core::CoreType::Unknown)
+        });
+    let contexts = collect_query_param_contexts(sql_query, query.param_usages().len());
+    let param_usages = resolve_query_params(query, contexts, schema)?;
 
     Ok(QueryInference {
         result_columns,
@@ -57,27 +58,23 @@ pub(in crate::metadata::sqlite::sqlx) fn infer_query(
     })
 }
 
-fn reject_unsupported_schema_qualifier(
+fn unsupported_schema_qualifier_error(
     query: &core::RawQuery,
-    sources: &TableSources,
-) -> core::DiagnosticResult<()> {
-    let Some(qualifier) = sources.unsupported_schema_qualifier() else {
-        return Ok(());
-    };
-
-    Err(query_error(
+    qualifier: &str,
+) -> core::DiagnosticReport {
+    query_error(
         query,
         format!(
             "unsupported SQLite schema qualifier `{qualifier}`; only the main schema is supported, using `table` or `main.table` references"
         ),
-    ))
+    )
 }
 
-fn resolve_projection<'a>(
+fn resolve_projection(
     item: &SelectItem,
     sources: &TableSources,
-    schema: &'a SqliteSchema,
-) -> Option<&'a SqliteSchemaColumn> {
+    schema: &SqliteSchema,
+) -> Option<SqliteSchemaColumn> {
     let expr = match item {
         SelectItem::UnnamedExpr(expr)
         | SelectItem::ExprWithAlias { expr, .. }
@@ -94,64 +91,9 @@ fn resolve_projection<'a>(
     sources.resolve_unqualified_column(schema, &identifier.value)
 }
 
-fn collect_query_param_contexts(select: &Select, expected_count: usize) -> Vec<Option<ColumnRef>> {
-    let mut contexts = Vec::new();
-    for item in &select.projection {
-        if let SelectItem::UnnamedExpr(expr)
-        | SelectItem::ExprWithAlias { expr, .. }
-        | SelectItem::ExprWithAliases { expr, .. } = item
-        {
-            collect_expr_param_contexts(expr, &mut contexts);
-        }
-    }
-    for table in &select.from {
-        collect_join_param_contexts(table, &mut contexts);
-    }
-    if let Some(selection) = &select.selection {
-        collect_expr_param_contexts(selection, &mut contexts);
-    }
-    if let Some(having) = &select.having {
-        collect_expr_param_contexts(having, &mut contexts);
-    }
-
-    if contexts.len() == expected_count {
-        contexts
-    } else {
-        vec![None; expected_count]
-    }
-}
-
-fn collect_join_param_contexts(table: &TableWithJoins, contexts: &mut Vec<Option<ColumnRef>>) {
-    for join in &table.joins {
-        let constraint = match &join.join_operator {
-            JoinOperator::Join(constraint)
-            | JoinOperator::Inner(constraint)
-            | JoinOperator::Left(constraint)
-            | JoinOperator::LeftOuter(constraint)
-            | JoinOperator::Right(constraint)
-            | JoinOperator::RightOuter(constraint)
-            | JoinOperator::FullOuter(constraint)
-            | JoinOperator::CrossJoin(constraint)
-            | JoinOperator::Semi(constraint)
-            | JoinOperator::LeftSemi(constraint)
-            | JoinOperator::RightSemi(constraint)
-            | JoinOperator::Anti(constraint)
-            | JoinOperator::LeftAnti(constraint)
-            | JoinOperator::RightAnti(constraint)
-            | JoinOperator::StraightJoin(constraint)
-            | JoinOperator::AsOf { constraint, .. } => Some(constraint),
-            _ => None,
-        };
-        if let Some(JoinConstraint::On(expr)) = constraint {
-            collect_expr_param_contexts(expr, contexts);
-        }
-    }
-}
-
 fn resolve_query_params(
     query: &core::RawQuery,
-    contexts: Vec<Option<ColumnRef>>,
-    sources: &TableSources,
+    contexts: Vec<ParamContext>,
     schema: &SqliteSchema,
 ) -> core::DiagnosticResult<Vec<core::DbParamUsage>> {
     query
@@ -159,16 +101,14 @@ fn resolve_query_params(
         .iter()
         .zip(contexts)
         .map(|(usage, context)| {
-            let schema_column = context
-                .as_ref()
-                .and_then(|column| sources.resolve_column(schema, column));
+            let schema_column = context.resolve_column(schema);
             let ty = if let Some(ty) = usage.value_type_override() {
                 ty
-            } else if let Some(column) = schema_column
+            } else if let Some(column) = schema_column.as_ref()
                 && column.ty != core::CoreType::Unknown
             {
                 column.ty
-            } else if let Some(column) = schema_column {
+            } else if let Some(column) = schema_column.as_ref() {
                 return Err(param_usage_error(
                     query,
                     usage,
@@ -181,11 +121,11 @@ fn resolve_query_params(
                 return Err(param_usage_error(
                     query,
                     usage,
-                    unresolved_param_message(usage.id(), context.as_ref(), sources),
+                    unresolved_param_message(usage.id(), &context),
                 ));
             };
             let mut param = core::DbParamUsage::new(usage.id().to_owned(), ty);
-            if let Some(column) = schema_column {
+            if let Some(column) = schema_column.as_ref() {
                 param = param.with_schema_column_reference(column.reference());
             }
             Ok(param)
@@ -193,13 +133,9 @@ fn resolve_query_params(
         .collect()
 }
 
-fn unresolved_param_message(
-    id: &str,
-    context: Option<&ColumnRef>,
-    sources: &TableSources,
-) -> String {
-    match context {
-        Some(column) if sources.qualifier_is_known(&column.qualifier) => format!(
+fn unresolved_param_message(id: &str, context: &ParamContext) -> String {
+    match context.column() {
+        Some(column) if context.qualifier_is_known() => format!(
             "Param `{id}` references unknown main-schema column `{}.{}`; add `valueType` to override inference",
             column.qualifier, column.column
         ),

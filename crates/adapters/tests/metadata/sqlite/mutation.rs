@@ -3,7 +3,10 @@ use sqlay_app::MutationMetadataProvider;
 use sqlay_core as core;
 use sqlx::{Connection, Row, SqliteConnection};
 
-use super::support::{SqliteFixture, column_reference, param, raw_mutation, typed_param};
+use super::support::{
+    SqliteFixture, column_reference, explicit_main_column_reference, param, raw_mutation,
+    typed_param,
+};
 
 const SCHEMA: &str = r"
 CREATE TABLE users (
@@ -12,6 +15,10 @@ CREATE TABLE users (
     score REAL,
     active BOOL,
     ambiguous NUMERIC
+);
+CREATE TABLE child_values (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL
 );
 INSERT INTO users (id, email, score, active)
 VALUES (1, 'ada@example.test', 2.5, TRUE);
@@ -47,6 +54,29 @@ async fn mutation_metadata_infers_insert_values_target_columns()
     assert_eq!(
         metadata.param_usages()[0].schema_column_reference(),
         Some(&column_reference("users", "email"))
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn mutation_metadata_preserves_explicit_main_column_provenance()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let mutation = raw_mutation(
+        "INSERT INTO main.users (email) VALUES (?);",
+        vec![param("email")],
+    );
+
+    let metadata = provider.describe_mutation(
+        &mutation,
+        &core::AnalyzedMutation::new(core::MutationKind::Insert),
+    )?;
+
+    assert_eq!(
+        metadata.param_usages()[0].schema_column_reference(),
+        Some(&explicit_main_column_reference("users", "email"))
     );
 
     Ok(())
@@ -126,6 +156,58 @@ async fn mutation_metadata_infers_update_set_and_qualified_predicate_params()
 }
 
 #[tokio::test]
+async fn mutation_metadata_infers_params_from_nested_query_table_scope()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let mutation = raw_mutation(
+        "DELETE FROM users \
+         WHERE EXISTS (SELECT 1 FROM users AS candidate WHERE candidate.id = ?);",
+        vec![param("candidate_id")],
+    );
+
+    let metadata = provider.describe_mutation(
+        &mutation,
+        &core::AnalyzedMutation::new(core::MutationKind::Delete),
+    )?;
+
+    assert_eq!(metadata.param_usages()[0].ty(), core::CoreType::Int64);
+    assert_eq!(
+        metadata.param_usages()[0].schema_column_reference(),
+        Some(&column_reference("users", "id"))
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn mutation_metadata_does_not_cross_shadowed_nested_query_scope()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let mutation = raw_mutation(
+        "DELETE FROM users AS u \
+         WHERE EXISTS (SELECT 1 FROM child_values AS u WHERE u.email = ?);",
+        vec![param("email")],
+    );
+
+    let report = provider
+        .describe_mutation(
+            &mutation,
+            &core::AnalyzedMutation::new(core::MutationKind::Delete),
+        )
+        .expect_err("an inner alias must shadow an outer mutation alias");
+
+    assert!(
+        report.diagnostics()[0].message().contains("valueType"),
+        "{}",
+        report.diagnostics()[0].message()
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn mutation_metadata_only_reads_schema_and_never_executes_delete()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = SqliteFixture::new(SCHEMA).await?;
@@ -171,6 +253,30 @@ async fn mutation_metadata_rejects_non_main_schema_qualifiers_without_params()
     let message = report.diagnostics()[0].message();
 
     assert!(message.contains("attached"), "{message}");
+    assert!(message.contains("main schema"), "{message}");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn mutation_metadata_rejects_non_main_schema_qualifiers_in_nested_queries()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let mutation = raw_mutation(
+        "DELETE FROM users WHERE EXISTS (SELECT 1 FROM temp.sqlite_schema);",
+        Vec::new(),
+    );
+
+    let report = provider
+        .describe_mutation(
+            &mutation,
+            &core::AnalyzedMutation::new(core::MutationKind::Delete),
+        )
+        .expect_err("nested mutation queries must reject non-main schema qualifiers");
+    let message = report.diagnostics()[0].message();
+
+    assert!(message.contains("temp"), "{message}");
     assert!(message.contains("main schema"), "{message}");
 
     Ok(())

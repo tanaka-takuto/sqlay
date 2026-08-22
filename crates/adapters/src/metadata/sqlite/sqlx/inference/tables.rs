@@ -7,15 +7,17 @@ use super::expressions::ColumnRef;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum TableResolution {
-    Main(String),
+    Main {
+        table_name: String,
+        explicit_main: bool,
+    },
     Unsupported,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct TableSources {
     by_qualifier: BTreeMap<String, TableResolution>,
-    main_tables: BTreeSet<String>,
-    unsupported_schema_qualifiers: BTreeSet<String>,
+    main_tables: BTreeSet<(String, bool)>,
 }
 
 impl TableSources {
@@ -31,15 +33,17 @@ impl TableSources {
         }
     }
 
-    fn insert_main(&mut self, table_name: String, alias: Option<String>) {
-        self.main_tables.insert(normalized_identifier(&table_name));
-        self.insert_resolution(&table_name, TableResolution::Main(table_name.clone()));
-        self.insert_resolution(
-            &format!("main.{table_name}"),
-            TableResolution::Main(table_name.clone()),
-        );
+    fn insert_main(&mut self, table_name: &str, alias: Option<String>, explicit_main: bool) {
+        self.main_tables
+            .insert((normalized_identifier(table_name), explicit_main));
+        let resolution = TableResolution::Main {
+            table_name: table_name.to_owned(),
+            explicit_main,
+        };
+        self.insert_resolution(table_name, resolution.clone());
+        self.insert_resolution(&format!("main.{table_name}"), resolution.clone());
         if let Some(alias) = alias {
-            self.insert_resolution(&alias, TableResolution::Main(table_name));
+            self.insert_resolution(&alias, resolution);
         }
     }
 
@@ -52,31 +56,51 @@ impl TableSources {
         }
     }
 
-    pub(super) fn resolve_column<'a>(
+    pub(super) fn resolve_column(
         &self,
-        schema: &'a SqliteSchema,
+        schema: &SqliteSchema,
         column: &ColumnRef,
-    ) -> Option<&'a SqliteSchemaColumn> {
-        let TableResolution::Main(table_name) = self
+    ) -> Option<SqliteSchemaColumn> {
+        let TableResolution::Main {
+            table_name,
+            explicit_main,
+        } = self
             .by_qualifier
             .get(&normalized_identifier(&column.qualifier))?
         else {
             return None;
         };
-        schema.column(table_name, &column.column)
+        let column_qualifies_main = column_uses_explicit_main(&column.qualifier);
+        let schema_column = schema.column(table_name, &column.column)?.clone();
+        if *explicit_main || column_qualifies_main {
+            Some(schema_column.with_explicit_main())
+        } else {
+            Some(schema_column)
+        }
     }
 
-    pub(super) fn resolve_unqualified_column<'a>(
+    pub(super) fn resolve_unqualified_column(
         &self,
-        schema: &'a SqliteSchema,
+        schema: &SqliteSchema,
         column_name: &str,
-    ) -> Option<&'a SqliteSchemaColumn> {
-        let mut matches = self.main_tables.iter().filter_map(|table_name| {
-            schema
-                .has_table(table_name)
-                .then(|| schema.column(table_name, column_name))
-                .flatten()
-        });
+    ) -> Option<SqliteSchemaColumn> {
+        let mut matches = self
+            .main_tables
+            .iter()
+            .filter_map(|(table_name, explicit_main)| {
+                schema
+                    .has_table(table_name)
+                    .then(|| schema.column(table_name, column_name))
+                    .flatten()
+                    .cloned()
+                    .map(|column| {
+                        if *explicit_main {
+                            column.with_explicit_main()
+                        } else {
+                            column
+                        }
+                    })
+            });
         let column = matches.next()?;
         matches.next().is_none().then_some(column)
     }
@@ -85,25 +109,12 @@ impl TableSources {
         self.by_qualifier
             .contains_key(&normalized_identifier(qualifier))
     }
-
-    pub(super) fn unsupported_schema_qualifier(&self) -> Option<&str> {
-        self.unsupported_schema_qualifiers
-            .iter()
-            .next()
-            .map(String::as_str)
-    }
-
-    fn record_unsupported_schema_qualifier(&mut self, parts: &[String]) {
-        if let Some(qualifier) = unsupported_schema_qualifier(parts) {
-            self.unsupported_schema_qualifiers.insert(qualifier);
-        }
-    }
 }
 
-pub(super) fn select_from_query(query: &SqlQuery) -> Option<&Select> {
+pub(super) fn direct_select_query(query: &SqlQuery) -> Option<(&SqlQuery, &Select)> {
     match query.body.as_ref() {
-        SetExpr::Select(select) => Some(select),
-        SetExpr::Query(query) => select_from_query(query),
+        SetExpr::Select(select) => Some((query, select)),
+        SetExpr::Query(query) => direct_select_query(query),
         _ => None,
     }
 }
@@ -119,9 +130,16 @@ pub(super) fn select_table_sources(query: &SqlQuery, select: &Select) -> TableSo
                 .collect::<BTreeSet<_>>()
         })
         .unwrap_or_default();
+    select_table_sources_with_cte_names(select, &cte_names)
+}
+
+pub(super) fn select_table_sources_with_cte_names(
+    select: &Select,
+    cte_names: &BTreeSet<String>,
+) -> TableSources {
     let mut sources = TableSources::default();
     for table in &select.from {
-        collect_table_with_joins(table, &mut sources, &cte_names);
+        collect_table_with_joins(table, &mut sources, cte_names);
     }
     sources
 }
@@ -137,9 +155,8 @@ pub(super) fn named_table_sources(name: &ObjectName, alias: Option<&str>) -> Tab
     let alias = alias.map(str::to_owned);
     let parts = object_name_parts(name);
     if let Some(table_name) = main_table_name(&parts) {
-        sources.insert_main(table_name, alias);
+        sources.insert_main(&table_name, alias, parts.len() == 2);
     } else {
-        sources.record_unsupported_schema_qualifier(&parts);
         sources.insert_unsupported(parts.last().cloned(), alias);
     }
     sources
@@ -182,9 +199,8 @@ fn collect_table_factor(
             } else if args.is_none()
                 && let Some(table_name) = main_table_name(&parts)
             {
-                sources.insert_main(table_name, alias);
+                sources.insert_main(&table_name, alias, parts.len() == 2);
             } else {
-                sources.record_unsupported_schema_qualifier(&parts);
                 sources.insert_unsupported(parts.last().cloned(), alias);
             }
         }
@@ -225,6 +241,13 @@ pub(super) fn main_table_name(parts: &[String]) -> Option<String> {
     }
 }
 
+fn column_uses_explicit_main(qualifier: &str) -> bool {
+    qualifier
+        .split_once('.')
+        .is_some_and(|(schema, _table)| schema.eq_ignore_ascii_case("main"))
+}
+
+#[cfg(test)]
 fn unsupported_schema_qualifier(parts: &[String]) -> Option<String> {
     match parts {
         [schema, _table] if !schema.eq_ignore_ascii_case("main") => Some(schema.clone()),

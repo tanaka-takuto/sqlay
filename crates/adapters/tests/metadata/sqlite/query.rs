@@ -2,7 +2,9 @@ use sqlay_adapters::metadata::sqlite::sqlx::SqlxSqliteMetadataProvider;
 use sqlay_app::MetadataProvider;
 use sqlay_core as core;
 
-use super::support::{SqliteFixture, column_reference, param, raw_query, typed_param};
+use super::support::{
+    SqliteFixture, column_reference, explicit_main_column_reference, param, raw_query, typed_param,
+};
 
 const SCHEMA: &str = r"
 CREATE TABLE values_by_affinity (
@@ -31,6 +33,9 @@ CREATE TABLE child_values (
 CREATE TABLE text_primary_keys (
     id TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+CREATE TABLE sqliteUsers (
+    id INTEGER NOT NULL
 );
 ";
 
@@ -102,13 +107,46 @@ async fn query_metadata_attaches_provenance_only_to_direct_main_table_columns()
     assert_eq!(metadata.columns()[0].nullable(), None);
     assert_eq!(
         metadata.columns()[0].schema_column_reference(),
-        Some(&column_reference("values_by_affinity", "id"))
+        Some(&explicit_main_column_reference("values_by_affinity", "id"))
     );
     for column in &metadata.columns()[1..] {
         assert_eq!(column.ty(), core::CoreType::Unknown);
         assert_eq!(column.nullable(), None);
         assert_eq!(column.schema_column_reference(), None);
     }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn query_metadata_accepts_compound_selects_conservatively_and_infers_branch_params()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let query = raw_query(
+        "SELECT v.id AS value_id FROM values_by_affinity AS v WHERE v.id = ? \
+         UNION ALL \
+         SELECT c.parent_id AS value_id FROM child_values AS c WHERE c.parent_id = ?;",
+        vec![param("value_id"), param("parent_id")],
+    );
+
+    let metadata = provider.describe(&query, &core::AnalyzedQuery::new(core::Cardinality::Many))?;
+
+    assert_eq!(metadata.columns().len(), 1);
+    assert_eq!(metadata.columns()[0].name(), "value_id");
+    assert_eq!(metadata.columns()[0].ty(), core::CoreType::Unknown);
+    assert_eq!(metadata.columns()[0].nullable(), None);
+    assert_eq!(metadata.columns()[0].schema_column_reference(), None);
+    assert_eq!(metadata.param_usages()[0].ty(), core::CoreType::Int64);
+    assert_eq!(metadata.param_usages()[1].ty(), core::CoreType::Int64);
+    assert_eq!(
+        metadata.param_usages()[0].schema_column_reference(),
+        Some(&column_reference("values_by_affinity", "id"))
+    );
+    assert_eq!(
+        metadata.param_usages()[1].schema_column_reference(),
+        Some(&column_reference("child_values", "parent_id"))
+    );
 
     Ok(())
 }
@@ -190,6 +228,76 @@ async fn query_metadata_rejects_non_main_schema_qualifiers()
 }
 
 #[tokio::test]
+async fn query_metadata_rejects_non_main_schema_qualifiers_in_nested_queries()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let query = raw_query(
+        "SELECT v.id FROM values_by_affinity AS v \
+         WHERE EXISTS (SELECT 1 FROM temp.sqlite_schema);",
+        Vec::new(),
+    );
+
+    let report = provider
+        .describe(&query, &core::AnalyzedQuery::new(core::Cardinality::Many))
+        .expect_err("nested SQLite metadata must reject non-main schema qualifiers");
+    let message = report.diagnostics()[0].message();
+
+    assert!(message.contains("temp"), "{message}");
+    assert!(message.contains("main schema"), "{message}");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn query_metadata_keeps_direct_param_alignment_with_order_by_params()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let query = raw_query(
+        "SELECT v.id FROM values_by_affinity AS v WHERE v.id >= ? ORDER BY ?;",
+        vec![
+            param("minimum_id"),
+            typed_param("sort_key", core::CoreType::Int64),
+        ],
+    );
+
+    let metadata = provider.describe(&query, &core::AnalyzedQuery::new(core::Cardinality::Many))?;
+
+    assert_eq!(metadata.param_usages()[0].ty(), core::CoreType::Int64);
+    assert_eq!(
+        metadata.param_usages()[0].schema_column_reference(),
+        Some(&column_reference("values_by_affinity", "id"))
+    );
+    assert_eq!(metadata.param_usages()[1].ty(), core::CoreType::Int64);
+    assert_eq!(metadata.param_usages()[1].schema_column_reference(), None);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn query_metadata_includes_non_reserved_table_names_that_begin_with_sqlite()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let query = raw_query(
+        "SELECT s.id FROM sqliteUsers AS s WHERE s.id = ?;",
+        vec![param("id")],
+    );
+
+    let metadata = provider.describe(&query, &core::AnalyzedQuery::new(core::Cardinality::Many))?;
+
+    assert_eq!(metadata.columns()[0].ty(), core::CoreType::Int64);
+    assert_eq!(metadata.param_usages()[0].ty(), core::CoreType::Int64);
+    assert_eq!(
+        metadata.param_usages()[0].schema_column_reference(),
+        Some(&column_reference("sqliteUsers", "id"))
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn query_metadata_infers_qualified_comparison_params_and_honors_value_type()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = SqliteFixture::new(SCHEMA).await?;
@@ -213,6 +321,28 @@ async fn query_metadata_infers_qualified_comparison_params_and_honors_value_type
     );
     assert_eq!(metadata.param_usages()[1].ty(), core::CoreType::String);
     assert_eq!(metadata.param_usages()[2].ty(), core::CoreType::String);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn query_metadata_infers_correlated_params_from_outer_query_scope()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let query = raw_query(
+        "SELECT v.id FROM values_by_affinity AS v \
+         WHERE EXISTS (SELECT 1 FROM child_values AS c WHERE v.id = ?);",
+        vec![param("value_id")],
+    );
+
+    let metadata = provider.describe(&query, &core::AnalyzedQuery::new(core::Cardinality::Many))?;
+
+    assert_eq!(metadata.param_usages()[0].ty(), core::CoreType::Int64);
+    assert_eq!(
+        metadata.param_usages()[0].schema_column_reference(),
+        Some(&column_reference("values_by_affinity", "id"))
+    );
 
     Ok(())
 }

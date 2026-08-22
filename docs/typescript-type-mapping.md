@@ -68,7 +68,8 @@ Override targets:
 
 - `core.<core-type>` changes the broad mapping for a sqlay Core type such as `decimal` or `int64`.
 - `columns.<table.column>` targets a schema-backed column in the current database.
-- `columns.<database.table.column>` targets a schema-backed column in an explicit MySQL database.
+- `columns.<database.table.column>` targets a schema-backed column in an explicit MySQL database;
+  SQLite accepts `columns.main.<table.column>` for an explicitly `main`-qualified table.
 - `builders.<id>.fields.<field>` targets a generated SELECT result row field.
 - `builders.<id>.params.<param>` targets a direct Param input field and that Param's fixed params
   tuple entries.

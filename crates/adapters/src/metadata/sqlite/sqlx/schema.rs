@@ -13,11 +13,12 @@ const MAIN_SCHEMA_COLUMNS_SQL: &str = "\
     FROM main.sqlite_schema AS schema_table \
     JOIN pragma_table_xinfo(schema_table.name, 'main') AS table_info \
     WHERE schema_table.type = 'table' \
-      AND schema_table.name NOT LIKE 'sqlite_%' \
+      AND lower(schema_table.name) NOT GLOB 'sqlite_*' \
     ORDER BY schema_table.name, table_info.cid";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct SqliteSchemaColumn {
+    database_name: Option<String>,
     pub(super) table_name: String,
     pub(super) column_name: String,
     pub(super) ty: core::CoreType,
@@ -27,7 +28,16 @@ pub(super) struct SqliteSchemaColumn {
 
 impl SqliteSchemaColumn {
     pub(super) fn reference(&self) -> core::ColumnTypeReference {
-        core::ColumnTypeReference::new(None, self.table_name.clone(), self.column_name.clone())
+        core::ColumnTypeReference::new(
+            self.database_name.clone(),
+            self.table_name.clone(),
+            self.column_name.clone(),
+        )
+    }
+
+    pub(super) fn with_explicit_main(mut self) -> Self {
+        self.database_name = Some("main".to_owned());
+        self
     }
 }
 
@@ -110,6 +120,7 @@ pub(super) async fn fetch_main_schema(
             primary_key_column_count,
         ));
         schema.insert(SqliteSchemaColumn {
+            database_name: None,
             table_name: column.table_name,
             column_name: column.column_name,
             ty: sqlite_declared_type_to_core_type(&column.declared_type),

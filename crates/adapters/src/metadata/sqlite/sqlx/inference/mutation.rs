@@ -8,7 +8,11 @@ use sqlparser::parser::Parser;
 
 use super::super::diagnostics::{mutation_error, mutation_param_usage_error};
 use super::super::schema::SqliteSchema;
-use super::expressions::{ColumnRef, collect_expr_param_contexts, is_placeholder};
+use super::expressions::{ColumnRef, is_placeholder};
+use super::param_contexts::{
+    ParamContext, PendingParamColumns, collect_mutation_param_contexts, record_param_column,
+};
+use super::schema_qualifiers::unsupported_schema_qualifier;
 use super::tables::{
     TableSources, named_table_sources, object_name_parts, single_table_sources,
     table_with_joins_default_qualifier,
@@ -28,47 +32,44 @@ pub(in crate::metadata::sqlite::sqlx) fn infer_mutation_params(
             "SQLite metadata inference requires exactly one mutation statement",
         ));
     };
-    let (sources, contexts) = mutation_contexts(statement, mutation.param_usages().len());
-    reject_unsupported_schema_qualifier(mutation, &sources)?;
+    if let Some(qualifier) = unsupported_schema_qualifier(statement) {
+        return Err(unsupported_schema_qualifier_error(mutation, &qualifier));
+    }
+    let (sources, pending_columns) = mutation_contexts(statement);
+    let contexts = collect_mutation_param_contexts(
+        statement,
+        sources,
+        pending_columns,
+        mutation.param_usages().len(),
+    );
 
-    resolve_mutation_params(mutation, contexts, &sources, schema)
+    resolve_mutation_params(mutation, contexts, schema)
 }
 
-fn reject_unsupported_schema_qualifier(
+fn unsupported_schema_qualifier_error(
     mutation: &core::RawMutation,
-    sources: &TableSources,
-) -> core::DiagnosticResult<()> {
-    let Some(qualifier) = sources.unsupported_schema_qualifier() else {
-        return Ok(());
-    };
-
-    Err(mutation_error(
+    qualifier: &str,
+) -> core::DiagnosticReport {
+    mutation_error(
         mutation,
         format!(
             "unsupported SQLite schema qualifier `{qualifier}`; only the main schema is supported, using `table` or `main.table` references"
         ),
-    ))
+    )
 }
 
-fn mutation_contexts(
-    statement: &Statement,
-    expected_count: usize,
-) -> (TableSources, Vec<Option<ColumnRef>>) {
-    let (sources, mut contexts) = match statement {
+fn mutation_contexts(statement: &Statement) -> (TableSources, PendingParamColumns) {
+    match statement {
         Statement::Insert(insert) => insert_contexts(insert),
         Statement::Update(update) => update_contexts(update),
         Statement::Delete(delete) => delete_contexts(delete),
-        _ => (TableSources::default(), Vec::new()),
-    };
-    if contexts.len() != expected_count {
-        contexts = vec![None; expected_count];
+        _ => (TableSources::default(), PendingParamColumns::new()),
     }
-    (sources, contexts)
 }
 
-fn insert_contexts(insert: &Insert) -> (TableSources, Vec<Option<ColumnRef>>) {
+fn insert_contexts(insert: &Insert) -> (TableSources, PendingParamColumns) {
     let TableObject::TableName(table_name) = &insert.table else {
-        return (TableSources::default(), Vec::new());
+        return (TableSources::default(), PendingParamColumns::new());
     };
     let alias = insert
         .table_alias
@@ -80,65 +81,53 @@ fn insert_contexts(insert: &Insert) -> (TableSources, Vec<Option<ColumnRef>>) {
         .as_ref()
         .map(|alias| alias.alias.value.clone())
         .or_else(|| object_name_parts(table_name).last().cloned());
-    let mut contexts = Vec::new();
+    let mut pending_columns = PendingParamColumns::new();
 
     if let Some(source) = &insert.source
         && let SetExpr::Values(values) = source.body.as_ref()
     {
         for row in &values.rows {
             for (index, expr) in row.iter().enumerate() {
-                if is_placeholder(expr) {
-                    contexts.push(insert_column_context(
-                        insert.columns.get(index),
-                        qualifier.as_deref(),
-                    ));
-                } else {
-                    collect_expr_param_contexts(expr, &mut contexts);
+                if is_placeholder(expr)
+                    && let Some(column) =
+                        insert_column_context(insert.columns.get(index), qualifier.as_deref())
+                {
+                    record_param_column(&mut pending_columns, expr, column);
                 }
             }
         }
     }
 
-    (sources, contexts)
+    (sources, pending_columns)
 }
 
-fn update_contexts(update: &Update) -> (TableSources, Vec<Option<ColumnRef>>) {
+fn update_contexts(update: &Update) -> (TableSources, PendingParamColumns) {
     let sources = single_table_sources(&update.table);
     let qualifier = table_with_joins_default_qualifier(&update.table);
-    let mut contexts = Vec::new();
+    let mut pending_columns = PendingParamColumns::new();
     for assignment in &update.assignments {
-        collect_assignment_context(assignment, qualifier.as_deref(), &mut contexts);
+        record_assignment_context(assignment, qualifier.as_deref(), &mut pending_columns);
     }
-    if let Some(selection) = &update.selection {
-        collect_expr_param_contexts(selection, &mut contexts);
-    }
-    (sources, contexts)
+    (sources, pending_columns)
 }
 
-fn delete_contexts(delete: &Delete) -> (TableSources, Vec<Option<ColumnRef>>) {
+fn delete_contexts(delete: &Delete) -> (TableSources, PendingParamColumns) {
     let table = match &delete.from {
         FromTable::WithFromKeyword(tables) | FromTable::WithoutKeyword(tables) => tables.first(),
     };
     let sources = table.map_or_else(TableSources::default, single_table_sources);
-    let mut contexts = Vec::new();
-    if let Some(selection) = &delete.selection {
-        collect_expr_param_contexts(selection, &mut contexts);
-    }
-    (sources, contexts)
+    (sources, PendingParamColumns::new())
 }
 
-fn collect_assignment_context(
+fn record_assignment_context(
     assignment: &Assignment,
     default_qualifier: Option<&str>,
-    contexts: &mut Vec<Option<ColumnRef>>,
+    pending_columns: &mut PendingParamColumns,
 ) {
-    if is_placeholder(&assignment.value) {
-        contexts.push(assignment_column_context(
-            &assignment.target,
-            default_qualifier,
-        ));
-    } else {
-        collect_expr_param_contexts(&assignment.value, contexts);
+    if is_placeholder(&assignment.value)
+        && let Some(column) = assignment_column_context(&assignment.target, default_qualifier)
+    {
+        record_param_column(pending_columns, &assignment.value, column);
     }
 }
 
@@ -173,8 +162,7 @@ fn assignment_column_context(
 
 fn resolve_mutation_params(
     mutation: &core::RawMutation,
-    contexts: Vec<Option<ColumnRef>>,
-    sources: &TableSources,
+    contexts: Vec<ParamContext>,
     schema: &SqliteSchema,
 ) -> core::DiagnosticResult<Vec<core::DbParamUsage>> {
     mutation
@@ -182,16 +170,14 @@ fn resolve_mutation_params(
         .iter()
         .zip(contexts)
         .map(|(usage, context)| {
-            let schema_column = context
-                .as_ref()
-                .and_then(|column| sources.resolve_column(schema, column));
+            let schema_column = context.resolve_column(schema);
             let ty = if let Some(ty) = usage.value_type_override() {
                 ty
-            } else if let Some(column) = schema_column
+            } else if let Some(column) = schema_column.as_ref()
                 && column.ty != core::CoreType::Unknown
             {
                 column.ty
-            } else if let Some(column) = schema_column {
+            } else if let Some(column) = schema_column.as_ref() {
                 return Err(mutation_param_usage_error(
                     mutation,
                     usage,
@@ -211,7 +197,7 @@ fn resolve_mutation_params(
                 ));
             };
             let mut param = core::DbParamUsage::new(usage.id().to_owned(), ty);
-            if let Some(column) = schema_column {
+            if let Some(column) = schema_column.as_ref() {
                 param = param.with_schema_column_reference(column.reference());
             }
             Ok(param)
