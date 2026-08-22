@@ -11,6 +11,9 @@ is performed.
 Trigger workflows are entry points. They define GitHub events, branch filters, permissions, and
 inputs passed to reusable workflows.
 
+Pull request triggers run for `main` and `issue/#*` base branches so every layer of
+an issue-scoped stacked pull request receives the same checks.
+
 Keep trigger workflows thin:
 
 - Do not add formatting, build, test, or deploy steps here.
