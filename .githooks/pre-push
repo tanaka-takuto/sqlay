@@ -7,7 +7,7 @@ if [ -n "${HOME:-}" ] && [ -f "$HOME/.cargo/env" ]; then
 fi
 
 protected_branches='^(main|master|develop)$'
-issue_branch_pattern='^issue/#[0-9]+$'
+issue_branch_pattern='^issue/#[0-9]+(-[a-z0-9][a-z0-9._-]*)?$'
 
 status=0
 has_branch_update=0
@@ -50,6 +50,7 @@ pre-push: branch "$branch" is not allowed.
 
 Issue-based pull request branches must match:
   issue/#123
+  issue/#123-review-layer
 
 Allowed maintenance branches:
   main, master, develop

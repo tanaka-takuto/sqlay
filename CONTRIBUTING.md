@@ -147,9 +147,12 @@ Branches used for issue-based pull requests must use this format:
 
 ```text
 issue/#123
+issue/#123-review-layer
 ```
 
 The `pre-push` hook checks branch names before pushing. It allows `main`, `master`, and `develop` for repository maintenance, and requires all other pushed local branches to match `issue/#<number>`.
+An optional lower-case slug may follow the issue number when one issue is split into
+stacked pull requests. Keep every branch in that stack under the same issue number.
 
 ## Issues
 

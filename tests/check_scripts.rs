@@ -1,9 +1,47 @@
 use std::io::Write;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 const DATABASE_URL: &str = "mysql://sqlay:sqlay@127.0.0.1:3306/sqlay";
+
+#[test]
+fn pre_push_accepts_issue_scoped_stack_branch() {
+    let fixture = ScriptFixture::new("sqlay-pre-push-stacked-branch");
+    write_executable(&fixture.fake_bin.join("cargo"), "#!/bin/sh\nexit 0\n");
+    let path = format!(
+        "{}:{}",
+        fixture.fake_bin.display(),
+        std::env::var("PATH").expect("PATH should be set")
+    );
+    let mut child = Command::new(repo_root().join(".githooks/pre-push"))
+        .env("HOME", &fixture.home)
+        .env("PATH", path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("pre-push hook should run");
+
+    child
+        .stdin
+        .take()
+        .expect("pre-push stdin should be piped")
+        .write_all(
+            b"refs/heads/issue/#334-sqlite-adr 1111111111111111111111111111111111111111 refs/heads/issue/#334-sqlite-adr 0000000000000000000000000000000000000000\n",
+        )
+        .expect("pre-push update should be written");
+    let output = child
+        .wait_with_output()
+        .expect("pre-push hook should finish");
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
 
 #[test]
 fn example_check_typechecks_temporary_generated_project() {
