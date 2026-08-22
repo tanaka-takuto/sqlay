@@ -281,3 +281,27 @@ async fn mutation_metadata_rejects_non_main_schema_qualifiers_in_nested_queries(
 
     Ok(())
 }
+
+#[tokio::test]
+async fn mutation_metadata_rejects_bare_temp_schema_aliases_in_nested_queries()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let mutation = raw_mutation(
+        "DELETE FROM users WHERE EXISTS (SELECT 1 FROM SQLITE_TEMP_SCHEMA);",
+        Vec::new(),
+    );
+
+    let report = provider
+        .describe_mutation(
+            &mutation,
+            &core::AnalyzedMutation::new(core::MutationKind::Delete),
+        )
+        .expect_err("nested mutation queries must reject bare temp-schema aliases");
+    let message = report.diagnostics()[0].message();
+
+    assert!(message.contains("temp"), "{message}");
+    assert!(message.contains("main schema"), "{message}");
+
+    Ok(())
+}

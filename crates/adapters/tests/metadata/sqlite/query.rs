@@ -234,6 +234,45 @@ async fn query_metadata_rejects_non_main_schema_qualifiers()
 }
 
 #[tokio::test]
+async fn query_metadata_rejects_bare_temp_schema_aliases() -> Result<(), Box<dyn std::error::Error>>
+{
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+
+    for relation in ["sqlite_temp_master", "SQLITE_TEMP_SCHEMA"] {
+        let query = raw_query(&format!("SELECT name FROM {relation};"), Vec::new());
+        let report = provider
+            .describe(&query, &core::AnalyzedQuery::new(core::Cardinality::Many))
+            .expect_err("bare SQLite temp-schema aliases must be rejected");
+        let message = report.diagnostics()[0].message();
+
+        assert!(message.contains("temp"), "{message}");
+        assert!(message.contains("main schema"), "{message}");
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn query_metadata_allows_temp_alias_name_when_an_outer_cte_shadows_it()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = SqliteFixture::new(SCHEMA).await?;
+    let provider = SqlxSqliteMetadataProvider::new(fixture.url());
+    let query = raw_query(
+        "WITH sqlite_temp_master AS (SELECT 'safe' AS name) \
+         SELECT 1 AS one \
+         WHERE EXISTS (SELECT 1 FROM sqlite_temp_master AS cte_entry);",
+        Vec::new(),
+    );
+
+    let metadata = provider.describe(&query, &core::AnalyzedQuery::new(core::Cardinality::Many))?;
+
+    assert_eq!(metadata.columns().len(), 1);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn query_metadata_rejects_non_main_schema_qualifiers_in_nested_queries()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = SqliteFixture::new(SCHEMA).await?;
