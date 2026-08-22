@@ -1,0 +1,233 @@
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
+
+use sqlparser::ast::{ObjectName, Query as SqlQuery, Select, SetExpr, TableFactor, TableWithJoins};
+
+use super::super::schema::{SqliteSchema, SqliteSchemaColumn, normalized_identifier};
+use super::expressions::ColumnRef;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum TableResolution {
+    Main(String),
+    Unsupported,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct TableSources {
+    by_qualifier: BTreeMap<String, TableResolution>,
+    main_tables: BTreeSet<String>,
+}
+
+impl TableSources {
+    fn insert_resolution(&mut self, key: &str, resolution: TableResolution) {
+        match self.by_qualifier.entry(normalized_identifier(key)) {
+            Entry::Vacant(entry) => {
+                entry.insert(resolution);
+            }
+            Entry::Occupied(mut entry) if entry.get() != &resolution => {
+                entry.insert(TableResolution::Unsupported);
+            }
+            Entry::Occupied(_) => {}
+        }
+    }
+
+    fn insert_main(&mut self, table_name: String, alias: Option<String>) {
+        self.main_tables.insert(normalized_identifier(&table_name));
+        self.insert_resolution(&table_name, TableResolution::Main(table_name.clone()));
+        self.insert_resolution(
+            &format!("main.{table_name}"),
+            TableResolution::Main(table_name.clone()),
+        );
+        if let Some(alias) = alias {
+            self.insert_resolution(&alias, TableResolution::Main(table_name));
+        }
+    }
+
+    fn insert_unsupported(&mut self, table_name: Option<String>, alias: Option<String>) {
+        if let Some(table_name) = table_name {
+            self.insert_resolution(&table_name, TableResolution::Unsupported);
+        }
+        if let Some(alias) = alias {
+            self.insert_resolution(&alias, TableResolution::Unsupported);
+        }
+    }
+
+    pub(super) fn resolve_column<'a>(
+        &self,
+        schema: &'a SqliteSchema,
+        column: &ColumnRef,
+    ) -> Option<&'a SqliteSchemaColumn> {
+        let TableResolution::Main(table_name) = self
+            .by_qualifier
+            .get(&normalized_identifier(&column.qualifier))?
+        else {
+            return None;
+        };
+        schema.column(table_name, &column.column)
+    }
+
+    pub(super) fn resolve_unqualified_column<'a>(
+        &self,
+        schema: &'a SqliteSchema,
+        column_name: &str,
+    ) -> Option<&'a SqliteSchemaColumn> {
+        let mut matches = self.main_tables.iter().filter_map(|table_name| {
+            schema
+                .has_table(table_name)
+                .then(|| schema.column(table_name, column_name))
+                .flatten()
+        });
+        let column = matches.next()?;
+        matches.next().is_none().then_some(column)
+    }
+
+    pub(super) fn qualifier_is_known(&self, qualifier: &str) -> bool {
+        self.by_qualifier
+            .contains_key(&normalized_identifier(qualifier))
+    }
+}
+
+pub(super) fn select_from_query(query: &SqlQuery) -> Option<&Select> {
+    match query.body.as_ref() {
+        SetExpr::Select(select) => Some(select),
+        SetExpr::Query(query) => select_from_query(query),
+        _ => None,
+    }
+}
+
+pub(super) fn select_table_sources(query: &SqlQuery, select: &Select) -> TableSources {
+    let cte_names = query
+        .with
+        .as_ref()
+        .map(|with| {
+            with.cte_tables
+                .iter()
+                .map(|cte| normalized_identifier(&cte.alias.name.value))
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    let mut sources = TableSources::default();
+    for table in &select.from {
+        collect_table_with_joins(table, &mut sources, &cte_names);
+    }
+    sources
+}
+
+pub(super) fn single_table_sources(table: &TableWithJoins) -> TableSources {
+    let mut sources = TableSources::default();
+    collect_table_with_joins(table, &mut sources, &BTreeSet::new());
+    sources
+}
+
+pub(super) fn named_table_sources(name: &ObjectName, alias: Option<&str>) -> TableSources {
+    let mut sources = TableSources::default();
+    let alias = alias.map(str::to_owned);
+    let parts = object_name_parts(name);
+    if let Some(table_name) = main_table_name(&parts) {
+        sources.insert_main(table_name, alias);
+    } else {
+        sources.insert_unsupported(parts.last().cloned(), alias);
+    }
+    sources
+}
+
+pub(super) fn table_with_joins_default_qualifier(table: &TableWithJoins) -> Option<String> {
+    let TableFactor::Table { name, alias, .. } = &table.relation else {
+        return None;
+    };
+    alias
+        .as_ref()
+        .map(|alias| alias.name.value.clone())
+        .or_else(|| object_name_parts(name).last().cloned())
+}
+
+fn collect_table_with_joins(
+    table: &TableWithJoins,
+    sources: &mut TableSources,
+    cte_names: &BTreeSet<String>,
+) {
+    collect_table_factor(&table.relation, sources, cte_names);
+    for join in &table.joins {
+        collect_table_factor(&join.relation, sources, cte_names);
+    }
+}
+
+fn collect_table_factor(
+    table: &TableFactor,
+    sources: &mut TableSources,
+    cte_names: &BTreeSet<String>,
+) {
+    match table {
+        TableFactor::Table {
+            name, alias, args, ..
+        } => {
+            let alias = alias.as_ref().map(|alias| alias.name.value.clone());
+            let parts = object_name_parts(name);
+            if parts.len() == 1 && cte_names.contains(&normalized_identifier(&parts[0])) {
+                sources.insert_unsupported(parts.last().cloned(), alias);
+            } else if args.is_none()
+                && let Some(table_name) = main_table_name(&parts)
+            {
+                sources.insert_main(table_name, alias);
+            } else {
+                sources.insert_unsupported(parts.last().cloned(), alias);
+            }
+        }
+        TableFactor::NestedJoin {
+            table_with_joins,
+            alias,
+        } => {
+            collect_table_with_joins(table_with_joins, sources, cte_names);
+            if let Some(alias) = alias {
+                sources.insert_unsupported(None, Some(alias.name.value.clone()));
+            }
+        }
+        TableFactor::Derived { alias, .. }
+        | TableFactor::TableFunction { alias, .. }
+        | TableFactor::Function { alias, .. }
+        | TableFactor::JsonTable { alias, .. } => {
+            sources.insert_unsupported(None, alias.as_ref().map(|alias| alias.name.value.clone()));
+        }
+        _ => {}
+    }
+}
+
+pub(super) fn object_name_parts(name: &ObjectName) -> Vec<String> {
+    name.0
+        .iter()
+        .filter_map(|part| part.as_ident().map(|ident| ident.value.clone()))
+        .collect()
+}
+
+pub(super) fn main_table_name(parts: &[String]) -> Option<String> {
+    if parts.iter().any(|part| part.contains('.')) {
+        return None;
+    }
+    match parts {
+        [table] => Some(table.clone()),
+        [schema, table] if schema.eq_ignore_ascii_case("main") => Some(table.clone()),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::main_table_name;
+
+    fn parts(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn accepts_only_bare_or_explicit_main_schema_tables() {
+        assert_eq!(
+            main_table_name(&parts(&["users"])),
+            Some("users".to_owned())
+        );
+        assert_eq!(
+            main_table_name(&parts(&["main", "users"])),
+            Some("users".to_owned())
+        );
+        assert_eq!(main_table_name(&parts(&["temp", "users"])), None);
+        assert_eq!(main_table_name(&parts(&["attached", "users"])), None);
+    }
+}
