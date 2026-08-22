@@ -311,4 +311,5 @@ FIELD_JOURNAL_DATABASE_URL=$sqlite_database_url \
 
 compare_directories "$sqlite_example_root/generated" "$tmp_sqlite_example/generated"
 npm exec -- tsc --noEmit --project "$tmp_sqlite_example/tsconfig.json"
-npm exec -- tsx "$tmp_sqlite_example/assert-builder-runtime.ts"
+SQLAY_SQLITE_TEST_DATABASE_FILE=$sqlite_database_file \
+  npm exec -- tsx "$tmp_sqlite_example/assert-builder-runtime.ts"

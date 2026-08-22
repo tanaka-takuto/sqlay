@@ -47,13 +47,13 @@ type ListSiteObservationsOutputContract = Assert<
   IsExact<
     listSiteObservations_Output,
     {
-      observationId: string;
-      siteName: string;
-      speciesName: string;
-      observedAt: string;
-      individualCount: number;
+      observationId: string | null;
+      siteName: string | null;
+      speciesName: string | null;
+      observedAt: string | null;
+      individualCount: number | null;
       notes: string | null;
-      reviewed: boolean;
+      reviewed: unknown | null;
     }[]
   >
 >;
@@ -71,13 +71,13 @@ type FindObservationByIdOutputContract = Assert<
   IsExact<
     findObservationById_Output,
     {
-      observationId: string;
-      siteName: string;
-      speciesName: string;
-      observedAt: string;
-      individualCount: number;
+      observationId: string | null;
+      siteName: string | null;
+      speciesName: string | null;
+      observedAt: string | null;
+      individualCount: number | null;
       notes: string | null;
-      reviewed: boolean;
+      reviewed: unknown | null;
     } | null
   >
 >;
@@ -107,7 +107,7 @@ type CreateObservationReturnContract = Assert<
     ReturnType<typeof createObservation>,
     {
       sql: string;
-      params: readonly [string, string, string, string, number, string | null, boolean];
+      params: readonly [string, string, string, string, number, string | null, 0 | 1];
     }
   >
 >;
@@ -121,7 +121,7 @@ type MarkObservationReviewedInputContract = Assert<
 type MarkObservationReviewedReturnContract = Assert<
   IsExact<
     ReturnType<typeof markObservationReviewed>,
-    { sql: string; params: readonly [boolean, string] }
+    { sql: string; params: readonly [0 | 1, string] }
   >
 >;
 

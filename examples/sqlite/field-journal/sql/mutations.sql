@@ -19,7 +19,7 @@ INSERT INTO field_journal_observations (
   /* @sqlay { type: param id: observedAt } */ '2026-08-22T05:45:00+09:00' /* @sqlay { type: paramEnd } */,
   /* @sqlay { type: param id: individualCount } */ 3 /* @sqlay { type: paramEnd } */,
   /* @sqlay { type: param id: notes nullable: true } */ NULL /* @sqlay { type: paramEnd } */,
-  /* @sqlay { type: param id: reviewed } */ FALSE /* @sqlay { type: paramEnd } */
+  /* @sqlay { type: param id: reviewed valueType: bool } */ FALSE /* @sqlay { type: paramEnd } */
 );
 
 /* @sqlay
@@ -29,7 +29,7 @@ INSERT INTO field_journal_observations (
 }
 */
 UPDATE field_journal_observations
-SET reviewed = /* @sqlay { type: param id: reviewed } */ TRUE /* @sqlay { type: paramEnd } */
+SET reviewed = /* @sqlay { type: param id: reviewed valueType: bool } */ TRUE /* @sqlay { type: paramEnd } */
 WHERE field_journal_observations.id = /* @sqlay { type: param id: observationId } */ 'obs-100' /* @sqlay { type: paramEnd } */;
 
 /* @sqlay

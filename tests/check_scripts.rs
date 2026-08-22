@@ -667,8 +667,13 @@ if [ "$#" -eq 4 ] \
       ;;
     "$TMPDIR"/sqlay-examples.*/sqlite/field-journal/assert-builder-runtime.ts)
       if ! grep -q 'listSiteObservations' "$4" \
-        || ! grep -q 'addObservationTags' "$4"; then
-        echo "expected field journal runtime assertions for Slot and Repeat builders" >&2
+        || ! grep -q 'addObservationTags' "$4" \
+        || ! grep -q 'node:sqlite' "$4"; then
+        echo "expected field journal runtime assertions for Slot, Repeat, and database binding" >&2
+        exit 64
+      fi
+      if [ ! -f "$SQLAY_SQLITE_TEST_DATABASE_FILE" ]; then
+        echo "expected field journal runtime assertions to receive the temporary database path" >&2
         exit 64
       fi
       ;;

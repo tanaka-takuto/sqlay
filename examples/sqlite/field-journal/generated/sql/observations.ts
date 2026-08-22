@@ -14,13 +14,13 @@ export type listSiteObservations_Input = {
 };
 
 export type listSiteObservations_Row = {
-  observationId: string;
-  siteName: string;
-  speciesName: string;
-  observedAt: string;
-  individualCount: number;
+  observationId: string | null;
+  siteName: string | null;
+  speciesName: string | null;
+  observedAt: string | null;
+  individualCount: number | null;
   notes: string | null;
-  reviewed: boolean;
+  reviewed: unknown | null;
 };
 
 export type listSiteObservations_Output = listSiteObservations_Row[];
@@ -73,13 +73,13 @@ export type findObservationById_Input = {
 };
 
 export type findObservationById_Row = {
-  observationId: string;
-  siteName: string;
-  speciesName: string;
-  observedAt: string;
-  individualCount: number;
+  observationId: string | null;
+  siteName: string | null;
+  speciesName: string | null;
+  observedAt: string | null;
+  individualCount: number | null;
   notes: string | null;
-  reviewed: boolean;
+  reviewed: unknown | null;
 };
 
 export type findObservationById_Output = findObservationById_Row | null;

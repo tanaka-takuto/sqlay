@@ -14,10 +14,10 @@ export type createObservation_Input = {
 
 export function createObservation(
   input: createObservation_Input,
-): { sql: string; params: readonly [string, string, string, string, number, string | null, boolean] } {
+): { sql: string; params: readonly [string, string, string, string, number, string | null, 0 | 1] } {
   return {
     sql: "\nINSERT INTO field_journal_observations (\n  id,\n  site_id,\n  species_name,\n  observed_at,\n  individual_count,\n  notes,\n  reviewed\n) VALUES (\n  ?,\n  ?,\n  ?,\n  ?,\n  ?,\n  ?,\n  ?\n);\n\n",
-    params: [input.observationId, input.siteId, input.speciesName, input.observedAt, input.individualCount, input.notes, input.reviewed] as const,
+    params: [input.observationId, input.siteId, input.speciesName, input.observedAt, input.individualCount, input.notes, input.reviewed ? 1 : 0] as const,
   };
 }
 
@@ -28,10 +28,10 @@ export type markObservationReviewed_Input = {
 
 export function markObservationReviewed(
   input: markObservationReviewed_Input,
-): { sql: string; params: readonly [boolean, string] } {
+): { sql: string; params: readonly [0 | 1, string] } {
   return {
     sql: "\nUPDATE field_journal_observations\nSET reviewed = ?\nWHERE field_journal_observations.id = ?;\n\n",
-    params: [input.reviewed, input.observationId] as const,
+    params: [input.reviewed ? 1 : 0, input.observationId] as const,
   };
 }
 

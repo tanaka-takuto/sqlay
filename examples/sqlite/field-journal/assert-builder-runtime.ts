@@ -1,3 +1,5 @@
+import { DatabaseSync } from "node:sqlite";
+
 import {
   findObservationById,
   listSiteObservations,
@@ -82,7 +84,7 @@ assertDeepEqual(create.params, [
   "2026-08-22T05:45:00+09:00",
   3,
   null,
-  false,
+  0,
 ]);
 
 const markReviewed = markObservationReviewed({
@@ -93,7 +95,7 @@ assertEqual(
   normalizeSql(markReviewed.sql),
   "UPDATE field_journal_observations SET reviewed = ? WHERE field_journal_observations.id = ?;",
 );
-assertDeepEqual(markReviewed.params, [true, "obs-100"]);
+assertDeepEqual(markReviewed.params, [1, "obs-100"]);
 
 const deleteDraft = deleteDraftObservation({ observationId: "obs-100" });
 assertEqual(
@@ -118,6 +120,36 @@ assertDeepEqual(addTags.params, [
   "obs-100",
   "mammal",
 ]);
+
+const databaseFile = process.env.SQLAY_SQLITE_TEST_DATABASE_FILE;
+if (databaseFile === undefined) {
+  throw new Error("SQLAY_SQLITE_TEST_DATABASE_FILE is required");
+}
+
+const database = new DatabaseSync(databaseFile);
+try {
+  database.prepare(create.sql).run(...create.params);
+  assertDeepEqual(
+    database
+      .prepare(
+        "SELECT reviewed, typeof(reviewed) AS storageType FROM field_journal_observations WHERE id = ?",
+      )
+      .get("obs-100"),
+    { reviewed: 0, storageType: "integer" },
+  );
+
+  database.prepare(markReviewed.sql).run(...markReviewed.params);
+  assertDeepEqual(
+    database
+      .prepare(
+        "SELECT reviewed, typeof(reviewed) AS storageType FROM field_journal_observations WHERE id = ?",
+      )
+      .get("obs-100"),
+    { reviewed: 1, storageType: "integer" },
+  );
+} finally {
+  database.close();
+}
 
 function normalizeSql(sql: string): string {
   return sql.replace(/\s+/g, " ").trim();

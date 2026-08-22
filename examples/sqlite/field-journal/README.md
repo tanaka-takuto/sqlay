@@ -21,6 +21,13 @@ observation count to a small safe integer. This override changes TypeScript
 annotations only; it does not convert values, validate inputs, or configure a
 database driver.
 
+The `reviewed` Params use `valueType: bool`. Their generated TypeScript inputs are
+`boolean`, while the builders normalize `false` and `true` to SQLite bind values
+`0` and `1`. Generated code still imports no SQLite driver. Because SQLite returns
+stored boolean declarations through integer values, generated result fields remain
+`unknown`; application code should decode only the values its storage contract
+accepts, rather than coercing arbitrary values with `Boolean(value)`.
+
 ## Create the database
 
 Run these commands from this directory:
@@ -58,4 +65,6 @@ transactions remain application responsibilities.
 The generated files under `generated/` are committed compiler output. The example
 check creates a database only in a temporary project copy, regenerates the builders,
 compares them byte for byte with the committed output, and runs `tsc --noEmit` plus
-the builder SQL and params assertions.
+the builder SQL and params assertions. The runtime assertion also passes generated
+mutation SQL and params directly to `node:sqlite` and verifies that `reviewed` is
+stored as the SQLite integer values `0` and `1`.
