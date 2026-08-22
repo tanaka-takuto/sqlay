@@ -83,7 +83,6 @@ Run only the generated TypeScript type checks with:
 ```sh
 npm run typecheck:examples
 npm run typecheck:fixtures
-npm run typecheck:sqlite-fixtures
 ```
 
 Run the MySQL-backed example E2E check against a running MySQL service:
@@ -241,6 +240,18 @@ The MySQL fixture workflow starts a MySQL 8.4 service and runs:
 
 ```sh
 script/check-mysql-fixtures.sh
+```
+
+SQLite fixture CI follows the same trigger and reusable workflow split:
+
+- Trigger layer: `.github/workflows/on_pull_request_sqlite-fixtures-check.yml` and `.github/workflows/on_push_sqlite-fixtures-check.yml`
+- Reusable Workflow layer: `.github/workflows/_sqlite-fixtures-check.yml`
+- Composite Action layer: `.github/actions/setup-node/action.yml`
+
+The SQLite fixture workflow installs the SQLite command-line tool and runs:
+
+```sh
+script/check-sqlite-fixtures.sh
 ```
 
 Rust lint policy is defined in `Cargo.toml`. The default is intentionally strict:

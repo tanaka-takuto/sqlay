@@ -523,7 +523,6 @@ Type-check committed generated TypeScript artifacts directly with:
 ```sh
 npm run typecheck:examples
 npm run typecheck:fixtures
-npm run typecheck:sqlite-fixtures
 ```
 
 Run the MySQL-backed example E2E check against a running MySQL service with:

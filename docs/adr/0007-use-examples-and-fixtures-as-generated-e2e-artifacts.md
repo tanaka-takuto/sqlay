@@ -45,6 +45,11 @@ purpose, such as `fixtures/sql/valid/type_metadata_matrix.sql`, rather than by a
 broad name such as `metadata.sql`. Practical business-style reads belong in
 examples, not SQL fixtures.
 
+The SQLite fixture project lives under `fixtures/sqlite/`, with SQL sources under
+`fixtures/sqlite/valid/` and `fixtures/sqlite/sqlay.config.json` making it
+executable against an existing file database. Its check creates that database from
+`fixtures/sqlite/schema.sql` only inside a temporary fixture copy.
+
 Generated TypeScript expected artifacts are committed for both examples and
 fixtures. They are treated as compiler output, not as hand-authored sample code.
 
@@ -72,6 +77,8 @@ The check scripts should be named by scope:
   and TypeScript checks.
 - `script/check-mysql-fixtures.sh` runs DB-backed MySQL fixture checks, generated
   comparison, and fixture TypeScript checks.
+- `script/check-sqlite-fixtures.sh` runs DB-backed SQLite fixture checks against a
+  temporary existing file, generated comparison, and fixture TypeScript checks.
 
 TypeScript package scripts should also be named by scope:
 
