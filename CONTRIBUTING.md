@@ -26,6 +26,12 @@ Install Node.js and the pinned TypeScript dependency used by generated-code chec
 npm ci
 ```
 
+Install the SQLite command-line tool used by the SQLite fixture check:
+
+```sh
+brew install sqlite
+```
+
 Verify the local toolchain:
 
 ```sh
@@ -33,11 +39,12 @@ rustc --version
 cargo --version
 cargo fmt --version
 cargo clippy --version
+sqlite3 --version
 ```
 
 ## Start local MySQL
 
-The MVP uses MySQL 8.x for metadata checks. Start the development service with:
+The MySQL-backed metadata checks use MySQL 8.x. Start the development service with:
 
 ```sh
 script/mysql-up.sh
@@ -76,6 +83,7 @@ Run only the generated TypeScript type checks with:
 ```sh
 npm run typecheck:examples
 npm run typecheck:fixtures
+npm run typecheck:sqlite-fixtures
 ```
 
 Run the MySQL-backed example E2E check against a running MySQL service:
@@ -89,6 +97,17 @@ Run the MySQL-backed fixture checks against a running MySQL service:
 ```sh
 DATABASE_URL='mysql://sqlay:sqlay@127.0.0.1:3306/sqlay' script/check-mysql-fixtures.sh
 ```
+
+Run the SQLite fixture check with the local `sqlite3` command:
+
+```sh
+script/check-sqlite-fixtures.sh
+```
+
+The script creates an existing SQLite database only in a temporary fixture copy,
+checks that `sqlay check` writes nothing, regenerates the expected TypeScript with
+`sqlay compile`, runs `tsc --noEmit`, and verifies generated SQL and parameter
+ordering. It leaves the working fixture directory unchanged.
 
 ## Set up Git hooks
 

@@ -523,6 +523,7 @@ Type-check committed generated TypeScript artifacts directly with:
 ```sh
 npm run typecheck:examples
 npm run typecheck:fixtures
+npm run typecheck:sqlite-fixtures
 ```
 
 Run the MySQL-backed example E2E check against a running MySQL service with:
@@ -536,3 +537,15 @@ Run the MySQL-backed fixture checks with:
 ```sh
 DATABASE_URL='mysql://sqlay:sqlay@127.0.0.1:3306/sqlay' script/check-mysql-fixtures.sh
 ```
+
+Run the SQLite fixture check with a local `sqlite3` command:
+
+```sh
+script/check-sqlite-fixtures.sh
+```
+
+The SQLite check creates an existing database file only inside a temporary fixture
+copy, runs both `sqlay check` and `sqlay compile`, compares the real generated
+TypeScript with the committed artifact, type-checks it with `tsc --noEmit`, and
+executes the generated builders' SQL/parameter-order assertions. It does not create
+a database or generated output in the working fixture directory.

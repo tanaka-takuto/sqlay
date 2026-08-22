@@ -289,8 +289,9 @@ JSON runs use `summary: null`; diagnostics are the stable failure contract.
 
 ## Near-Term Direction
 
-The near-term direction is to stabilize the current builder workflow while adding
-SQLite through the dialect-neutral architecture defined by ADR 0014:
+The near-term direction is to stabilize the current builder workflow while
+maintaining SQLite support through the dialect-neutral architecture defined by ADR
+0014:
 
 - keep contributor and user documentation aligned with the supported and accepted
   post-MVP scope.
