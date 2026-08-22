@@ -11,3 +11,5 @@ mod config;
 mod help;
 #[path = "cli_binary/init.rs"]
 mod init;
+#[path = "cli_binary/sqlite.rs"]
+mod sqlite;

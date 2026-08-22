@@ -9,4 +9,4 @@ mod help;
 mod output;
 mod runtime;
 
-pub use runtime::{DefaultPipeline, run};
+pub use runtime::{ConfiguredDialectAnalyzer, ConfiguredMetadataProvider, DefaultPipeline, run};
