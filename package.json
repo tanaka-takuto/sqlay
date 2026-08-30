@@ -9,7 +9,7 @@
     "typecheck:sqlite-fixtures": "tsc --noEmit --project fixtures/sqlite/tsconfig.json"
   },
   "devDependencies": {
-    "@types/node": "^24.13.2",
+    "@types/node": "^26.2.0",
     "mysql2": "^3.22.5",
     "tsx": "^4.23.0",
     "typescript": "7.0.2"
