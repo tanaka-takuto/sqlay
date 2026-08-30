@@ -129,6 +129,38 @@ fn renders_param_expression_with_safe_property_access() {
 }
 
 #[test]
+fn renders_boolean_integer_encoding_without_changing_input_type() {
+    let query = core::CompiledQuery::new(
+        core::QueryId::new("findUsersByState".to_owned()),
+        "SELECT id FROM users WHERE active = ? AND archived = ?;".to_owned(),
+        core::Cardinality::Many,
+        vec![
+            core::InputField::new("active".to_owned(), core::CoreType::Bool, false),
+            core::InputField::new("archived".to_owned(), core::CoreType::Bool, true),
+        ],
+        vec![core::ResultColumn::new(
+            "id".to_owned(),
+            core::CoreType::Int64,
+            false,
+        )],
+    )
+    .with_params(vec![
+        core::ParamBinding::new("active".to_owned(), core::CoreType::Bool, false)
+            .with_encoding(core::ParamEncoding::BooleanAsInteger),
+        core::ParamBinding::new("archived".to_owned(), core::CoreType::Bool, true)
+            .with_encoding(core::ParamEncoding::BooleanAsInteger),
+    ]);
+
+    let rendered = render_query(&query);
+
+    assert!(rendered.contains("  active: boolean;\n  archived: boolean | null;"));
+    assert!(rendered.contains("params: readonly [0 | 1, 0 | 1 | null]"));
+    assert!(rendered.contains(
+        "params: [input.active ? 1 : 0, input.archived === null ? null : input.archived ? 1 : 0] as const,"
+    ));
+}
+
+#[test]
 fn renders_param_types_with_existing_core_type_mapping() {
     let query = core::CompiledQuery::new(
         core::QueryId::new("inspectParamTypes".to_owned()),

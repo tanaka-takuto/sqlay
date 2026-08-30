@@ -31,10 +31,17 @@ The repository separates examples from fixtures by audience and purpose:
   coverage, edge cases, and precise regression detection over readability as a
   sample application.
 
-The initial user-facing example project is `examples/bookstore/`. It uses
-`bookstore_` as the database object prefix and keeps generated TypeScript under the
-example's configured `output.dir`. The example output directory is `generated/`, so
-SQL files under `sql/**/*.sql` generate files such as `generated/sql/books.ts`.
+User-facing example projects are grouped first by database dialect and then by
+domain:
+
+- `examples/mysql/bookstore/` demonstrates a MySQL online bookstore and uses
+  `bookstore_` as its database object prefix.
+- `examples/sqlite/field-journal/` demonstrates a SQLite field journal backed by an
+  existing file database.
+
+Each example keeps generated TypeScript under its configured `output.dir`. The
+example output directory is `generated/`, so SQL files under `sql/**/*.sql`
+generate files such as `generated/sql/books.ts`.
 
 SQL fixtures use `fixture_` as the database object prefix. SQL fixture source files
 live under `fixtures/sql/valid/` and `fixtures/sql/invalid/`, with
@@ -44,6 +51,11 @@ isolated sqlay project. The primary positive MySQL fixture should be named by
 purpose, such as `fixtures/sql/valid/type_metadata_matrix.sql`, rather than by a
 broad name such as `metadata.sql`. Practical business-style reads belong in
 examples, not SQL fixtures.
+
+The SQLite fixture project lives under `fixtures/sqlite/`, with SQL sources under
+`fixtures/sqlite/valid/` and `fixtures/sqlite/sqlay.config.json` making it
+executable against an existing file database. Its check creates that database from
+`fixtures/sqlite/schema.sql` only inside a temporary fixture copy.
 
 Generated TypeScript expected artifacts are committed for both examples and
 fixtures. They are treated as compiler output, not as hand-authored sample code.
@@ -62,8 +74,10 @@ directory byte comparison is the E2E oracle.
 
 Schema files used by examples and fixtures are idempotent reset scripts for their
 own prefixes. They should drop and recreate only their owned objects, such as
-`bookstore_` or `fixture_` tables. The MySQL development service should start a
-database only; fixture or example data loading belongs to the relevant check script.
+`bookstore_`, `field_journal_`, or `fixture_` tables. The MySQL development service
+should start a database only; fixture or example data loading belongs to the
+relevant check script. SQLite example and fixture checks create their database files
+inside temporary project copies before invoking `sqlay`.
 
 The check scripts should be named by scope:
 
@@ -72,6 +86,8 @@ The check scripts should be named by scope:
   and TypeScript checks.
 - `script/check-mysql-fixtures.sh` runs DB-backed MySQL fixture checks, generated
   comparison, and fixture TypeScript checks.
+- `script/check-sqlite-fixtures.sh` runs DB-backed SQLite fixture checks against a
+  temporary existing file, generated comparison, and fixture TypeScript checks.
 
 TypeScript package scripts should also be named by scope:
 
@@ -92,7 +108,8 @@ comparison intentionally catches formatting, escaping, path mapping, and type-sh
 changes.
 
 The baseline check no longer claims to be "all" checks. DB-backed examples and
-fixtures remain separate checks because they require MySQL and schema reset.
+fixtures remain separate checks because they require database setup and schema
+reset, including a MySQL service or a temporary SQLite file as appropriate.
 
 Local and CI database state is more reproducible because each DB-backed check owns
 its prefix-scoped reset instead of relying on container initialization side effects.

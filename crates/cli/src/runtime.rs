@@ -5,13 +5,16 @@ use std::process::ExitCode;
 
 use sqlay_adapters::config_jsonc::{JsoncConfigLoader, JsoncConfigTemplateWriter};
 use sqlay_adapters::dialect_mysql::MysqlDialectAnalyzer;
+use sqlay_adapters::dialect_sqlite::SqliteDialectAnalyzer;
 use sqlay_adapters::metadata::mysql::sqlx::SqlxMysqlMetadataProvider;
+use sqlay_adapters::metadata::sqlite::sqlx::SqlxSqliteMetadataProvider;
 use sqlay_adapters::output_fs::FileSystemGeneratedFileWriter;
 use sqlay_adapters::source_fs::FileSystemSourceReader;
 use sqlay_adapters::target::typescript::TypeScriptTargetGenerator;
 use sqlay_app::{
     self as app, CompilePipeline, ConfigLoader, DefaultCompilationPlanner, DefaultCompileUseCase,
-    DefaultProjectInitializer, DefaultQueryCompiler, MetadataProvider, MutationMetadataProvider,
+    DefaultProjectInitializer, DefaultQueryCompiler, DialectAnalyzer, MetadataProvider,
+    MutationAnalyzer, MutationMetadataProvider,
 };
 use sqlay_core as core;
 
@@ -36,11 +39,98 @@ impl app::CompileUseCasePorts for DefaultPipeline {
     type ConfigLoader = JsoncConfigLoader;
     type CompilationPlanner = DefaultCompilationPlanner;
     type SourceReader = FileSystemSourceReader;
-    type DialectAnalyzer = MysqlDialectAnalyzer;
-    type MetadataProvider = SqlxMysqlMetadataProvider;
+    type DialectAnalyzer = ConfiguredDialectAnalyzer;
+    type MetadataProvider = ConfiguredMetadataProvider;
     type QueryCompiler = DefaultQueryCompiler;
     type TargetGenerator = TypeScriptTargetGenerator;
     type GeneratedFileWriter = FileSystemGeneratedFileWriter;
+}
+
+/// Dialect analyzer selected from the validated project configuration.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ConfiguredDialectAnalyzer {
+    dialect: core::DatabaseDialect,
+}
+
+impl ConfiguredDialectAnalyzer {
+    /// Select the analyzer for a configured database dialect.
+    #[must_use]
+    pub const fn new(dialect: core::DatabaseDialect) -> Self {
+        Self { dialect }
+    }
+}
+
+impl DialectAnalyzer for ConfiguredDialectAnalyzer {
+    fn analyze(&self, query: &core::RawQuery) -> core::DiagnosticResult<core::AnalyzedQuery> {
+        match self.dialect {
+            core::DatabaseDialect::MySql => MysqlDialectAnalyzer.analyze(query),
+            core::DatabaseDialect::Sqlite => SqliteDialectAnalyzer.analyze(query),
+        }
+    }
+}
+
+impl MutationAnalyzer for ConfiguredDialectAnalyzer {
+    fn analyze_mutation(
+        &self,
+        mutation: &core::RawMutation,
+    ) -> core::DiagnosticResult<core::AnalyzedMutation> {
+        match self.dialect {
+            core::DatabaseDialect::MySql => MysqlDialectAnalyzer.analyze_mutation(mutation),
+            core::DatabaseDialect::Sqlite => SqliteDialectAnalyzer.analyze_mutation(mutation),
+        }
+    }
+}
+
+/// Lazy metadata provider selected from the validated project configuration.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConfiguredMetadataProvider {
+    database: core::DatabaseConfig,
+}
+
+impl ConfiguredMetadataProvider {
+    /// Build a lazy provider without reading the configured environment variable.
+    #[must_use]
+    pub fn new(database: &core::DatabaseConfig) -> Self {
+        Self {
+            database: database.clone(),
+        }
+    }
+}
+
+impl MetadataProvider for ConfiguredMetadataProvider {
+    fn describe(
+        &self,
+        query: &core::RawQuery,
+        analysis: &core::AnalyzedQuery,
+    ) -> core::DiagnosticResult<core::DbQueryMetadata> {
+        let database_url = database_url_from_env(&self.database)?;
+        match self.database.dialect() {
+            core::DatabaseDialect::MySql => SqlxMysqlMetadataProvider::new(database_url)
+                .with_database_url_env(self.database.url_env().to_owned())
+                .describe(query, analysis),
+            core::DatabaseDialect::Sqlite => SqlxSqliteMetadataProvider::new(database_url)
+                .with_database_url_env(self.database.url_env().to_owned())
+                .describe(query, analysis),
+        }
+    }
+}
+
+impl MutationMetadataProvider for ConfiguredMetadataProvider {
+    fn describe_mutation(
+        &self,
+        mutation: &core::RawMutation,
+        analysis: &core::AnalyzedMutation,
+    ) -> core::DiagnosticResult<core::DbMutationMetadata> {
+        let database_url = database_url_from_env(&self.database)?;
+        match self.database.dialect() {
+            core::DatabaseDialect::MySql => SqlxMysqlMetadataProvider::new(database_url)
+                .with_database_url_env(self.database.url_env().to_owned())
+                .describe_mutation(mutation, analysis),
+            core::DatabaseDialect::Sqlite => SqlxSqliteMetadataProvider::new(database_url)
+                .with_database_url_env(self.database.url_env().to_owned())
+                .describe_mutation(mutation, analysis),
+        }
+    }
 }
 
 /// Run the `sqlay` command-line interface.
@@ -150,8 +240,8 @@ fn run_configured_use_case(
     planner: &impl app::CompilationPlanner,
 ) -> core::DiagnosticResult<ConfiguredCommandOutcome> {
     let source_reader = FileSystemSourceReader;
-    let dialect_analyzer = MysqlDialectAnalyzer;
-    let metadata_provider = LazySqlxMysqlMetadataProvider::new(config.database());
+    let dialect_analyzer = ConfiguredDialectAnalyzer::new(config.database().dialect());
+    let metadata_provider = ConfiguredMetadataProvider::new(config.database());
     let query_compiler = DefaultQueryCompiler;
     let target_generator = TypeScriptTargetGenerator;
     let generated_file_writer = FileSystemGeneratedFileWriter;
@@ -190,43 +280,6 @@ fn run_configured_use_case(
 
             Ok(ConfiguredCommandOutcome::Compile(outcome))
         }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct LazySqlxMysqlMetadataProvider<'a> {
-    database: &'a core::DatabaseConfig,
-}
-
-impl<'a> LazySqlxMysqlMetadataProvider<'a> {
-    const fn new(database: &'a core::DatabaseConfig) -> Self {
-        Self { database }
-    }
-
-    fn provider(self) -> core::DiagnosticResult<SqlxMysqlMetadataProvider> {
-        let database_url = database_url_from_env(self.database)?;
-        Ok(SqlxMysqlMetadataProvider::new(database_url)
-            .with_database_url_env(self.database.url_env().to_owned()))
-    }
-}
-
-impl MetadataProvider for LazySqlxMysqlMetadataProvider<'_> {
-    fn describe(
-        &self,
-        query: &core::RawQuery,
-        analysis: &core::AnalyzedQuery,
-    ) -> core::DiagnosticResult<core::DbQueryMetadata> {
-        self.provider()?.describe(query, analysis)
-    }
-}
-
-impl MutationMetadataProvider for LazySqlxMysqlMetadataProvider<'_> {
-    fn describe_mutation(
-        &self,
-        mutation: &core::RawMutation,
-        analysis: &core::AnalyzedMutation,
-    ) -> core::DiagnosticResult<core::DbMutationMetadata> {
-        self.provider()?.describe_mutation(mutation, analysis)
     }
 }
 

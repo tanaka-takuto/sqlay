@@ -1,0 +1,29 @@
+name: "[sqlite-fixtures] Check (Reusable Workflow)"
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  sqlite-fixtures:
+    name: SQLite fixture checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
+
+      - name: Install SQLite client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes sqlite3
+
+      - name: Run SQLite fixture checks
+        run: script/check-sqlite-fixtures.sh

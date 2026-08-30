@@ -1,4 +1,4 @@
-use crate::{ColumnTypeReference, CoreType, CoreTypeRef, ResultColumn};
+use crate::{ColumnTypeReference, CoreType, CoreTypeRef, ParamEncoding, ResultColumn};
 
 /// Database metadata description normalized for compilation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -169,13 +169,14 @@ impl DbResultColumn {
 pub struct DbParamUsage {
     id: String,
     type_ref: CoreTypeRef,
+    encoding: ParamEncoding,
     schema_column_reference: Option<ColumnTypeReference>,
 }
 
 impl PartialEq for DbParamUsage {
     fn eq(&self, other: &Self) -> bool {
         // Schema column references are provenance metadata and do not define Param usage identity.
-        self.id == other.id && self.type_ref == other.type_ref
+        self.id == other.id && self.type_ref == other.type_ref && self.encoding == other.encoding
     }
 }
 
@@ -194,8 +195,16 @@ impl DbParamUsage {
         Self {
             id,
             type_ref,
+            encoding: ParamEncoding::Identity,
             schema_column_reference: None,
         }
+    }
+
+    /// Attach the database value encoding for this Param occurrence.
+    #[must_use]
+    pub const fn with_encoding(mut self, encoding: ParamEncoding) -> Self {
+        self.encoding = encoding;
+        self
     }
 
     /// Attach the schema column reference that supplied this Param metadata, when available.
@@ -221,6 +230,12 @@ impl DbParamUsage {
     #[must_use]
     pub const fn type_ref(&self) -> &CoreTypeRef {
         &self.type_ref
+    }
+
+    /// Database-independent runtime encoding for the bound value.
+    #[must_use]
+    pub const fn encoding(&self) -> ParamEncoding {
+        self.encoding
     }
 
     /// Schema column reference that supplied this Param metadata, when available.

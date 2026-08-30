@@ -1,0 +1,15 @@
+name: "[sqlite-fixtures] Pull Request"
+
+on:
+  pull_request:
+    branches:
+      - main
+      - "issue/#*"
+
+permissions:
+  contents: read
+
+jobs:
+  sqlite-fixtures:
+    name: Call SQLite fixtures check
+    uses: ./.github/workflows/_sqlite-fixtures-check.yml

@@ -68,7 +68,8 @@ Override targets:
 
 - `core.<core-type>` changes the broad mapping for a sqlay Core type such as `decimal` or `int64`.
 - `columns.<table.column>` targets a schema-backed column in the current database.
-- `columns.<database.table.column>` targets a schema-backed column in an explicit MySQL database.
+- `columns.<database.table.column>` targets a schema-backed column in an explicit MySQL database;
+  SQLite accepts `columns.main.<table.column>` for an explicitly `main`-qualified table.
 - `builders.<id>.fields.<field>` targets a generated SELECT result row field.
 - `builders.<id>.params.<param>` targets a direct Param input field and that Param's fixed params
   tuple entries.
@@ -265,6 +266,14 @@ export type listOrders_Row = {
 The same rule applies to direct Param inputs and Repeat item fields. Dynamic builders with Slots or
 Repeats keep their runtime `params` array as `readonly SqlParam[]`; type mapping narrows input and
 row annotations, not runtime SQL parameter packing.
+
+## Runtime Param Encoding
+
+Type mapping overrides do not change a Param encoding carried by Core IR. For example, an SQLite
+Param with `valueType: bool` keeps a TypeScript `boolean` input by default, but the generated builder
+returns `0 | 1` in its ordered params array. An override may change the public input annotation, but
+the fixed params tuple still describes the encoded value (`0 | 1`, or `0 | 1 | null` for a nullable
+Param). Dynamic builders continue to expose `readonly SqlParam[]`.
 
 ## Param `valueType` Is Different
 

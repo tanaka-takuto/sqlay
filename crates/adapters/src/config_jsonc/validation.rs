@@ -141,17 +141,19 @@ fn validate_database_dialect(
     location: Option<&core::SourceLocation>,
     diagnostics: &mut core::DiagnosticReport,
 ) -> Option<core::DatabaseDialect> {
-    if value == "mysql" {
-        Some(core::DatabaseDialect::MySql)
-    } else {
-        push_error(
-            diagnostics,
-            format!(
-                "unsupported config field `database.dialect` value `{value}`; supported value is `mysql`"
-            ),
-            location,
-        );
-        None
+    match value {
+        "mysql" => Some(core::DatabaseDialect::MySql),
+        "sqlite" => Some(core::DatabaseDialect::Sqlite),
+        _ => {
+            push_error(
+                diagnostics,
+                format!(
+                    "unsupported config field `database.dialect` value `{value}`; supported values are `mysql` and `sqlite`"
+                ),
+                location,
+            );
+            None
+        }
     }
 }
 

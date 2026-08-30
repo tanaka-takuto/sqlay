@@ -1,0 +1,23 @@
+{
+  "source": {
+    "include": ["valid/**/*.sql"],
+    "exclude": []
+  },
+  "output": {
+    "dir": "generated"
+  },
+  "database": {
+    "dialect": "sqlite",
+    "urlEnv": "SQLITE_DATABASE_URL"
+  },
+  "target": {
+    "language": "typescript",
+    "typescript": {
+      "typeMapping": {
+        "columns": {
+          "main.fixture_orders.id": "number"
+        }
+      }
+    }
+  }
+}

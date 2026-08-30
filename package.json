@@ -1,8 +1,12 @@
 {
   "private": true,
   "scripts": {
-    "typecheck:examples": "tsc --noEmit --project examples/bookstore/tsconfig.json",
-    "typecheck:fixtures": "tsc --noEmit --project fixtures/sql/tsconfig.json"
+    "typecheck:examples": "npm run typecheck:mysql-examples && npm run typecheck:sqlite-examples",
+    "typecheck:fixtures": "npm run typecheck:mysql-fixtures && npm run typecheck:sqlite-fixtures",
+    "typecheck:mysql-examples": "tsc --noEmit --project examples/mysql/bookstore/tsconfig.json",
+    "typecheck:mysql-fixtures": "tsc --noEmit --project fixtures/sql/tsconfig.json",
+    "typecheck:sqlite-examples": "tsc --noEmit --project examples/sqlite/field-journal/tsconfig.json",
+    "typecheck:sqlite-fixtures": "tsc --noEmit --project fixtures/sqlite/tsconfig.json"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",

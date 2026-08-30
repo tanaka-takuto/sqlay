@@ -1,12 +1,83 @@
 use std::io::Write;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 const DATABASE_URL: &str = "mysql://sqlay:sqlay@127.0.0.1:3306/sqlay";
 
 #[test]
-fn example_check_typechecks_temporary_generated_project() {
+fn pre_push_accepts_issue_scoped_stack_branch() {
+    let fixture = ScriptFixture::new("sqlay-pre-push-stacked-branch");
+    write_executable(&fixture.fake_bin.join("cargo"), "#!/bin/sh\nexit 0\n");
+    let path = format!(
+        "{}:{}",
+        fixture.fake_bin.display(),
+        std::env::var("PATH").expect("PATH should be set")
+    );
+    let mut child = Command::new(repo_root().join(".githooks/pre-push"))
+        .env("HOME", &fixture.home)
+        .env("PATH", path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("pre-push hook should run");
+
+    child
+        .stdin
+        .take()
+        .expect("pre-push stdin should be piped")
+        .write_all(
+            b"refs/heads/issue/#334-sqlite-adr 1111111111111111111111111111111111111111 refs/heads/issue/#334-sqlite-adr 0000000000000000000000000000000000000000\n",
+        )
+        .expect("pre-push update should be written");
+    let output = child
+        .wait_with_output()
+        .expect("pre-push hook should finish");
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn examples_are_grouped_by_database_dialect() {
+    let repo_root = repo_root();
+    let mysql_example = repo_root.join("examples/mysql/bookstore/sqlay.config.json");
+    let sqlite_example = repo_root.join("examples/sqlite/field-journal/sqlay.config.json");
+
+    assert!(
+        mysql_example.is_file(),
+        "the bookstore example should be grouped under examples/mysql"
+    );
+    assert!(
+        sqlite_example.is_file(),
+        "the field-journal example should be grouped under examples/sqlite"
+    );
+    assert!(
+        !repo_root.join("examples/bookstore").exists(),
+        "examples should not leave the database dialect implicit"
+    );
+
+    let mysql_config = std::fs::read_to_string(mysql_example)
+        .expect("the MySQL example config should be readable");
+    let sqlite_config = std::fs::read_to_string(sqlite_example)
+        .expect("the SQLite example config should be readable");
+    assert!(
+        mysql_config.contains(r#""dialect": "mysql""#),
+        "the MySQL directory should contain a MySQL project"
+    );
+    assert!(
+        sqlite_config.contains(r#""dialect": "sqlite""#),
+        "the SQLite directory should contain a SQLite project"
+    );
+}
+
+#[test]
+fn example_check_regenerates_and_typechecks_mysql_and_sqlite_projects() {
     let fixture = ScriptFixture::new("sqlay-check-examples");
 
     let output = fixture.run_script("script/check-examples.sh");
@@ -18,6 +89,34 @@ fn example_check_typechecks_temporary_generated_project() {
         String::from_utf8_lossy(&output.stderr)
     );
 
+    let cargo_calls = std::fs::read_to_string(fixture.root.join("cargo-calls.log"))
+        .expect("cargo call log should be written");
+    assert!(
+        cargo_calls.contains("/mysql/bookstore/sqlay.config.json"),
+        "example check should compile the MySQL bookstore project: {cargo_calls}"
+    );
+    let sqlite_cargo_calls = cargo_calls
+        .lines()
+        .filter(|call| call.contains("/sqlite/field-journal/sqlay.config.json"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sqlite_cargo_calls.len(),
+        2,
+        "example check should check and compile the SQLite field journal project: {cargo_calls}"
+    );
+    assert!(
+        sqlite_cargo_calls[0].contains(" -- check --config ")
+            && sqlite_cargo_calls[1].contains(" -- compile --config "),
+        "SQLite check should run before compile: {cargo_calls}"
+    );
+
+    let sqlite_calls = std::fs::read_to_string(fixture.root.join("sqlite3-calls.log"))
+        .expect("sqlite3 call log should be written");
+    assert!(
+        sqlite_calls.contains("/sqlite/field-journal/field-journal.sqlite3"),
+        "SQLite example check should create a temporary field journal database: {sqlite_calls}"
+    );
+
     let npm_calls = std::fs::read_to_string(fixture.root.join("npm-calls.log"))
         .expect("npm call log should be written");
     assert!(
@@ -27,6 +126,10 @@ fn example_check_typechecks_temporary_generated_project() {
     assert!(
         npm_calls.contains("assert-query-results.ts"),
         "example check should run the query result assertion script, got: {npm_calls}"
+    );
+    assert!(
+        npm_calls.contains("assert-builder-runtime.ts"),
+        "example check should run SQLite builder assertions, got: {npm_calls}"
     );
 }
 
@@ -41,6 +144,95 @@ fn mysql_fixture_check_typechecks_temporary_generated_project() {
         "stdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn sqlite_fixture_check_uses_existing_database_and_typechecks_generated_project() {
+    let fixture = ScriptFixture::new("sqlay-check-sqlite-fixtures");
+    let fixture_repo = fixture.root.join("repo");
+    write_sqlite_fixture_contract_repo(&fixture_repo);
+
+    let output =
+        fixture.run_script_with_repo_root("script/check-sqlite-fixtures.sh", &fixture_repo);
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let cargo_calls = std::fs::read_to_string(fixture.root.join("cargo-calls.log"))
+        .expect("cargo call log should be written");
+    let check_position = cargo_calls
+        .find(" -- check --config ")
+        .expect("SQLite fixture check should run sqlay check");
+    let compile_position = cargo_calls
+        .find(" -- compile --config ")
+        .expect("SQLite fixture check should run sqlay compile");
+    assert!(
+        check_position < compile_position,
+        "sqlay check should run before compile: {cargo_calls}"
+    );
+
+    let sqlite_calls = std::fs::read_to_string(fixture.root.join("sqlite3-calls.log"))
+        .expect("sqlite3 call log should be written");
+    assert!(
+        sqlite_calls.contains("/sqlite/fixture.sqlite3"),
+        "SQLite fixture check should create the temporary database: {sqlite_calls}"
+    );
+
+    let npm_calls = std::fs::read_to_string(fixture.root.join("npm-calls.log"))
+        .expect("npm call log should be written");
+    assert!(
+        npm_calls.contains("exec -- tsc --noEmit --project "),
+        "SQLite fixture check should typecheck the generated project: {npm_calls}"
+    );
+    assert!(
+        npm_calls.contains("exec -- tsx ") && npm_calls.contains("assert-builder-runtime.ts"),
+        "SQLite fixture check should execute generated builder assertions: {npm_calls}"
+    );
+    let npm_cwds = std::fs::read_to_string(fixture.root.join("npm-cwds.log"))
+        .expect("npm cwd log should be written");
+    let expected_npm_cwd = fixture_repo.display().to_string();
+    assert!(
+        npm_cwds.lines().all(|cwd| cwd == expected_npm_cwd),
+        "SQLite npm checks should run from the repository root: {npm_cwds}"
+    );
+}
+
+#[test]
+fn sqlite_fixture_check_rejects_files_written_by_check() {
+    let fixture = ScriptFixture::new("sqlay-check-sqlite-fixtures-write-detection");
+    let fixture_repo = fixture.root.join("repo");
+    write_sqlite_fixture_contract_repo(&fixture_repo);
+
+    let output = fixture
+        .script_command("script/check-sqlite-fixtures.sh", &fixture_repo)
+        .env("SQLAY_FAKE_CHECK_WRITES", "1")
+        .output()
+        .expect("check script should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "SQLite fixture check should reject output written by sqlay check"
+    );
+    assert!(
+        stderr.contains("sqlay check wrote generated files"),
+        "stderr should explain the no-write contract: {stderr}"
+    );
+
+    let cargo_calls = std::fs::read_to_string(fixture.root.join("cargo-calls.log"))
+        .expect("cargo call log should be written");
+    assert!(
+        cargo_calls.contains(" -- check --config "),
+        "SQLite fixture check should run sqlay check: {cargo_calls}"
+    );
+    assert!(
+        !cargo_calls.contains(" -- compile --config "),
+        "SQLite fixture check should stop before compile: {cargo_calls}"
     );
 }
 
@@ -229,6 +421,7 @@ impl ScriptFixture {
         fixture.write_fake_cargo();
         fixture.write_fake_mysql();
         fixture.write_fake_npm();
+        fixture.write_fake_sqlite3();
         fixture
     }
 
@@ -241,6 +434,12 @@ impl ScriptFixture {
         script_path: &str,
         target_repo_root: &Path,
     ) -> std::process::Output {
+        self.script_command(script_path, target_repo_root)
+            .output()
+            .expect("check script should run")
+    }
+
+    fn script_command(&self, script_path: &str, target_repo_root: &Path) -> Command {
         let repo_root = repo_root();
         let path = format!(
             "{}:{}",
@@ -248,16 +447,18 @@ impl ScriptFixture {
             std::env::var("PATH").expect("PATH should be set")
         );
 
-        Command::new(repo_root.join(script_path))
+        let mut command = Command::new(repo_root.join(script_path));
+        command
             .env("DATABASE_URL", DATABASE_URL)
             .env("HOME", &self.home)
             .env("PATH", path)
             .env("SQLAY_REPO_ROOT", target_repo_root)
-            .env("TMPDIR", &self.root)
-            .output()
-            .expect("check script should run")
+            .env("TMPDIR", &self.root);
+        command
     }
 
+    // Keep the executable shell fixture contiguous so its command dispatch remains readable.
+    #[allow(clippy::too_many_lines)]
     fn write_fake_cargo(&self) {
         write_executable(
             &self.fake_bin.join("cargo"),
@@ -274,18 +475,77 @@ copy_generated() {
 
 case "$1" in
   run)
+    printf '%s\n' "$*" >> "$TMPDIR/cargo-calls.log"
     config_path=
-    while [ "$#" -gt 0 ]; do
-      if [ "$1" = "--config" ]; then
-        config_path=$2
-        break
+    sqlay_command=
+    after_separator=0
+    previous=
+    for arg in "$@"; do
+      if [ "$previous" = "--config" ]; then
+        config_path=$arg
+        previous=
+        continue
       fi
-      shift
+      if [ "$arg" = "--config" ]; then
+        previous=--config
+        continue
+      fi
+      if [ "$after_separator" -eq 1 ] && [ -z "$sqlay_command" ]; then
+        sqlay_command=$arg
+      fi
+      if [ "$arg" = "--" ]; then
+        after_separator=1
+      fi
     done
 
     if [ -n "$config_path" ]; then
       project_dir=$(CDPATH= cd "$(dirname "$config_path")" && pwd)
-      copy_generated "$SQLAY_REPO_ROOT/examples/bookstore/generated" "$project_dir/generated"
+      case "$config_path" in
+        "$TMPDIR"/sqlay-examples.*/mysql/bookstore/sqlay.config.json)
+          case "$sqlay_command" in
+            compile)
+              copy_generated "$SQLAY_REPO_ROOT/examples/mysql/bookstore/generated" "$project_dir/generated"
+              ;;
+            *)
+              echo "unexpected sqlay command for MySQL example: $sqlay_command" >&2
+              exit 64
+              ;;
+          esac
+          ;;
+        "$TMPDIR"/sqlay-examples.*/sqlite/field-journal/sqlay.config.json)
+          case "$sqlay_command" in
+            check) ;;
+            compile)
+              copy_generated "$SQLAY_REPO_ROOT/examples/sqlite/field-journal/generated" "$project_dir/generated"
+              ;;
+            *)
+              echo "unexpected sqlay command for SQLite example: $sqlay_command" >&2
+              exit 64
+              ;;
+          esac
+          ;;
+        "$TMPDIR"/sqlay-sqlite-fixtures.*/sqlite/sqlay.config.json)
+          case "$sqlay_command" in
+            check)
+              if [ "${SQLAY_FAKE_CHECK_WRITES:-0}" = "1" ]; then
+                mkdir -p "$project_dir/generated"
+                printf '%s\n' '// unexpected check output' > "$project_dir/generated/unexpected.ts"
+              fi
+              ;;
+            compile)
+              copy_generated "$SQLAY_REPO_ROOT/fixtures/sqlite/generated" "$project_dir/generated"
+              ;;
+            *)
+              echo "unexpected sqlay command for SQLite fixture: $sqlay_command" >&2
+              exit 64
+              ;;
+          esac
+          ;;
+        *)
+          echo "unexpected sqlay config path: $config_path" >&2
+          exit 64
+          ;;
+      esac
       exit 0
     fi
 
@@ -318,6 +578,53 @@ esac
         );
     }
 
+    fn write_fake_sqlite3(&self) {
+        write_executable(
+            &self.fake_bin.join("sqlite3"),
+            r#"#!/bin/sh
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  echo "expected sqlite3 database path, got: $*" >&2
+  exit 64
+fi
+
+database_file=$1
+sql=$(cat)
+case "$database_file" in
+  "$TMPDIR"/sqlay-sqlite-fixtures.*/sqlite/fixture.sqlite3)
+    case "$sql" in
+      *"CREATE TABLE fixture_orders"*) ;;
+      *)
+        echo "expected SQLite fixture schema on stdin" >&2
+        exit 64
+        ;;
+    esac
+    ;;
+  "$TMPDIR"/sqlay-examples.*/sqlite/field-journal/field-journal.sqlite3)
+    case "$sql" in
+      *"CREATE TABLE field_journal_sites"*|*"INSERT INTO field_journal_sites"*) ;;
+      *)
+        echo "expected field journal schema or seed data on stdin" >&2
+        exit 64
+        ;;
+    esac
+    ;;
+  *)
+    echo "unexpected sqlite3 database path: $database_file" >&2
+    exit 64
+    ;;
+esac
+
+printf '%s\n' "$database_file" >> "$TMPDIR/sqlite3-calls.log"
+mkdir -p "$(dirname "$database_file")"
+if [ ! -f "$database_file" ]; then
+  : > "$database_file"
+fi
+"#,
+        );
+    }
+
     fn write_fake_mysql(&self) {
         write_executable(
             &self.fake_bin.join("mysql"),
@@ -345,20 +652,50 @@ cat >/dev/null
 set -eu
 
 printf '%s\n' "$*" >> "$TMPDIR/npm-calls.log"
+pwd >> "$TMPDIR/npm-cwds.log"
 
 if [ "$#" -eq 4 ] \
   && [ "$1" = "exec" ] \
   && [ "$2" = "--" ] \
   && [ "$3" = "tsx" ]; then
   case "$4" in
-    "$TMPDIR"/sqlay-examples.*/bookstore/assert-query-results.ts)
+    "$TMPDIR"/sqlay-examples.*/mysql/bookstore/assert-query-results.ts)
       if ! grep -q 'rows.length > 1' "$4"; then
         echo "expected result assertion script to reject multi-row single-result queries" >&2
         exit 64
       fi
       ;;
+    "$TMPDIR"/sqlay-examples.*/sqlite/field-journal/assert-builder-runtime.ts)
+      if ! grep -q 'listSiteObservations' "$4" \
+        || ! grep -q 'addObservationTags' "$4" \
+        || ! grep -q 'node:sqlite' "$4"; then
+        echo "expected field journal runtime assertions for Slot, Repeat, and database binding" >&2
+        exit 64
+      fi
+      if [ ! -f "$SQLAY_SQLITE_TEST_DATABASE_FILE" ]; then
+        echo "expected field journal runtime assertions to receive the temporary database path" >&2
+        exit 64
+      fi
+      ;;
+    "$TMPDIR"/sqlay-sqlite-fixtures.*/sqlite/assert-builder-runtime.ts)
+      if ! grep -q 'sqliteBulkInsertOrderItems' "$4" \
+        || ! grep -q 'sqliteDeleteOrderItem' "$4" \
+        || ! grep -q 'node:sqlite' "$4"; then
+        echo "expected SQLite runtime assertions for Repeat, mutation Slot, and database binding" >&2
+        exit 64
+      fi
+      project_dir=$(dirname "$4")
+      if [ ! -L "$project_dir/node_modules" ]; then
+        echo "expected temporary SQLite fixture project to link repo node_modules" >&2
+        exit 64
+      fi
+      if [ ! -f "$SQLAY_SQLITE_TEST_DATABASE_FILE" ]; then
+        echo "expected SQLite runtime assertions to receive the temporary database path" >&2
+        exit 64
+      fi
+      ;;
     *)
-      echo "expected npm to run a temporary bookstore result assertion, got: $*" >&2
+      echo "expected npm to run a temporary example assertion, got: $*" >&2
       exit 64
       ;;
   esac
@@ -376,15 +713,23 @@ if [ "$#" -ne 6 ] \
 fi
 
 case "$6" in
-  "$TMPDIR"/sqlay-examples.*/bookstore/tsconfig.json)
+  "$TMPDIR"/sqlay-examples.*/mysql/bookstore/tsconfig.json)
     project_dir=$(dirname "$6")
     if [ ! -L "$project_dir/node_modules" ]; then
       echo "expected temporary bookstore project to link repo node_modules" >&2
       exit 64
     fi
     ;;
+  "$TMPDIR"/sqlay-examples.*/sqlite/field-journal/tsconfig.json)
+    project_dir=$(dirname "$6")
+    if [ ! -L "$project_dir/node_modules" ]; then
+      echo "expected temporary field journal project to link repo node_modules" >&2
+      exit 64
+    fi
+    ;;
   "$TMPDIR"/sqlay-mysql-fixtures.*/sql/tsconfig.json) ;;
   "$TMPDIR"/sqlay-mysql-fixtures.*/sql-type-mapping/tsconfig.json) ;;
+  "$TMPDIR"/sqlay-sqlite-fixtures.*/sqlite/tsconfig.json) ;;
   *)
     echo "expected npm to typecheck a temporary generated project, got: $*" >&2
     exit 64
@@ -421,6 +766,47 @@ fn write_file(path: &Path, content: &str) {
 
 fn write_structure_baseline(repo_root: &Path, content: &str) {
     write_file(&repo_root.join("docs/structure-baseline.json"), content);
+}
+
+fn write_sqlite_fixture_contract_repo(repo_root: &Path) {
+    write_file(
+        &repo_root.join("fixtures/sqlite/schema.sql"),
+        "CREATE TABLE fixture_orders (id INTEGER PRIMARY KEY);\n",
+    );
+    write_file(
+        &repo_root.join("fixtures/sqlite/sqlay.config.json"),
+        r#"{
+  "source": { "include": ["valid/**/*.sql"] },
+  "output": { "dir": "generated" },
+  "database": { "dialect": "sqlite", "urlEnv": "SQLITE_DATABASE_URL" },
+  "target": { "language": "typescript" }
+}
+"#,
+    );
+    write_file(
+        &repo_root.join("fixtures/sqlite/valid/sqlite_builders.sql"),
+        "/* @sqlay { type: query id: sqliteFixtureQuery } */\nSELECT id FROM fixture_orders;\n",
+    );
+    write_file(
+        &repo_root.join("fixtures/sqlite/tsconfig.json"),
+        r#"{
+  "compilerOptions": { "strict": true, "noEmit": true },
+        "include": ["assert-builder-runtime.ts", "assert-generated-surface.ts", "generated/**/*.ts"]
+}
+"#,
+    );
+    write_file(
+        &repo_root.join("fixtures/sqlite/assert-generated-surface.ts"),
+        "import { sqliteFixtureQuery } from \"./generated/valid/sqlite_builders\";\nvoid sqliteFixtureQuery;\n",
+    );
+    write_file(
+        &repo_root.join("fixtures/sqlite/assert-builder-runtime.ts"),
+        "import { sqliteFixtureQuery } from \"./generated/valid/sqlite_builders\";\nvoid sqliteFixtureQuery;\n// sqliteBulkInsertOrderItems\n// sqliteDeleteOrderItem\n// node:sqlite\n",
+    );
+    write_file(
+        &repo_root.join("fixtures/sqlite/generated/valid/sqlite_builders.ts"),
+        "// generated SQLite fixture contract\nexport const sqliteFixtureQuery = true;\n",
+    );
 }
 
 fn rust_comment_lines(prefix: &str, line_count: usize) -> String {

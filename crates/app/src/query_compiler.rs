@@ -161,7 +161,8 @@ fn compile_param_bindings(
             source_usage.id().to_owned(),
             resolved_usage.type_ref().clone(),
             nullable,
-        );
+        )
+        .with_encoding(resolved_usage.encoding());
         if let Some(reference) = resolved_usage.schema_column_reference().cloned() {
             param = param.with_schema_column_reference(reference);
         }

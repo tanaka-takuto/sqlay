@@ -26,6 +26,12 @@ Install Node.js and the pinned TypeScript dependency used by generated-code chec
 npm ci
 ```
 
+Install the SQLite command-line tool used by the SQLite example and fixture checks:
+
+```sh
+brew install sqlite
+```
+
 Verify the local toolchain:
 
 ```sh
@@ -33,11 +39,12 @@ rustc --version
 cargo --version
 cargo fmt --version
 cargo clippy --version
+sqlite3 --version
 ```
 
 ## Start local MySQL
 
-The MVP uses MySQL 8.x for metadata checks. Start the development service with:
+The MySQL-backed metadata checks use MySQL 8.x. Start the development service with:
 
 ```sh
 script/mysql-up.sh
@@ -49,7 +56,7 @@ The Compose service uses deterministic development-only credentials:
 export DATABASE_URL='mysql://sqlay:sqlay@127.0.0.1:3306/sqlay'
 ```
 
-The Compose service starts an empty development database. Example and fixture
+The Compose service starts an empty development database. MySQL example and fixture
 checks load their own prefix-scoped schema and seed data each time they run. To
 rebuild the local database volume from scratch:
 
@@ -78,17 +85,34 @@ npm run typecheck:examples
 npm run typecheck:fixtures
 ```
 
-Run the MySQL-backed example E2E check against a running MySQL service:
+Run the MySQL and SQLite example E2E checks against a running MySQL service and the
+local `sqlite3` command:
 
 ```sh
 DATABASE_URL='mysql://sqlay:sqlay@127.0.0.1:3306/sqlay' script/check-examples.sh
 ```
+
+The examples check exercises `examples/mysql/bookstore/` against MySQL and creates
+the database for `examples/sqlite/field-journal/` only inside a temporary project
+copy. It regenerates and compares both committed outputs, type-checks them, and runs
+their generated-builder assertions without changing either working example.
 
 Run the MySQL-backed fixture checks against a running MySQL service:
 
 ```sh
 DATABASE_URL='mysql://sqlay:sqlay@127.0.0.1:3306/sqlay' script/check-mysql-fixtures.sh
 ```
+
+Run the SQLite fixture check with the local `sqlite3` command:
+
+```sh
+script/check-sqlite-fixtures.sh
+```
+
+The script creates an existing SQLite database only in a temporary fixture copy,
+checks that `sqlay check` writes nothing, regenerates the expected TypeScript with
+`sqlay compile`, runs `tsc --noEmit`, and verifies generated SQL and parameter
+ordering. It leaves the working fixture directory unchanged.
 
 ## Set up Git hooks
 
@@ -147,9 +171,12 @@ Branches used for issue-based pull requests must use this format:
 
 ```text
 issue/#123
+issue/#123-review-layer
 ```
 
 The `pre-push` hook checks branch names before pushing. It allows `main`, `master`, and `develop` for repository maintenance, and requires all other pushed local branches to match `issue/#<number>`.
+An optional lower-case slug may follow the issue number when one issue is split into
+stacked pull requests. Keep every branch in that stack under the same issue number.
 
 ## Issues
 
@@ -203,7 +230,8 @@ Examples CI follows the same trigger and reusable workflow split:
 - Trigger layer: `.github/workflows/on_pull_request_examples-check.yml` and `.github/workflows/on_push_examples-check.yml`
 - Reusable Workflow layer: `.github/workflows/_examples-check.yml`
 
-The examples workflow starts a MySQL 8.4 service and runs:
+The examples workflow starts a MySQL 8.4 service, installs the SQLite command-line
+tool, and runs both dialect-specific example projects through:
 
 ```sh
 script/check-examples.sh
@@ -219,6 +247,18 @@ The MySQL fixture workflow starts a MySQL 8.4 service and runs:
 
 ```sh
 script/check-mysql-fixtures.sh
+```
+
+SQLite fixture CI follows the same trigger and reusable workflow split:
+
+- Trigger layer: `.github/workflows/on_pull_request_sqlite-fixtures-check.yml` and `.github/workflows/on_push_sqlite-fixtures-check.yml`
+- Reusable Workflow layer: `.github/workflows/_sqlite-fixtures-check.yml`
+- Composite Action layer: `.github/actions/setup-node/action.yml`
+
+The SQLite fixture workflow installs the SQLite command-line tool and runs:
+
+```sh
+script/check-sqlite-fixtures.sh
 ```
 
 Rust lint policy is defined in `Cargo.toml`. The default is intentionally strict:

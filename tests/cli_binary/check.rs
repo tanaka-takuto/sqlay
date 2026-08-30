@@ -466,7 +466,7 @@ fn check_reports_unsupported_config_before_pipeline_skeleton() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains(
-            "unsupported config field `database.dialect` value `postgres`; supported value is `mysql`"
+            "unsupported config field `database.dialect` value `postgres`; supported values are `mysql` and `sqlite`"
         ),
         "stderr: {stderr}"
     );

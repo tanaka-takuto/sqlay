@@ -1,4 +1,4 @@
-# Bookstore Example
+# MySQL Bookstore Example
 
 This example is a small online bookstore project. It demonstrates realistic MySQL
 queries, mutation builders, Param input binding, Slot/Fragment composition, Repeat
@@ -39,8 +39,8 @@ discount and no-discount line items, zero and large prices, a large `BIGINT`
 identifier, long text, nullable-column combinations, and JSON metadata with nested
 objects, arrays, numbers, booleans, missing keys, and JSON null values.
 
-See [`../../docs/query-execution.md`](../../docs/query-execution.md) for a minimal
+See [`../../../docs/query-execution.md`](../../../docs/query-execution.md) for a minimal
 `mysql2/promise` SELECT execution example, and
-[`../../docs/mutation-execution.md`](../../docs/mutation-execution.md) for mutation
+[`../../../docs/mutation-execution.md`](../../../docs/mutation-execution.md) for mutation
 execution examples that use these generated builders without adding
 driver-specific code to the generated TypeScript.

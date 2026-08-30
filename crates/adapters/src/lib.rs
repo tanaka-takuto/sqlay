@@ -7,6 +7,7 @@
 pub mod config_jsonc;
 mod diagnostics;
 pub mod dialect_mysql;
+pub mod dialect_sqlite;
 pub mod metadata;
 pub mod output_fs;
 pub mod source_fs;

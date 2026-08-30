@@ -39,10 +39,10 @@ jobs:
       - name: Setup Node
         uses: ./.github/actions/setup-node
 
-      - name: Install MySQL client
+      - name: Install database clients
         run: |
           sudo apt-get update
-          sudo apt-get install --yes default-mysql-client
+          sudo apt-get install --yes default-mysql-client sqlite3
 
       - name: Run example checks
         run: script/check-examples.sh

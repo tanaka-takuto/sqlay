@@ -1,0 +1,23 @@
+{
+  "source": {
+    "include": ["sql/**/*.sql"],
+    "exclude": []
+  },
+  "output": {
+    "dir": "generated"
+  },
+  "database": {
+    "dialect": "sqlite",
+    "urlEnv": "FIELD_JOURNAL_DATABASE_URL"
+  },
+  "target": {
+    "language": "typescript",
+    "typescript": {
+      "typeMapping": {
+        "columns": {
+          "field_journal_observations.individual_count": "number"
+        }
+      }
+    }
+  }
+}

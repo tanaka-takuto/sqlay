@@ -7,7 +7,7 @@ if [ -n "${HOME:-}" ] && [ -f "$HOME/.cargo/env" ]; then
 fi
 
 script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
-repo_root=$(CDPATH= cd "$script_dir/.." && pwd)
+repo_root=${SQLAY_REPO_ROOT:-$(CDPATH= cd "$script_dir/.." && pwd)}
 
 require_command() {
   command_name=$1
@@ -254,6 +254,7 @@ compare_directories() {
 
 require_command "cargo" "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
 require_command "npm" "install Node.js from https://nodejs.org/"
+require_command "sqlite3" "install the SQLite command-line tools from https://sqlite.org/"
 
 parse_database_url
 select_mysql_client
@@ -261,19 +262,54 @@ select_mysql_client
 tmp_root=$(mktemp -d "${TMPDIR:-/tmp}/sqlay-examples.XXXXXX")
 trap 'rm -rf "$tmp_root"' EXIT HUP INT TERM
 
-example_root=$repo_root/examples/bookstore
-tmp_example=$tmp_root/bookstore
+mysql_example_root=$repo_root/examples/mysql/bookstore
+tmp_mysql_example=$tmp_root/mysql/bookstore
 
-cp -R "$example_root" "$tmp_example"
-rm -rf "$tmp_example/generated"
-ln -s "$repo_root/node_modules" "$tmp_example/node_modules"
+mkdir -p "$(dirname "$tmp_mysql_example")"
+cp -R "$mysql_example_root" "$tmp_mysql_example"
+rm -rf "$tmp_mysql_example/generated"
+ln -s "$repo_root/node_modules" "$tmp_mysql_example/node_modules"
 
-load_mysql_file "$example_root/schema.sql"
-load_mysql_file "$example_root/seed.sql"
+load_mysql_file "$mysql_example_root/schema.sql"
+load_mysql_file "$mysql_example_root/seed.sql"
 verify_bookstore_seed_boundaries
 
 cd "$repo_root"
-DATABASE_URL=$DATABASE_URL cargo run --locked -- compile --config "$tmp_example/sqlay.config.json"
-compare_directories "$example_root/generated" "$tmp_example/generated"
-npm exec -- tsc --noEmit --project "$tmp_example/tsconfig.json"
-npm exec -- tsx "$tmp_example/assert-query-results.ts"
+DATABASE_URL=$DATABASE_URL cargo run --locked -- compile --config "$tmp_mysql_example/sqlay.config.json"
+compare_directories "$mysql_example_root/generated" "$tmp_mysql_example/generated"
+npm exec -- tsc --noEmit --project "$tmp_mysql_example/tsconfig.json"
+npm exec -- tsx "$tmp_mysql_example/assert-query-results.ts"
+
+sqlite_example_root=$repo_root/examples/sqlite/field-journal
+tmp_sqlite_example=$tmp_root/sqlite/field-journal
+sqlite_database_file=$tmp_sqlite_example/field-journal.sqlite3
+
+mkdir -p "$(dirname "$tmp_sqlite_example")"
+cp -R "$sqlite_example_root" "$tmp_sqlite_example"
+rm -rf "$tmp_sqlite_example/generated"
+ln -s "$repo_root/node_modules" "$tmp_sqlite_example/node_modules"
+
+sqlite3 "$sqlite_database_file" < "$sqlite_example_root/schema.sql"
+sqlite3 "$sqlite_database_file" < "$sqlite_example_root/seed.sql"
+if [ ! -f "$sqlite_database_file" ]; then
+  echo "check-examples: sqlite3 did not create the temporary field journal database" >&2
+  exit 1
+fi
+
+sqlite_database_url=sqlite://$sqlite_database_file
+
+FIELD_JOURNAL_DATABASE_URL=$sqlite_database_url \
+  cargo run --locked -- check --config "$tmp_sqlite_example/sqlay.config.json"
+
+if [ -e "$tmp_sqlite_example/generated" ]; then
+  echo "check-examples: SQLite sqlay check wrote generated files" >&2
+  exit 1
+fi
+
+FIELD_JOURNAL_DATABASE_URL=$sqlite_database_url \
+  cargo run --locked -- compile --config "$tmp_sqlite_example/sqlay.config.json"
+
+compare_directories "$sqlite_example_root/generated" "$tmp_sqlite_example/generated"
+npm exec -- tsc --noEmit --project "$tmp_sqlite_example/tsconfig.json"
+SQLAY_SQLITE_TEST_DATABASE_FILE=$sqlite_database_file \
+  npm exec -- tsx "$tmp_sqlite_example/assert-builder-runtime.ts"

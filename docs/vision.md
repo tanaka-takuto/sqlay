@@ -40,11 +40,22 @@ overconfident. For example, unknown nullability should be treated as nullable.
 When schema-backed metadata is precise, generated types may be more specific, such
 as inline literal unions for MySQL `ENUM` values.
 
+This conservative rule also applies to SQLite's dynamic type system. An ambiguous
+SQLite declared type, expression type, or nullability result must remain unknown or
+nullable instead of being promoted to a more confident TypeScript annotation.
+
+SQLite `BOOL` and `BOOLEAN` declarations remain unknown on result rows because the
+database exposes their stored integer representation and does not enforce `0` or
+`1`. Callers may still declare an input Param as `valueType: bool`; generated
+TypeScript accepts `boolean` and normalizes it to SQLite's integer binding
+representation before returning the params array.
+
 Projects may explicitly override generated TypeScript type annotations when the
 default conservative mapping does not match their domain model or driver
 configuration. Those overrides are still static type annotations. They must not
 imply runtime result parsing, input validation, generated driver configuration, or
-SQL execution behavior.
+SQL execution behavior, and they do not replace a database Param encoding already
+represented in Core IR.
 
 For mutation builders, sqlay should generate typed inputs and parameter arrays, but
 it should not claim to know driver execution results such as affected row counts,
@@ -101,8 +112,13 @@ type mappings.
 accepted direction for machine-readable `check` and `compile` result output through
 `--format json`.
 
-Additional SQL dialects and additional target generators require separate design
-decisions before implementation.
+[ADR 0014](./adr/0014-support-sqlite-with-the-typescript-target.md) defines SQLite
+3.35 and later support for existing file-backed `main` databases. SQLite uses its own
+query, mutation, and metadata adapters while reusing language-neutral Core IR and
+the driver-independent TypeScript target generator.
+
+Additional SQL dialects beyond MySQL and SQLite, and additional target generators,
+require separate design decisions before implementation.
 
 `Slot` design uses `targets: [...]` rather than a single `target`, so exclusive
 choices and single choices share one representation.
